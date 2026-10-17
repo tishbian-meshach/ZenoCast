@@ -38,3 +38,15 @@ This log records major architectural and implementation choices, defaults select
 - **Golden Image Acceptance**: Established deterministic headless 1080p golden image testing in `tests/golden_render_test.rs` producing `tests/golden/m2_sample_1080p.png` with 0 pixel difference on subsequent runs.
 - **Windows GNU Toolchain Linkage**: Resolved a DEP violation (0xc0000005) caused by GNU `ld` failing to generate proper PE import directory descriptors for short-import objects produced by `windows-targets`/`raw-dylib` by configuring LLVM's `ld.lld` (LLD 23.1.3) and `llvm-dlltool` in the Rust self-contained environment.
 
+## 2026-10-17: M3 Animation Evaluation and Deterministic Playback
+
+- **Interpolate Trait**: Implemented `Interpolate` in `zeno-core` for scalar floats (`f32`, `f64`), vector math (`Vec2`, `Vec3`, `Vec4`), `Color` (linear sRGB interpolation), primitives (`u32`, `i32`, `bool`), and `String` (step interpolation).
+- **Keyframe Interpolation & Easings**: Implemented `evaluate_keyframes` using binary search intervals and cubic bezier solver (Newton-Raphson with bisection fallback) supporting `Hold`, `Linear`, `CubicBezier`, and standard CSS / Penner curve presets (`ease`, `ease_in`, `ease_out`, `ease_in_out`, `quad_*`, `sine_*`).
+- **Pure Evaluation Engine**:
+  - Implemented `evaluate(composition, data_snapshot, time_seconds) -> ResolvedFrame` in `zeno-engine::eval` following Section 6 resolution order: Binding -> Expression -> Keyframes -> Constant.
+  - Implemented `PlaybackClock` with scrubbing (`set_time`), step forward/backward (`step`, `step_frame`, `step_back_frame`), seamless looping over animation state boundaries (`AnimationState`), and play/pause state management.
+  - Decoupled `ZenoRenderer` to consume pure `ResolvedFrame` via `render_resolved_frame` and `render_frame_to_image`.
+- **Headless CLI Rendering**: Implemented `zeno-cli render --file <path> --time <t> --out <path>` supporting arbitrary `.arx` container packages and built-in broadcast lower-third animation templates.
+- **Golden Image Acceptance**: Added `test_m3_animation_evaluation_goldens_at_three_timestamps` in `tests/golden_render_test.rs` capturing frames at $t=0.0$s (intro sliding in, low opacity), $t=1.5$s (full loop on-air state), and $t=3.0$s (shifted loop state), confirming visual motion progression and deterministic 0.0000 RMSE comparisons against saved goldens.
+
+

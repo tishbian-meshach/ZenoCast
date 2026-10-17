@@ -65,6 +65,66 @@ impl Easing {
         }
     }
 
+    /// Quadratic ease-in approximation.
+    pub const fn quad_in() -> Self {
+        Self::CubicBezier {
+            control_1_x: 0.11,
+            control_1_y: 0.0,
+            control_2_x: 0.5,
+            control_2_y: 0.0,
+        }
+    }
+
+    /// Quadratic ease-out approximation.
+    pub const fn quad_out() -> Self {
+        Self::CubicBezier {
+            control_1_x: 0.5,
+            control_1_y: 1.0,
+            control_2_x: 0.89,
+            control_2_y: 1.0,
+        }
+    }
+
+    /// Quadratic ease-in-out approximation.
+    pub const fn quad_in_out() -> Self {
+        Self::CubicBezier {
+            control_1_x: 0.45,
+            control_1_y: 0.0,
+            control_2_x: 0.55,
+            control_2_y: 1.0,
+        }
+    }
+
+    /// Sine ease-in approximation.
+    pub const fn sine_in() -> Self {
+        Self::CubicBezier {
+            control_1_x: 0.12,
+            control_1_y: 0.0,
+            control_2_x: 0.39,
+            control_2_y: 0.0,
+        }
+    }
+
+    /// Sine ease-out approximation.
+    pub const fn sine_out() -> Self {
+        Self::CubicBezier {
+            control_1_x: 0.61,
+            control_1_y: 1.0,
+            control_2_x: 0.88,
+            control_2_y: 1.0,
+        }
+    }
+
+    /// Sine ease-in-out approximation.
+    pub const fn sine_in_out() -> Self {
+        Self::CubicBezier {
+            control_1_x: 0.37,
+            control_1_y: 0.0,
+            control_2_x: 0.63,
+            control_2_y: 1.0,
+        }
+    }
+
     /// Evaluates the easing curve for a normalized progress `t` in `[0.0, 1.0]`.
     /// Returns the eased output progress.
     pub fn evaluate(&self, t: f32) -> f32 {
@@ -149,6 +209,90 @@ fn solve_cubic_bezier(x: f32, x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
     sample_curve_y(t)
 }
 
+/// Trait for values that can be linearly interpolated or stepped between two animation states.
+pub trait Interpolate: Clone {
+    /// Linearly interpolate between `self` and `target` with normalized progress `t` in `[0.0, 1.0]`.
+    fn interpolate(&self, target: &Self, t: f32) -> Self;
+}
+
+impl Interpolate for f32 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        *self + (*target - *self) * t
+    }
+}
+
+impl Interpolate for f64 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        *self + (*target - *self) * (t as f64)
+    }
+}
+
+impl Interpolate for glam::Vec2 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        self.lerp(*target, t)
+    }
+}
+
+impl Interpolate for glam::Vec3 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        self.lerp(*target, t)
+    }
+}
+
+impl Interpolate for glam::Vec4 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        self.lerp(*target, t)
+    }
+}
+
+impl Interpolate for crate::color::Color {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        self.lerp(target, t)
+    }
+}
+
+impl Interpolate for u32 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        ((*self as f64) + ((*target as f64) - (*self as f64)) * (t as f64)).round() as u32
+    }
+}
+
+impl Interpolate for i32 {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        ((*self as f64) + ((*target as f64) - (*self as f64)) * (t as f64)).round() as i32
+    }
+}
+
+impl Interpolate for bool {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        if t >= 1.0 {
+            *target
+        } else {
+            *self
+        }
+    }
+}
+
+impl Interpolate for String {
+    #[inline]
+    fn interpolate(&self, target: &Self, t: f32) -> Self {
+        if t >= 1.0 {
+            target.clone()
+        } else {
+            self.clone()
+        }
+    }
+}
+
 /// An individual keyframe anchored at a specific timestamp.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Keyframe<Value> {
@@ -182,6 +326,54 @@ impl<Value> Keyframe<Value> {
     pub const fn hold(time_seconds: f64, value: Value) -> Self {
         Self::new(time_seconds, value, Easing::Hold)
     }
+}
+
+/// Evaluates an ordered slice of keyframes at the specified timestamp.
+///
+/// Returns the first keyframe value if `time_seconds <= keys[0].time_seconds`,
+/// the last keyframe value if `time_seconds >= keys.last().time_seconds`,
+/// or interpolates between adjacent keyframes using the starting keyframe's easing curve.
+pub fn evaluate_keyframes<Value: Interpolate>(
+    keys: &[Keyframe<Value>],
+    time_seconds: f64,
+) -> Value {
+    if keys.is_empty() {
+        panic!("Cannot evaluate empty keyframes list");
+    }
+    if keys.len() == 1 || time_seconds <= keys[0].time_seconds {
+        return keys[0].value.clone();
+    }
+    let last = keys.last().unwrap();
+    if time_seconds >= last.time_seconds {
+        return last.value.clone();
+    }
+
+    // Binary search to find keyframe interval: keys[i].time_seconds <= time_seconds < keys[i+1].time_seconds
+    let idx = match keys.binary_search_by(|k| {
+        k.time_seconds
+            .partial_cmp(&time_seconds)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }) {
+        Ok(exact) => exact,
+        Err(next_idx) => next_idx.saturating_sub(1),
+    };
+
+    if idx >= keys.len() - 1 {
+        return last.value.clone();
+    }
+
+    let k_curr = &keys[idx];
+    let k_next = &keys[idx + 1];
+
+    let span = k_next.time_seconds - k_curr.time_seconds;
+    let raw_t = if span <= 0.0 {
+        1.0
+    } else {
+        ((time_seconds - k_curr.time_seconds) / span).clamp(0.0, 1.0) as f32
+    };
+
+    let eased_t = k_curr.easing_to_next.evaluate(raw_t);
+    k_curr.value.interpolate(&k_next.value, eased_t)
 }
 
 /// A dynamic property that can be a constant, keyframed animation, live data binding, or expression.
@@ -227,6 +419,12 @@ impl<Value> Property<Value> {
         Self::Constant(value)
     }
 
+    /// Create a keyframed property.
+    #[inline]
+    pub fn keyframes(keys: Vec<Keyframe<Value>>) -> Self {
+        Self::Keyframes(keys)
+    }
+
     /// Create a data-bound property with fallback.
     #[inline]
     pub fn binding(data_path: impl Into<String>, fallback: Value) -> Self {
@@ -258,6 +456,29 @@ impl<Value> Property<Value> {
             }
             Self::Binding { fallback, .. } => fallback,
             Self::Expression { fallback, .. } => fallback,
+        }
+    }
+}
+
+impl<Value: Interpolate> Property<Value> {
+    /// Evaluates the property value at `time_seconds`.
+    ///
+    /// Evaluation order (Section 6):
+    /// 1. `Binding` -> uses fallback until live data store is attached
+    /// 2. `Expression` -> uses fallback until script engine is evaluated
+    /// 3. `Keyframes` -> evaluates interpolated keyframes at `time_seconds`
+    /// 4. `Constant` -> returns static value
+    pub fn evaluate_at(&self, time_seconds: f64) -> Value {
+        match self {
+            Self::Constant(val) => val.clone(),
+            Self::Keyframes(keys) => {
+                if keys.is_empty() {
+                    panic!("Property::Keyframes is empty");
+                }
+                evaluate_keyframes(keys, time_seconds)
+            }
+            Self::Binding { fallback, .. } => fallback.clone(),
+            Self::Expression { fallback, .. } => fallback.clone(),
         }
     }
 }

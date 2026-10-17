@@ -16,3 +16,7 @@ zeno-engine = { workspace = true }
 zeno-format = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
+pollster = { workspace = true }
+image = { workspace = true }
+wgpu = { workspace = true }
+

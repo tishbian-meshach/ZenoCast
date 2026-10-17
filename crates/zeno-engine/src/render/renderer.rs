@@ -1,7 +1,7 @@
-//! Main engine compositor and renderer orchestration.
-
-use crate::model::{Composition, Fill, LayerContent, ShapeGeometry};
-use crate::render::hierarchy::resolve_scene_hierarchy;
+use crate::eval::{
+    evaluate_at, ResolvedContent, ResolvedFill, ResolvedFrame, ResolvedShapeGeometry,
+};
+use crate::model::{Composition, LayerContent};
 use crate::render::pipeline::{CompositorPipeline, LayerUniforms};
 use crate::render::text_raster::RasterCache;
 use crate::render::texture_pool::TexturePool;
@@ -94,13 +94,12 @@ impl ZenoRenderer {
             .insert(asset_id, (texture, view, width, height));
     }
 
-    /// Render a composition at the specified timestamp onto a target texture view.
-    pub fn render_composition(
+    /// Render a pre-evaluated frame onto a target texture view.
+    pub fn render_resolved_frame(
         &mut self,
         device: &Device,
         queue: &Queue,
-        composition: &Composition,
-        time_seconds: f64,
+        frame: &ResolvedFrame,
         target_view: &TextureView,
         target_width: u32,
         target_height: u32,
@@ -117,55 +116,45 @@ impl ZenoRenderer {
 
         self.pipeline.update_global_matrix(queue, view_proj);
 
-        // 2. Resolve layer hierarchy
-        let resolved_layers = resolve_scene_hierarchy(composition, time_seconds);
-
-        // 3. Pre-rasterize text layers into cache before opening render pass
-        for resolved in &resolved_layers {
+        // 2. Pre-rasterize text layers into cache before opening render pass
+        for resolved in &frame.layers {
             if let LayerContent::Text(text) = &resolved.layer.content {
                 self.raster_cache.get_or_rasterize_text(device, queue, text);
             }
         }
 
-        // 4. Build per-layer draw items
+        // 3. Build per-layer draw items
         let mut draw_items = Vec::new();
 
-        for resolved in &resolved_layers {
+        for resolved in &frame.layers {
             let opacity = resolved.net_opacity;
             if opacity <= 0.001 {
                 continue;
             }
 
-            match &resolved.layer.content {
-                LayerContent::Shape(shape) => {
+            match &resolved.content {
+                ResolvedContent::Shape(shape) => {
                     let (width, height) = match &shape.geometry {
-                        ShapeGeometry::Rectangle { size } => {
-                            let s = size.fallback_value();
-                            (s.x, s.y)
+                        ResolvedShapeGeometry::Rectangle { size } => (size.x, size.y),
+                        ResolvedShapeGeometry::RoundedRectangle { size, .. } => (size.x, size.y),
+                        ResolvedShapeGeometry::Ellipse { radius } => {
+                            (radius.x * 2.0, radius.y * 2.0)
                         }
-                        ShapeGeometry::RoundedRectangle { size, .. } => {
-                            let s = size.fallback_value();
-                            (s.x, s.y)
-                        }
-                        ShapeGeometry::Ellipse { radius } => {
-                            let r = radius.fallback_value();
-                            (r.x * 2.0, r.y * 2.0)
-                        }
-                        ShapeGeometry::Path { .. } => (100.0, 100.0),
+                        ResolvedShapeGeometry::Path { .. } => (100.0, 100.0),
                     };
 
                     let quad_scale = Mat4::from_scale(Vec3::new(width, height, 1.0));
                     let final_world = resolved.world_matrix * quad_scale;
 
                     let (color, mode, grad_start, grad_end, grad_color_end) = match &shape.fill {
-                        Some(Fill::Solid(c)) => (
-                            c.fallback_value().to_f32_array(),
+                        Some(ResolvedFill::Solid(c)) => (
+                            c.to_f32_array(),
                             0.0f32,
                             [0.0, 0.0],
                             [1.0, 1.0],
                             [1.0, 1.0, 1.0, 1.0],
                         ),
-                        Some(Fill::LinearGradient { start, end, stops }) => {
+                        Some(ResolvedFill::LinearGradient { start, end, stops }) => {
                             let start_col = stops
                                 .first()
                                 .map(|s| s.color.to_f32_array())
@@ -182,7 +171,18 @@ impl ZenoRenderer {
                                 end_col,
                             )
                         }
-                        _ => (
+                        Some(ResolvedFill::RadialGradient { center, stops, .. }) => {
+                            let start_col = stops
+                                .first()
+                                .map(|s| s.color.to_f32_array())
+                                .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+                            let end_col = stops
+                                .last()
+                                .map(|s| s.color.to_f32_array())
+                                .unwrap_or([0.0, 0.0, 0.0, 1.0]);
+                            (start_col, 2.0f32, [center.x, center.y], [1.0, 1.0], end_col)
+                        }
+                        None => (
                             Color::WHITE.to_f32_array(),
                             0.0f32,
                             [0.0, 0.0],
@@ -205,7 +205,7 @@ impl ZenoRenderer {
 
                     draw_items.push((layer_bind_group, None));
                 }
-                LayerContent::Image { asset } => {
+                ResolvedContent::Image { asset } => {
                     if let Some((_tex, view, width, height)) = self.image_cache.get(asset) {
                         let quad_scale =
                             Mat4::from_scale(Vec3::new(*width as f32, *height as f32, 1.0));
@@ -227,38 +227,41 @@ impl ZenoRenderer {
                         draw_items.push((layer_bind_group, Some(tex_bind_group)));
                     }
                 }
-                LayerContent::Text(text) => {
-                    let key = RasterCache::hash_text(text);
-                    if let Some(rasterized) = self.raster_cache.get_by_hash(key) {
-                        let (width, height) = (rasterized.width as f32, rasterized.height as f32);
-                        let quad_scale = Mat4::from_scale(Vec3::new(width, height, 1.0));
-                        let final_world = resolved.world_matrix * quad_scale;
+                ResolvedContent::Text(_) => {
+                    if let LayerContent::Text(text) = &resolved.layer.content {
+                        let key = RasterCache::hash_text(text);
+                        if let Some(rasterized) = self.raster_cache.get_by_hash(key) {
+                            let (width, height) =
+                                (rasterized.width as f32, rasterized.height as f32);
+                            let quad_scale = Mat4::from_scale(Vec3::new(width, height, 1.0));
+                            let final_world = resolved.world_matrix * quad_scale;
 
-                        let uniforms = LayerUniforms {
-                            world: final_world.to_cols_array_2d(),
-                            color: [1.0, 1.0, 1.0, 1.0],
-                            params: [1.0, opacity, 0.0, 0.0],
-                            gradient_start: [0.0, 0.0],
-                            gradient_end: [1.0, 1.0],
-                            gradient_color_end: [1.0, 1.0, 1.0, 1.0],
-                        };
+                            let uniforms = LayerUniforms {
+                                world: final_world.to_cols_array_2d(),
+                                color: [1.0, 1.0, 1.0, 1.0],
+                                params: [1.0, opacity, 0.0, 0.0],
+                                gradient_start: [0.0, 0.0],
+                                gradient_end: [1.0, 1.0],
+                                gradient_color_end: [1.0, 1.0, 1.0, 1.0],
+                            };
 
-                        let text_view = rasterized
-                            .texture
-                            .create_view(&TextureViewDescriptor::default());
-                        let (_buf, layer_bind_group) =
-                            self.pipeline.create_layer_bind_group(device, &uniforms);
-                        let tex_bind_group =
-                            self.pipeline.create_texture_bind_group(device, &text_view);
+                            let text_view = rasterized
+                                .texture
+                                .create_view(&TextureViewDescriptor::default());
+                            let (_buf, layer_bind_group) =
+                                self.pipeline.create_layer_bind_group(device, &uniforms);
+                            let tex_bind_group =
+                                self.pipeline.create_texture_bind_group(device, &text_view);
 
-                        draw_items.push((layer_bind_group, Some(tex_bind_group)));
+                            draw_items.push((layer_bind_group, Some(tex_bind_group)));
+                        }
                     }
                 }
                 _ => {}
             }
         }
 
-        // 5. Begin render pass and execute all draw calls
+        // 4. Begin render pass and execute all draw calls
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("CompositorCommandEncoder"),
         });
@@ -302,13 +305,34 @@ impl ZenoRenderer {
         queue.submit(Some(encoder.finish()));
     }
 
-    /// Render a composition to an in-memory RGBA image for headless testing or frame export.
-    pub fn render_to_image(
+    /// Render a composition at the specified timestamp onto a target texture view.
+    pub fn render_composition(
         &mut self,
         device: &Device,
         queue: &Queue,
         composition: &Composition,
         time_seconds: f64,
+        target_view: &TextureView,
+        target_width: u32,
+        target_height: u32,
+    ) {
+        let frame = evaluate_at(composition, time_seconds);
+        self.render_resolved_frame(
+            device,
+            queue,
+            &frame,
+            target_view,
+            target_width,
+            target_height,
+        );
+    }
+
+    /// Render a pre-evaluated frame to an in-memory RGBA image for headless testing or frame export.
+    pub fn render_frame_to_image(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        frame: &ResolvedFrame,
         width: u32,
         height: u32,
     ) -> image::RgbaImage {
@@ -322,15 +346,7 @@ impl ZenoRenderer {
 
         let target_view = render_target.create_view(&TextureViewDescriptor::default());
 
-        self.render_composition(
-            device,
-            queue,
-            composition,
-            time_seconds,
-            &target_view,
-            width,
-            height,
-        );
+        self.render_resolved_frame(device, queue, frame, &target_view, width, height);
 
         // Download rendered texture via staging buffer
         let unpadded_bytes_per_row = width * 4;
@@ -396,5 +412,19 @@ impl ZenoRenderer {
 
         image::RgbaImage::from_raw(width, height, image_bytes)
             .expect("create RgbaImage from raw rendered bytes")
+    }
+
+    /// Render a composition to an in-memory RGBA image for headless testing or frame export.
+    pub fn render_to_image(
+        &mut self,
+        device: &Device,
+        queue: &Queue,
+        composition: &Composition,
+        time_seconds: f64,
+        width: u32,
+        height: u32,
+    ) -> image::RgbaImage {
+        let frame = evaluate_at(composition, time_seconds);
+        self.render_frame_to_image(device, queue, &frame, width, height)
     }
 }

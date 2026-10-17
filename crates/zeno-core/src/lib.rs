@@ -15,7 +15,7 @@ pub use color::Color;
 pub use error::CoreError;
 pub use id::{AssetId, CompositionId, LayerId, LinkId, SceneId, TransitionId};
 pub use lifecycle::{InterruptBehavior, Lifecycle, LifecyclePhase};
-pub use property::{Easing, Keyframe, Property};
+pub use property::{evaluate_keyframes, Easing, Interpolate, Keyframe, Property};
 pub use time::{TimeRange, Timecode};
 pub use variable::{VariableDeclaration, VariableKind, VariableValue};
 
@@ -70,5 +70,73 @@ mod tests {
         assert_eq!(tc.minutes, 1);
         assert_eq!(tc.seconds, 5);
         assert_eq!(tc.frames, 15);
+    }
+
+    #[test]
+    fn test_interpolate_primitives() {
+        assert_eq!(10.0f32.interpolate(&20.0f32, 0.5), 15.0);
+        assert_eq!(
+            Vec2::new(0.0, 10.0).interpolate(&Vec2::new(10.0, 20.0), 0.5),
+            Vec2::new(5.0, 15.0)
+        );
+        assert_eq!(
+            Vec3::new(0.0, 0.0, 0.0).interpolate(&Vec3::new(10.0, 20.0, 30.0), 0.5),
+            Vec3::new(5.0, 10.0, 15.0)
+        );
+
+        let col1 = Color::BLACK;
+        let col2 = Color::WHITE;
+        let col_mid = col1.interpolate(&col2, 0.5);
+        assert!((col_mid.r - 0.5).abs() < 1e-4);
+
+        assert!(!false.interpolate(&true, 0.4));
+        assert!(false.interpolate(&true, 1.0));
+
+        assert_eq!(
+            "Alpha".to_string().interpolate(&"Beta".to_string(), 0.5),
+            "Alpha"
+        );
+        assert_eq!(
+            "Alpha".to_string().interpolate(&"Beta".to_string(), 1.0),
+            "Beta"
+        );
+    }
+
+    #[test]
+    fn test_keyframe_interpolation_linear() {
+        let prop = Property::keyframes(vec![
+            Keyframe::linear(1.0, 100.0f32),
+            Keyframe::linear(3.0, 200.0f32),
+        ]);
+
+        assert_eq!(prop.evaluate_at(0.0), 100.0);
+        assert_eq!(prop.evaluate_at(1.0), 100.0);
+        assert_eq!(prop.evaluate_at(2.0), 150.0);
+        assert_eq!(prop.evaluate_at(3.0), 200.0);
+        assert_eq!(prop.evaluate_at(4.0), 200.0);
+    }
+
+    #[test]
+    fn test_keyframe_interpolation_hold() {
+        let prop = Property::keyframes(vec![
+            Keyframe::hold(1.0, 10.0f32),
+            Keyframe::linear(2.0, 20.0f32),
+        ]);
+
+        assert_eq!(prop.evaluate_at(1.0), 10.0);
+        assert_eq!(prop.evaluate_at(1.99), 10.0);
+        assert_eq!(prop.evaluate_at(2.0), 20.0);
+    }
+
+    #[test]
+    fn test_keyframe_interpolation_bezier() {
+        let prop = Property::keyframes(vec![
+            Keyframe::new(0.0, 0.0f32, Easing::ease_in()),
+            Keyframe::linear(1.0, 100.0f32),
+        ]);
+
+        let mid = prop.evaluate_at(0.5);
+        // Ease-in accelerates slowly, so mid should be less than 50.0
+        assert!(mid < 50.0 && mid > 0.0);
     }
 }

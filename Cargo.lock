@@ -1778,6 +1778,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "image",
+ "pollster",
+ "wgpu",
  "zeno-core",
  "zeno-engine",
  "zeno-format",
