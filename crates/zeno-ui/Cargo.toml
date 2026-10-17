@@ -18,6 +18,7 @@ zeno-license = { path = "../zeno-license" }
 zeno-media = { path = "../zeno-media" }
 zeno-format = { path = "../zeno-format" }
 zeno-import = { path = "../zeno-import" }
+zeno-script = { path = "../zeno-script" }
 egui = { workspace = true }
 eframe = { workspace = true }
 egui_dock = { workspace = true }

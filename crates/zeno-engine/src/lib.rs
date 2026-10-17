@@ -11,9 +11,10 @@ pub mod render;
 
 // Re-exports
 pub use eval::{
-    evaluate, evaluate_at, evaluate_with_clock, DataSnapshot, LifecycleController,
-    LifecycleManager, PlaybackClock, PlaybackState, ResolvedContent, ResolvedFill, ResolvedFrame,
-    ResolvedLayer, ResolvedShape, ResolvedShapeGeometry, ResolvedStroke, ResolvedText,
+    evaluate, evaluate_at, evaluate_with_clock, get_script_runtime, DataSnapshot,
+    LifecycleController, LifecycleManager, PlaybackClock, PlaybackState, ResolvedContent,
+    ResolvedFill, ResolvedFrame, ResolvedLayer, ResolvedShape, ResolvedShapeGeometry,
+    ResolvedStroke, ResolvedText,
 };
 pub use model::{
     AnimationState, AssetKind, AssetRef, BlendMode, CameraSettings, Composition, Effect, Fill,

@@ -8,6 +8,7 @@ description = "Pure scene graph, timeline evaluation, and render-command builder
 
 [dependencies]
 zeno-core = { workspace = true }
+zeno-script = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 glam = { workspace = true }
@@ -33,5 +34,9 @@ path = "../../tests/transforms_3d_test.rs"
 [[test]]
 name = "particle_system_test"
 path = "../../tests/particle_system_test.rs"
+
+[[test]]
+name = "expressions_test"
+path = "../../tests/expressions_test.rs"
 
 

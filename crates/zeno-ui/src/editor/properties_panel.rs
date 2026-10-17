@@ -6,7 +6,7 @@ use zeno_core::{Easing, Property, Vec3};
 use zeno_engine::{LayerContent, ShapeGeometry};
 
 use crate::editor::state::OverlayEditor;
-use crate::theme::TEXT_MUTED;
+use crate::theme::{GREEN_OK, RED_LIVE, TEXT_MUTED};
 
 /// Renders the properties inspector for the currently selected layer.
 pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
@@ -394,6 +394,72 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                         .range(layer.in_point_seconds..=1000.0),
                 );
             });
+        });
+
+        ui.separator();
+
+        // 4. Expressions & Scripting Section
+        ui.collapsing("Expressions & Scripting", |ui| {
+            ui.colored_label(
+                TEXT_MUTED,
+                "Sandboxed Rhai expressions evaluated dynamically per frame (e.g. wiggle(5.0, 20.0), data(\"team.score\")).",
+            );
+
+            // Opacity Expression toggle
+            let is_expr_opacity = matches!(layer.transform.opacity_percent, Property::Expression { .. });
+            let mut toggle_op = is_expr_opacity;
+            if ui.checkbox(&mut toggle_op, "Expression on Opacity").changed() {
+                if toggle_op {
+                    let cur = *layer.transform.opacity_percent.fallback_value();
+                    layer.transform.opacity_percent = Property::expression("wiggle(2.0, 30.0)", cur);
+                } else {
+                    let cur = *layer.transform.opacity_percent.fallback_value();
+                    layer.transform.opacity_percent = Property::constant(cur);
+                }
+            }
+            if let Property::Expression { source, .. } = &mut layer.transform.opacity_percent {
+                ui.horizontal(|ui| {
+                    ui.label("Expr:");
+                    ui.text_edit_singleline(source);
+                });
+                let runtime = zeno_engine::get_script_runtime();
+                match runtime.compile(source) {
+                    Ok(_) => {
+                        ui.colored_label(GREEN_OK, "Expression syntax valid");
+                    }
+                    Err(e) => {
+                        ui.colored_label(RED_LIVE, format!("Error: {e}"));
+                    }
+                }
+            }
+
+            // Position Expression toggle
+            let is_expr_pos = matches!(layer.transform.position, Property::Expression { .. });
+            let mut toggle_pos = is_expr_pos;
+            if ui.checkbox(&mut toggle_pos, "Expression on Position").changed() {
+                if toggle_pos {
+                    let cur = *layer.transform.position.fallback_value();
+                    layer.transform.position = Property::expression("[value[0] + wiggle(3.0, 15.0), value[1], value[2]]", cur);
+                } else {
+                    let cur = *layer.transform.position.fallback_value();
+                    layer.transform.position = Property::constant(cur);
+                }
+            }
+            if let Property::Expression { source, .. } = &mut layer.transform.position {
+                ui.horizontal(|ui| {
+                    ui.label("Expr:");
+                    ui.text_edit_singleline(source);
+                });
+                let runtime = zeno_engine::get_script_runtime();
+                match runtime.compile(source) {
+                    Ok(_) => {
+                        ui.colored_label(GREEN_OK, "Expression syntax valid");
+                    }
+                    Err(e) => {
+                        ui.colored_label(RED_LIVE, format!("Error: {e}"));
+                    }
+                }
+            }
         });
     });
 

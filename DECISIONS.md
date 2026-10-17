@@ -386,6 +386,32 @@ This log records major architectural and implementation choices, defaults select
   - Deterministic scrubbing: verified exact bit-for-bit particle equivalence between first playhead evaluation and scrubbing back after forward/backward seeks.
   - High-throughput simulation: 50,000 active particles evaluated in < 10ms (well within the 16.6ms 60fps frame budget).
 
+## 2026-10-18: M15 Sandboxed Expression Runtime (`zeno-script`)
+
+- **Sandboxed Rhai Engine Architecture (`ScriptRuntime`)**:
+  - Implemented high-performance sandboxed expression evaluator in `zeno-script` wrapping Rhai with strict resource constraints:
+    - Max operations limit: 10,000 instructions per evaluation (terminates infinite loops such as `while true {}` instantly in < 1ms).
+    - Max call level depth: 32 stack frames (protects against stack overflow from infinite recursion).
+    - Total isolation: pure memory evaluation with zero I/O, zero filesystem access, and zero network capabilities.
+  - Multi-threaded AST Compilation Cache:
+    - Thread-safe `parking_lot::RwLock<HashMap<String, AST>>` caches compiled syntax trees.
+    - Subsequent per-frame evaluations skip parsing and lexing completely, executing directly against the cached AST.
+- **Built-in Expression Functions & Context**:
+  - `wiggle(freq, amp)`: Multi-octave Perlin/sine continuous oscillation bounded within $[-amp, amp]$, with overloads for float and integer parameters.
+  - `linear(t, tMin, tMax, val1, val2)`: Clamped linear remapping across intervals.
+  - `ease(t, tMin, tMax, val1, val2)`: Smooth cubic S-curve ease interpolation.
+  - `clamp(val, min, max)`: Bound clamping for floats and integers.
+  - Per-frame scope bindings: `time` (seconds), `value` (fallback baseline), `index` (layer order), and `data("dot.path")` accessing live data snapshot variables.
+- **Engine Integration & UI Properties Inspector**:
+  - `zeno-engine/src/eval/mod.rs`: Full integration of `Property::Expression { source, fallback }` into `resolve_f32`, `resolve_string`, `resolve_vec2`, `resolve_vec3`, and `resolve_color`.
+  - Automatic fallback on error or timeout: if a script errors or exceeds its instruction quota, the engine falls back to `fallback` without frame stutter.
+  - `zeno-ui/src/editor/properties_panel.rs`: "Expressions & Scripting" collapsible inspector with expression toggles, live syntax validation, and broadcast status badges (`GREEN_OK`, `RED_LIVE`).
+- **M15 Acceptance Validation**: Verified via `tests/expressions_test.rs`:
+  - `wiggle` produces continuous smooth dynamic variation across time steps bounded strictly within $[-amp, amp]$.
+  - Data-driven numeric and string expressions (`data("match.team1_score") * 2 + 10`) dynamically update from live data snapshot.
+  - Infinite loop (`while true {}`) cleanly triggers `ScriptError::InstructionLimitExceeded` in < 1ms without freezing or blocking.
+  - Composition layer property evaluation resolves expressions dynamically per frame.
+
 
 
 

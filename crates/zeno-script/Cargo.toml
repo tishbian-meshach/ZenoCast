@@ -8,3 +8,9 @@ description = "Sandboxed expression runtime for dynamic motion-graphics properti
 
 [dependencies]
 zeno-core = { path = "../zeno-core" }
+rhai = { version = "1.19", default-features = false, features = ["sync"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+

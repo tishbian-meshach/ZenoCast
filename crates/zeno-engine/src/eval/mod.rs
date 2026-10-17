@@ -18,7 +18,16 @@ use crate::model::{
     Transform3D,
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::OnceLock;
 use zeno_core::{evaluate_keyframes, Color, LayerId, Mat4, Property, Vec2, Vec3};
+use zeno_script::ScriptRuntime;
+
+static SCRIPT_RUNTIME: OnceLock<ScriptRuntime> = OnceLock::new();
+
+/// Returns a shared static instance of the sandboxed expression runtime.
+pub fn get_script_runtime() -> &'static ScriptRuntime {
+    SCRIPT_RUNTIME.get_or_init(ScriptRuntime::new)
+}
 
 /// Evaluates a property of type `f32` following Section 6 resolution order.
 fn resolve_f32(prop: &Property<f32>, data: Option<&DataSnapshot>, t: f64) -> f32 {
@@ -38,7 +47,13 @@ fn resolve_f32(prop: &Property<f32>, data: Option<&DataSnapshot>, t: f64) -> f32
             }
             *fallback
         }
-        Property::Expression { fallback, .. } => *fallback,
+        Property::Expression { source, fallback } => {
+            let runtime = get_script_runtime();
+            match runtime.eval_f64(source, t, 0, *fallback as f64, data.map(|d| &d.values)) {
+                Ok(v) => v as f32,
+                Err(_) => *fallback,
+            }
+        }
     }
 }
 
@@ -61,27 +76,45 @@ fn resolve_string(prop: &Property<String>, data: Option<&DataSnapshot>, t: f64) 
             }
             fallback.clone()
         }
-        Property::Expression { fallback, .. } => fallback.clone(),
+        Property::Expression { source, fallback } => {
+            let runtime = get_script_runtime();
+            match runtime.eval_string(source, t, 0, fallback, data.map(|d| &d.values)) {
+                Ok(v) => v,
+                Err(_) => fallback.clone(),
+            }
+        }
     }
 }
 
 /// Evaluates a property of type `Vec2` following Section 6 resolution order.
-fn resolve_vec2(prop: &Property<Vec2>, _data: Option<&DataSnapshot>, t: f64) -> Vec2 {
+fn resolve_vec2(prop: &Property<Vec2>, data: Option<&DataSnapshot>, t: f64) -> Vec2 {
     match prop {
         Property::Constant(v) => *v,
         Property::Keyframes(keys) => evaluate_keyframes(keys, t),
         Property::Binding { fallback, .. } => *fallback,
-        Property::Expression { fallback, .. } => *fallback,
+        Property::Expression { source, fallback } => {
+            let runtime = get_script_runtime();
+            match runtime.eval_vec2(source, t, 0, *fallback, data.map(|d| &d.values)) {
+                Ok(v) => v,
+                Err(_) => *fallback,
+            }
+        }
     }
 }
 
 /// Evaluates a property of type `Vec3` following Section 6 resolution order.
-fn resolve_vec3(prop: &Property<Vec3>, _data: Option<&DataSnapshot>, t: f64) -> Vec3 {
+fn resolve_vec3(prop: &Property<Vec3>, data: Option<&DataSnapshot>, t: f64) -> Vec3 {
     match prop {
         Property::Constant(v) => *v,
         Property::Keyframes(keys) => evaluate_keyframes(keys, t),
         Property::Binding { fallback, .. } => *fallback,
-        Property::Expression { fallback, .. } => *fallback,
+        Property::Expression { source, fallback } => {
+            let runtime = get_script_runtime();
+            match runtime.eval_vec3(source, t, 0, *fallback, data.map(|d| &d.values)) {
+                Ok(v) => v,
+                Err(_) => *fallback,
+            }
+        }
     }
 }
 
@@ -105,7 +138,13 @@ fn resolve_color(prop: &Property<Color>, data: Option<&DataSnapshot>, t: f64) ->
             }
             *fallback
         }
-        Property::Expression { fallback, .. } => *fallback,
+        Property::Expression { source, fallback } => {
+            let runtime = get_script_runtime();
+            match runtime.eval_string(source, t, 0, &fallback.to_hex(), data.map(|d| &d.values)) {
+                Ok(v) => Color::from_hex(&v).unwrap_or(*fallback),
+                Err(_) => *fallback,
+            }
+        }
     }
 }
 
