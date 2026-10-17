@@ -137,6 +137,7 @@ fn test_m8_preview_to_program_transition_switching() {
         t_bar_progress: 0.0,
         autosaver: Autosaver::new(Path::new(".")),
         output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
     };
 
     assert_eq!(
@@ -200,6 +201,7 @@ fn test_m8_one_click_live_streaming_and_recording() {
         t_bar_progress: 0.0,
         autosaver: Autosaver::new(Path::new(".")),
         output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
     };
 
     assert!(!app.is_streaming);

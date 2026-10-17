@@ -12,6 +12,7 @@ use tracing::info;
 use crate::dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 use crate::project::{Autosaver, Project};
 use crate::theme::{apply_theme, RED_LIVE, TEXT, TEXT_MUTED};
+use crate::wizard::FirstRunWizard;
 use zeno_output::service::OutputManager;
 
 /// Main studio application state.
@@ -44,6 +45,8 @@ pub struct ZenocastApp {
     pub autosaver: Autosaver,
     /// Output manager
     pub output_manager: Arc<OutputManager>,
+    /// First-run setup and hardware auto-configuration wizard
+    pub wizard: FirstRunWizard,
 }
 
 impl ZenocastApp {
@@ -94,6 +97,11 @@ impl ZenocastApp {
                 &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             ),
             output_manager,
+            wizard: {
+                let mut w = FirstRunWizard::new();
+                w.is_open = false;
+                w
+            },
         }
     }
 
@@ -210,6 +218,13 @@ impl App for ZenocastApp {
                     let _ = ui.selectable_label(true, "Live Studio");
                     let _ = ui.selectable_label(false, "Edit Overlay");
                     let _ = ui.selectable_label(false, "Data Control");
+                });
+
+                ui.menu_button("Tools", |ui| {
+                    if ui.button("Auto-Configuration Wizard...").clicked() {
+                        self.wizard.is_open = true;
+                        ui.close_menu();
+                    }
                 });
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -352,5 +367,8 @@ impl App for ZenocastApp {
                     });
                 });
         }
+
+        // Render First-Run Setup Wizard if open
+        self.wizard.ui(ctx, &mut self.project.settings);
     }
 }

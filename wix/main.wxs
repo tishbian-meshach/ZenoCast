@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product
+        Id="*"
+        Name="Zenocast Live Broadcast Studio"
+        Language="1033"
+        Version="0.1.0"
+        Manufacturer="Zenocast Team"
+        UpgradeCode="B83C5642-124E-4BC3-A88E-32529C52E521">
+
+        <Package
+            Id="*"
+            Keywords="Installer,Broadcast,Streaming,Esports,OBS"
+            Description="Zenocast Live Esports Broadcast Studio and Motion Graphics Editor"
+            Comments="Professional broadcast production suite for Windows 10/11 x64"
+            Manufacturer="Zenocast Team"
+            InstallerVersion="500"
+            Languages="1033"
+            Compressed="yes"
+            InstallScope="perMachine"
+            Platform="x64" />
+
+        <MajorUpgrade
+            Schedule="afterInstallInitialize"
+            DowngradeErrorMessage="A newer version of [ProductName] is already installed. Setup will now exit." />
+
+        <Media Id="1" Cabinet="zenocast.cab" EmbedCab="yes" />
+
+        <!-- Directory Structure -->
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <!-- 64-bit Program Files Directory -->
+            <Directory Id="ProgramFiles64Folder">
+                <Directory Id="INSTALLFOLDER" Name="Zenocast">
+                    <!-- Main executable -->
+                    <Component Id="cmp_zenocast_exe" Guid="C1B34210-4A4A-4CE1-85A6-8C3761B01211" Win64="yes">
+                        <File Id="fil_zenocast_exe" Name="zenocast.exe" Source="target\release\zenocast.exe" KeyPath="yes">
+                            <!-- Desktop Shortcut -->
+                            <Shortcut
+                                Id="sc_desktop_zenocast"
+                                Directory="DesktopFolder"
+                                Name="Zenocast Studio"
+                                Description="Launch Zenocast Live Broadcast Studio"
+                                WorkingDirectory="INSTALLFOLDER"
+                                Advertise="no" />
+                            <!-- Start Menu Shortcut -->
+                            <Shortcut
+                                Id="sc_startmenu_zenocast"
+                                Directory="ApplicationProgramsFolder"
+                                Name="Zenocast Studio"
+                                Description="Launch Zenocast Live Broadcast Studio"
+                                WorkingDirectory="INSTALLFOLDER"
+                                Advertise="no" />
+                        </File>
+                    </Component>
+
+                    <!-- Bundled High-Performance FFmpeg DLLs for Broadcast Encoding -->
+                    <Component Id="cmp_ffmpeg_avcodec" Guid="D2A45120-5B5B-4DE2-96B7-9D4872C12322" Win64="yes">
+                        <File Id="fil_avcodec" Name="avcodec-61.dll" Source="C:\ffmpeg\bin\avcodec-61.dll" KeyPath="yes" />
+                    </Component>
+
+                    <Component Id="cmp_ffmpeg_avformat" Guid="E3B56230-6C6C-4EF3-A7C8-AE5983D23433" Win64="yes">
+                        <File Id="fil_avformat" Name="avformat-61.dll" Source="C:\ffmpeg\bin\avformat-61.dll" KeyPath="yes" />
+                    </Component>
+
+                    <Component Id="cmp_ffmpeg_avutil" Guid="F4C67340-7D7D-4F04-B8D9-BF6A94E34544" Win64="yes">
+                        <File Id="fil_avutil" Name="avutil-59.dll" Source="C:\ffmpeg\bin\avutil-59.dll" KeyPath="yes" />
+                    </Component>
+
+                    <Component Id="cmp_ffmpeg_swresample" Guid="A5D78450-8E8E-4015-C9EA-C07BA5F45655" Win64="yes">
+                        <File Id="fil_swresample" Name="swresample-5.dll" Source="C:\ffmpeg\bin\swresample-5.dll" KeyPath="yes" />
+                    </Component>
+
+                    <Component Id="cmp_ffmpeg_swscale" Guid="B6E89560-9F9F-4126-DAFB-D18CB6A56766" Win64="yes">
+                        <File Id="fil_swscale" Name="swscale-8.dll" Source="C:\ffmpeg\bin\swscale-8.dll" KeyPath="yes" />
+                    </Component>
+
+                    <!-- User Documentation and Setup Guide -->
+                    <Component Id="cmp_docs" Guid="C7F90670-A0A0-4237-EB0C-E29DC7B67877" Win64="yes">
+                        <File Id="fil_readme" Name="README.md" Source="README.md" KeyPath="yes" />
+                        <File Id="fil_setup" Name="SETUP.md" Source="docs\SETUP.md" />
+                    </Component>
+                </Directory>
+            </Directory>
+
+            <!-- Desktop Folder -->
+            <Directory Id="DesktopFolder" Name="Desktop" />
+
+            <!-- Start Menu Programs Folder -->
+            <Directory Id="ProgramMenuFolder">
+                <Directory Id="ApplicationProgramsFolder" Name="Zenocast">
+                    <Component Id="cmp_startmenu_folder" Guid="D8A01780-B1B1-4348-FC1D-F30ED8C78988">
+                        <RemoveFolder Id="rm_startmenu_folder" On="uninstall" />
+                        <RegistryValue
+                            Root="HKCU"
+                            Key="Software\Zenocast\ZenocastStudio"
+                            Name="installed"
+                            Type="integer"
+                            Value="1"
+                            KeyPath="yes" />
+                    </Component>
+                </Directory>
+            </Directory>
+        </Directory>
+
+        <!-- Feature Hierarchy -->
+        <Feature Id="MainApplication" Title="Zenocast Studio" Level="1" Display="expand" ConfigurableDirectory="INSTALLFOLDER">
+            <ComponentRef Id="cmp_zenocast_exe" />
+            <ComponentRef Id="cmp_ffmpeg_avcodec" />
+            <ComponentRef Id="cmp_ffmpeg_avformat" />
+            <ComponentRef Id="cmp_ffmpeg_avutil" />
+            <ComponentRef Id="cmp_ffmpeg_swresample" />
+            <ComponentRef Id="cmp_ffmpeg_swscale" />
+            <ComponentRef Id="cmp_docs" />
+            <ComponentRef Id="cmp_startmenu_folder" />
+        </Feature>
+
+        <!-- Post-Install Properties and Launch Action -->
+        <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+        <Property Id="ARPHELPLINK" Value="https://github.com/zenocast/zenocast/wiki" />
+        <Property Id="ARPURLINFOABOUT" Value="https://zenocast.live" />
+        <Property Id="ARPPRODUCTICON" Value="fil_zenocast_exe" />
+
+    </Product>
+</Wix>

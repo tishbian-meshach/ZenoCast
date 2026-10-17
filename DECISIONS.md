@@ -519,3 +519,28 @@ This log records major architectural and implementation choices, defaults select
   - GLB header and chunk decoding verified.
   - Deterministic rotation playback across timestamps ($60^\circ/\text{s} \times 1.5\text{s} = 90^\circ$) validated.
   - 1080p GPU overlay render verified with 72,000+ lit pixels and bright specular highlights (>250 brightness).
+
+## 2026-10-18: M20 Installer and First-Run Wizard (`chore: installer and first-run wizard`)
+
+- **First-Run Setup Wizard (`FirstRunWizard`)**:
+  - Implemented interactive onboarding in `zeno-ui/src/wizard.rs`:
+    - Hardware device discovery (`HardwareInventory::scan`): enumerates physical display monitors (bounds/resolution), webcams, capture cards, and WASAPI audio devices.
+    - Video encoder capability probe & benchmark (`EncoderRecommendation::benchmark_and_recommend`): probes NVENC, AMF, QSV, and x264, measuring encoding throughput.
+    - Optimal resolution & bitrate suggestion: recommends 1080p60 @ 6,000 kbps for hardware GPU encoders, or 720p60 @ 4,500 kbps for CPU-safe broadcasting.
+    - Target destination configuration (YouTube Live, Twitch, Kick, custom RTMP, and SRT).
+    - Summary & one-click apply: writes optimal configuration directly into `StudioSettings`.
+  - Strict theme token compliance: uses neutral surface palette (`SURFACE_0` to `SURFACE_3`), high-contrast text, status badges (`GREEN_OK`, `AMBER_WARN`), zero gradients, and zero color literals outside `theme.rs`.
+- **Remote Software Update Checker (`UpdateChecker`)**:
+  - Implemented semver comparison logic (`major.minor.patch`) auditing remote update feed JSON payloads against the current application build.
+- **WiX 3.x MSI Packaging Configuration (`wix/main.wxs`)**:
+  - Configured 64-bit Windows MSI package for `cargo-wix`:
+    - Target directory: `ProgramFiles64Folder\Zenocast`.
+    - Main executable: `zenocast.exe`.
+    - Bundled high-performance FFmpeg DLLs: `avcodec-61.dll`, `avformat-61.dll`, `avutil-59.dll`, `swresample-5.dll`, `swscale-8.dll`.
+    - Desktop and Start Menu shortcuts with uninstall registry keys.
+- **M20 Acceptance Validation**: Verified via `tests/wizard_installer_test.rs`:
+  - Physical display, webcam, and audio device enumeration validated.
+  - Encoder benchmark throughput and bitrate recommendation verified.
+  - Multi-step wizard state transitions, destination configuration, and settings persistence verified.
+  - Semver comparison and JSON update feed parsing verified.
+  - WiX XML schema, GUID upgrade code, bundled DLLs, and shortcuts verified.

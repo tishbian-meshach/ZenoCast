@@ -15,6 +15,7 @@ pub mod project;
 pub mod settings;
 pub mod spreadsheet_panel;
 pub mod theme;
+pub mod wizard;
 
 pub use app::ZenocastApp;
 pub use data_panel::{ui_esports_data_panel, DataPanelState};
@@ -33,6 +34,10 @@ pub use theme::{
     apply_theme, color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS,
     GREEN_OK, GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3,
     TEXT, TEXT_MUTED,
+};
+pub use wizard::{
+    AudioDevice, CameraDevice, DestinationSetup, DisplayDevice, EncoderRecommendation,
+    FirstRunWizard, HardwareInventory, UpdateChecker, UpdateInfo, WizardStep,
 };
 
 #[cfg(test)]
