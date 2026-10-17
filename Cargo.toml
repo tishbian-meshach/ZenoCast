@@ -26,6 +26,35 @@ authors = ["Zenocast Team"]
 license = "Proprietary"
 repository = "https://github.com/zenocast/zenocast"
 
+[workspace.dependencies]
+zeno-core = { path = "crates/zeno-core" }
+zeno-engine = { path = "crates/zeno-engine" }
+zeno-format = { path = "crates/zeno-format" }
+zeno-import = { path = "crates/zeno-import" }
+zeno-script = { path = "crates/zeno-script" }
+zeno-data = { path = "crates/zeno-data" }
+zeno-media = { path = "crates/zeno-media" }
+zeno-audio = { path = "crates/zeno-audio" }
+zeno-compositor = { path = "crates/zeno-compositor" }
+zeno-output = { path = "crates/zeno-output" }
+zeno-control = { path = "crates/zeno-control" }
+zeno-platform = { path = "crates/zeno-platform" }
+zeno-license = { path = "crates/zeno-license" }
+zeno-ui = { path = "crates/zeno-ui" }
+
+# Common third-party dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+glam = { version = "0.29", features = ["serde"] }
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+clap = { version = "4.5", features = ["derive"] }
+tempfile = "3.13"
+proptest = "1.6"
+
 [workspace.lints.rust]
 unsafe_code = "allow" # Restricted per rule 4 to zeno-platform and FFI glue
 

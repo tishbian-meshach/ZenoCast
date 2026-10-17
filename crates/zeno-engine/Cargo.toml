@@ -7,7 +7,8 @@ license.workspace = true
 description = "Pure scene graph, timeline evaluation, and render-command builder for Zenocast."
 
 [dependencies]
-zeno-core = { path = "../zeno-core" }
-zeno-format = { path = "../zeno-format" }
-zeno-script = { path = "../zeno-script" }
-zeno-data = { path = "../zeno-data" }
+zeno-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
