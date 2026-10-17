@@ -1,3 +1,19 @@
 //! # zeno-data
 //!
-//! Live reactive data store, property bindings, variable schema, and spreadsheet integration.
+//! Live observable data store, property bindings, variable schema,
+//! string template parsing, format specifiers, and animation state machine transitions.
+
+pub mod binding;
+pub mod error;
+pub mod state_machine;
+pub mod store;
+pub mod value;
+
+// Re-exports
+pub use binding::{
+    apply_bindings_to_composition, resolve_template, resolve_template_from_snapshot,
+};
+pub use error::DataError;
+pub use state_machine::{DataTriggerRule, StateAction, StateMachine, Transition};
+pub use store::{DataStore, ListenerCallback};
+pub use value::DataValue;

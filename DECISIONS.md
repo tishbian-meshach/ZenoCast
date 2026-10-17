@@ -230,4 +230,27 @@ This log records major architectural and implementation choices, defaults select
   - Undo/redo 50 sequential operations verifying state matches step-by-step history.
   - Layer clipboard copy/paste duplicating layers with unique IDs.
 
+## 2026-10-18: M10 Live Data Store, Bindings, and Animation States
+
+- **In-Memory Reactive Data Store (`DataStore`)**:
+  - Implemented thread-safe concurrent key-value store using `parking_lot::RwLock<HashMap<String, DataValue>>`.
+  - Typed values: `String`, `Integer`, `Float`, `Boolean`, `ImagePath`, and `Table`.
+  - Recursive JSON flattening: dot-separated hierarchical indexing (e.g., `{"scoreboard": {"team1": {"score": 12}}}` -> `scoreboard.team1.score`).
+  - Fast CSV loader supporting custom key/value columns or flat multi-column properties.
+  - High-throughput atomic batch updater (`batch_update`) supporting 1,000+ keys at 60 Hz with sub-millisecond execution.
+  - Pure `to_snapshot()` generating `DataSnapshot` for real-time engine evaluation.
+- **String Template Engine & Format Specifiers**:
+  - Variable template resolution: parses `{path}` or `{path | format}` tags.
+  - Format specifiers: `number:0.0`, `number:0.00`, `duration:mm:ss`, `uppercase`, `lowercase`.
+  - `apply_bindings_to_composition()` resolves bound template text across all composition layers within 1 frame interval.
+- **Animation State Machine (`StateMachine`)**:
+  - Finite state machine managing composition animation states (e.g., Idle -> In -> Active -> Out).
+  - Explicit transition rules with associated action triggers and full execution audit history.
+  - Reactive `DataTriggerRule` integration with configurable throttle interval: triggers state transitions automatically when designated data store keys change.
+- **M10 Acceptance Validation**: Verified via `tests/data_binding_test.rs`:
+  - JSON and CSV files loaded into data store; 1,000 keys updated across 60 frames (60 Hz) well beneath 16.6ms real-time frame budget without dropped frames.
+  - Text layer with string template bound to data store updates within 1 frame.
+  - State machine transitions sequentially through Idle -> In -> Active -> Out, each firing corresponding action.
+  - Data-triggered state transition verified with throttling.
+
 
