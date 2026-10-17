@@ -18,6 +18,8 @@ thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+sha2 = "0.10"
+base64 = "0.22"
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -25,3 +27,7 @@ tempfile = { workspace = true }
 [[test]]
 name = "output_pipeline_test"
 path = "../../tests/output_pipeline_test.rs"
+
+[[test]]
+name = "youtube_integration_test"
+path = "../../tests/youtube_integration_test.rs"

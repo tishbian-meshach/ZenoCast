@@ -152,12 +152,16 @@ impl FfmpegPipeline {
         let mut has_output = false;
 
         if let Some(ref rtmp_url) = destination.stream_url {
-            let format = if rtmp_url.starts_with("srt://") {
-                "mpegts"
+            if rtmp_url == "null" || rtmp_url.starts_with("mock://") {
+                cmd.args(["-f", "null", "-"]);
             } else {
-                "flv"
-            };
-            cmd.args(["-f", format, rtmp_url]);
+                let format = if rtmp_url.starts_with("srt://") {
+                    "mpegts"
+                } else {
+                    "flv"
+                };
+                cmd.args(["-f", format, rtmp_url]);
+            }
             has_output = true;
         }
 

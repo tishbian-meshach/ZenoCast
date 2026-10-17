@@ -57,11 +57,28 @@ pub struct OutputManager {
     video_settings: Arc<Mutex<VideoEncoderSettings>>,
     audio_settings: Arc<Mutex<AudioEncoderSettings>>,
     reconnect_attempts: Arc<AtomicU64>,
+    dry_run: bool,
 }
 
 impl OutputManager {
     /// Creates and initializes the background output manager.
     pub fn new(video_settings: VideoEncoderSettings, audio_settings: AudioEncoderSettings) -> Self {
+        Self::with_dry_run(video_settings, audio_settings, false)
+    }
+
+    /// Creates an output manager in dry-run mode (no external FFmpeg process or network streaming spawned).
+    pub fn new_dry_run(
+        video_settings: VideoEncoderSettings,
+        audio_settings: AudioEncoderSettings,
+    ) -> Self {
+        Self::with_dry_run(video_settings, audio_settings, true)
+    }
+
+    fn with_dry_run(
+        video_settings: VideoEncoderSettings,
+        audio_settings: AudioEncoderSettings,
+        dry_run: bool,
+    ) -> Self {
         let (video_tx, video_rx) = bounded::<QueuedVideoFrame>(VIDEO_QUEUE_CAPACITY);
         let (audio_tx, audio_rx) = bounded::<QueuedAudioChunk>(AUDIO_QUEUE_CAPACITY);
 
@@ -119,6 +136,7 @@ impl OutputManager {
             video_settings: v_settings,
             audio_settings: a_settings,
             reconnect_attempts,
+            dry_run,
         }
     }
 
@@ -257,7 +275,7 @@ impl OutputManager {
         self.is_streaming.store(false, Ordering::SeqCst);
         *self.stream_url.lock() = None;
 
-        if !self.is_recording.load(Ordering::SeqCst) {
+        if !self.is_recording.load(Ordering::SeqCst) && !self.dry_run {
             if let Some(mut p) = self.pipeline.lock().take() {
                 let _ = p.stop();
             }
@@ -277,6 +295,10 @@ impl OutputManager {
 
     /// Ensures that the underlying FFmpeg pipeline is launched and connected.
     fn ensure_pipeline(&self) -> OutputResult<()> {
+        if self.dry_run {
+            return Ok(());
+        }
+
         let mut p_guard = self.pipeline.lock();
         if p_guard.is_none() {
             let destination = OutputDestination {

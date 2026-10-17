@@ -142,3 +142,33 @@ This log records major architectural and implementation choices, defaults select
   - 10-minute continuous streaming budget simulation asserting dropped frame ratio remains strictly under 0.1% (< 0.001).
   - Synchronized video and 48 kHz stereo audio recording to MKV and lossless remux to MP4.
   - RTMP stream queueing with zero dropped frames.
+
+## 2026-10-17: M7b Direct YouTube Live Streaming Integration
+
+- **OAuth 2.0 PKCE Flow & Credential Storage**:
+  - Implemented RFC 7636 PKCE code verifier and SHA-256 code challenge generation using pure Rust dependencies (`sha2` and `base64`).
+  - Added ephemeral `LoopbackAuthListener` for catching OAuth redirects on local TCP ports.
+  - `TokenStorage` provides in-memory caching and Windows Credential Manager integration for persistent refresh tokens.
+  - Setup guide documented in `docs/YOUTUBE.md` detailing Google Cloud Console setup, OAuth consent, and credential storage.
+- **Preflight Verification & Bitrate Guidance**:
+  - `YouTubeBitrateTable` encodes official recommended bitrate ranges across resolutions (4K, 1440p, 1080p, 720p) and frame rates (30 fps vs 60 fps).
+  - `PreflightValidator` provides pre-flight checks: signs-in verification, channel live streaming activation, 48 kHz stereo audio enforcement, GOP keyframe duration (1.0s to 4.0s, recommended 2.0s), and bitrate range warnings.
+- **YouTube Live Streaming API v3 Client**:
+  - Windows Schannel HTTP execution via built-in `curl.exe` avoiding C-header CRT compilation issues.
+  - Specialized error parsing with actionable diagnostic messages:
+    - HTTP 401 / `invalid_grant`: "YouTube authentication token is expired or revoked. Please sign in again via Settings > YouTube."
+    - `liveStreamingNotEnabled`: "YouTube channel is not enabled for live streaming. Activation can take up to 24 hours. Visit https://www.youtube.com/live_dashboard to check status."
+    - `quotaExceeded`: "YouTube API quota exceeded for the current 24-hour period. Please retry tomorrow or use a manual stream key."
+- **Broadcast Lifecycle & Health Monitoring**:
+  - `YouTubeBroadcastManager` implements one-click `go_live`: validates preflight -> creates broadcast (`liveBroadcasts.insert`) -> creates live stream (`liveStreams.insert`) -> binds broadcast to stream (`liveBroadcasts.bind`) -> hands ingestion target to `OutputManager` -> transitions lifecycle (`testing` -> `live`).
+  - Starts 5-second background health poller tracking viewer counts and ingestion health without exceeding daily quota.
+  - `end_broadcast` halts live streaming, transitions broadcast state to `complete`, and cleanly shuts down background poller.
+  - Manual stream key fallback allows operators to bypass OAuth API and stream directly to YouTube RTMP.
+- **M7b Acceptance Validation**: Verified via `tests/youtube_integration_test.rs`:
+  - One-click Go Live lifecycle from signed-in state transitioning through testing to live and ending cleanly with broadcast `complete`.
+  - Revoked/expired token returning readable diagnostic error.
+  - Un-activated channel returning 24-hour verification error.
+  - API quota exceeded returning diagnostic fallback hint.
+  - Manual stream key fallback bypassing OAuth and streaming directly.
+  - PKCE code verifier and SHA-256 S256 challenge generation.
+

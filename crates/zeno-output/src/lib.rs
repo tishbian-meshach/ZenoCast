@@ -9,6 +9,7 @@ pub mod error;
 pub mod pipeline;
 pub mod service;
 pub mod stats;
+pub mod youtube;
 
 pub use color_convert::{ColorConverter, Nv12Buffer};
 pub use encoder::{

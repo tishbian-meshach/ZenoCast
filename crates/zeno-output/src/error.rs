@@ -43,6 +43,10 @@ pub enum OutputError {
     #[error("Invalid output parameters: {0}")]
     InvalidParameters(String),
 
+    /// Process or external API operation failed.
+    #[error("Process or API error: {0}")]
+    ProcessFailed(String),
+
     /// Muxer or remux operation failed.
     #[error("Remux failed: {0}")]
     RemuxFailed(String),
