@@ -214,6 +214,35 @@ impl SceneCompositor {
         self.global_default_transition.clone()
     }
 
+    /// Copies current program texture into intermediate texture A for seamless interruption blending.
+    pub fn snapshot_program_to_intermediate_a(&self) {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("InterruptionSnapshotEncoder"),
+            });
+        encoder.copy_texture_to_texture(
+            TexelCopyTextureInfo {
+                texture: &self.program_texture,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: TextureAspect::All,
+            },
+            TexelCopyTextureInfo {
+                texture: &self.intermediate_a,
+                mip_level: 0,
+                origin: Origin3d::ZERO,
+                aspect: TextureAspect::All,
+            },
+            Extent3d {
+                width: self.width,
+                height: self.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
     /// Triggers scene transition to destination scene.
     ///
     /// Interruption handling rule (Section 10A):
@@ -223,6 +252,11 @@ impl SceneCompositor {
         to_scene: SceneId,
         transition_override: Option<TransitionDefinition>,
     ) {
+        let was_active = self.active_transition.is_some();
+        if was_active {
+            self.snapshot_program_to_intermediate_a();
+        }
+
         let from_scene = if let Some(ref active) = self.active_transition {
             // Mid-transition interruption: start transition from current destination
             active.to_scene
@@ -242,6 +276,10 @@ impl SceneCompositor {
             {
                 self.bus.program_scene = to_scene;
                 self.active_transition = None;
+            } else if was_active {
+                self.active_transition = Some(ActiveTransition::from_snapshot(
+                    from_scene, to_scene, transition,
+                ));
             } else {
                 self.active_transition =
                     Some(ActiveTransition::new(from_scene, to_scene, transition));
@@ -260,7 +298,16 @@ impl SceneCompositor {
 
     /// Triggers an Auto transition between Preview and Program buses.
     pub fn auto_transition(&mut self, transition_override: Option<TransitionDefinition>) {
-        let from = self.bus.program_scene;
+        let was_active = self.active_transition.is_some();
+        if was_active {
+            self.snapshot_program_to_intermediate_a();
+        }
+
+        let from = if let Some(ref active) = self.active_transition {
+            active.to_scene
+        } else {
+            self.bus.program_scene
+        };
         let to = self.bus.preview_scene;
         if from == to {
             return;
@@ -269,6 +316,8 @@ impl SceneCompositor {
         let transition = transition_override.unwrap_or_else(|| self.resolve_transition(from, to));
         if transition.duration_seconds <= 0.0 || matches!(transition.kind, TransitionKind::Cut) {
             self.cut();
+        } else if was_active {
+            self.active_transition = Some(ActiveTransition::from_snapshot(from, to, transition));
         } else {
             self.active_transition = Some(ActiveTransition::new(from, to, transition));
         }
@@ -377,14 +426,16 @@ impl SceneCompositor {
 
         // 2. Render program output
         if let Some(ref active) = self.active_transition {
-            // In transition: render Scene A to Intermediate A, Scene B to Intermediate B
-            self.render_scene_internal(
-                active.from_scene,
-                &self.intermediate_view_a,
-                sources,
-                &mut encoder,
-                0,
-            )?;
+            // In transition: render Scene A to Intermediate A (if not from snapshot), Scene B to Intermediate B
+            if !active.from_snapshot {
+                self.render_scene_internal(
+                    active.from_scene,
+                    &self.intermediate_view_a,
+                    sources,
+                    &mut encoder,
+                    0,
+                )?;
+            }
             self.render_scene_internal(
                 active.to_scene,
                 &self.intermediate_view_b,
@@ -522,6 +573,133 @@ impl SceneCompositor {
 
         self.queue.submit(std::iter::once(encoder.finish()));
         Ok(())
+    }
+
+    /// Renders a live preview frame of a transition between two scenes at progress `t` [0.0..1.0].
+    pub fn render_transition_preview(
+        &mut self,
+        from_scene: SceneId,
+        to_scene: SceneId,
+        transition: &TransitionDefinition,
+        progress: f32,
+        sources: &HashMap<SourceId, Arc<TextureView>>,
+    ) -> Result<&Arc<TextureView>, CompositorError> {
+        let mut encoder = self
+            .device
+            .create_command_encoder(&CommandEncoderDescriptor {
+                label: Some("TransitionPreviewEncoder"),
+            });
+
+        self.render_scene_internal(
+            from_scene,
+            &self.intermediate_view_a,
+            sources,
+            &mut encoder,
+            0,
+        )?;
+        self.render_scene_internal(
+            to_scene,
+            &self.intermediate_view_b,
+            sources,
+            &mut encoder,
+            0,
+        )?;
+
+        let eased_t = transition.easing.evaluate(progress.clamp(0.0, 1.0));
+        let (kind_u32, dir_u32, param1, dip_color) = match &transition.kind {
+            TransitionKind::Cut => (0u32, 0u32, 0.0f32, [0.0; 4]),
+            TransitionKind::Fade => (1u32, 0u32, 0.0f32, [0.0; 4]),
+            TransitionKind::DipToColor { color } => {
+                (2u32, 0u32, 0.0f32, [color.r, color.g, color.b, color.a])
+            }
+            TransitionKind::Slide { direction, push } => {
+                let dir = match direction {
+                    SlideDirection::Left => 0u32,
+                    SlideDirection::Right => 1u32,
+                    SlideDirection::Up => 2u32,
+                    SlideDirection::Down => 3u32,
+                };
+                (3u32, dir, if *push { 1.0f32 } else { 0.0f32 }, [0.0; 4])
+            }
+            TransitionKind::Wipe {
+                direction,
+                soft_edge,
+            } => {
+                let dir = match direction {
+                    WipeDirection::Horizontal => 0u32,
+                    WipeDirection::Vertical => 1u32,
+                    WipeDirection::Radial => 2u32,
+                };
+                (4u32, dir, *soft_edge, [0.0; 4])
+            }
+            TransitionKind::Zoom { zoom_in } => {
+                (5u32, 0u32, if *zoom_in { 1.0f32 } else { 0.0f32 }, [0.0; 4])
+            }
+            TransitionKind::Stinger { switch_point, .. } => (6u32, 0u32, *switch_point, [0.0; 4]),
+            TransitionKind::Overlay { switch_point, .. } => (6u32, 0u32, *switch_point, [0.0; 4]),
+        };
+
+        let trans_uniforms = TransitionUniforms {
+            progress: eased_t,
+            kind: kind_u32,
+            direction: dir_u32,
+            param1,
+            dip_color,
+            _padding: [0.0; 8],
+        };
+
+        self.queue.write_buffer(
+            &self.transition_uniform_buf,
+            0,
+            bytemuck::bytes_of(&trans_uniforms),
+        );
+
+        let trans_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+            label: Some("PreviewTransitionBindGroup"),
+            layout: &self.pipeline.transition_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: self.transition_uniform_buf.as_entire_binding(),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureView(&self.intermediate_view_a),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::TextureView(&self.intermediate_view_b),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: BindingResource::Sampler(&self.pipeline.sampler),
+                },
+            ],
+        });
+
+        {
+            let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("PreviewTransitionPass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &self.preview_view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(wgpu::Color::BLACK),
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+
+            rpass.set_pipeline(&self.pipeline.transition_pipeline);
+            rpass.set_bind_group(0, &trans_bind_group, &[]);
+            rpass.draw(0..3, 0..1);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        Ok(&self.preview_view)
     }
 
     /// Internal recursive scene rendering helper with cycle detection.

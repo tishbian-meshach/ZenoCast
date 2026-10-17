@@ -23,6 +23,9 @@ pub use transition::{
     TransitionRule, WipeDirection,
 };
 
+// Re-export core IDs for convenience
+pub use zeno_core::{SceneId, SourceId, TransitionId};
+
 #[cfg(test)]
 mod tests {
     use super::*;

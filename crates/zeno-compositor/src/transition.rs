@@ -176,6 +176,17 @@ impl TransitionDefinition {
             audio_behavior: TransitionAudio::Crossfade,
         }
     }
+
+    /// Validates transition parameters (duration clamped 0..5, switch point clamped 0..1).
+    pub fn validate(&self) -> Result<(), String> {
+        if self.duration_seconds < 0.0 || self.duration_seconds > 5.0 {
+            return Err("Transition duration must be between 0.0 and 5.0 seconds".to_string());
+        }
+        if self.switch_point_percent < 0.0 || self.switch_point_percent > 1.0 {
+            return Err("Switch point percent must be between 0.0 and 1.0".to_string());
+        }
+        Ok(())
+    }
 }
 
 impl Default for TransitionDefinition {
@@ -208,6 +219,8 @@ pub struct ActiveTransition {
     pub elapsed_seconds: f64,
     /// Manual T-bar override progress [0.0..1.0].
     pub manual_progress: Option<f32>,
+    /// If `true`, the source frame is sampled from the captured blended snapshot rather than re-rendering `from_scene`.
+    pub from_snapshot: bool,
 }
 
 impl ActiveTransition {
@@ -219,6 +232,19 @@ impl ActiveTransition {
             definition,
             elapsed_seconds: 0.0,
             manual_progress: None,
+            from_snapshot: false,
+        }
+    }
+
+    /// Creates an active transition starting seamlessly from an in-flight blended snapshot.
+    pub fn from_snapshot(from: SceneId, to: SceneId, definition: TransitionDefinition) -> Self {
+        Self {
+            from_scene: from,
+            to_scene: to,
+            definition,
+            elapsed_seconds: 0.0,
+            manual_progress: None,
+            from_snapshot: true,
         }
     }
 

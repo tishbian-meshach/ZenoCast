@@ -28,4 +28,9 @@ image = { workspace = true }
 name = "scene_compositor_test"
 path = "../../tests/scene_compositor_test.rs"
 
+[[test]]
+name = "transition_system_test"
+path = "../../tests/transition_system_test.rs"
+
+
 

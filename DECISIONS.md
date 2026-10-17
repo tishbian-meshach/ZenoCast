@@ -70,4 +70,22 @@ This log records major architectural and implementation choices, defaults select
   - Seamless interruption handling: switching mid-transition restarts smoothly from the current visual state with no visible jump.
 - **M5 Acceptance Validation**: Validated via `tests/scene_compositor_test.rs` streaming 60 frames during a 1080p60 fade transition with an average frame render time of 3.63 ms (comfortably meeting the sub-4 ms GPU frame time budget), mid-transition interruption to Scene C, and manual T-bar fader mixing.
 
+## 2026-10-17: M5b Transition System and Per-Scene Overrides
+
+- **Comprehensive Transition Palette**: Verified all Section 10A transition kinds in `zeno-compositor`:
+  - Instant Cut
+  - Linear/eased Crossfade
+  - Dip to Color (black, white, or brand accent)
+  - Slide Push & Cover across all four compass directions (Left, Right, Up, Down)
+  - Wipe (Horizontal, Vertical, and Radial with parameterized soft-edge feathering)
+  - Zoom (Zoom In and Zoom Out)
+  - Stinger transitions with configurable switch point percentage
+  - Branded Overlay transitions (.arx lifecycle integration)
+- **Seamless Interruption Architecture**: Implemented GPU texture snapshotting (`snapshot_program_to_intermediate_a`) upon mid-transition interruptions. When an operator triggers a switch while a transition is in-flight, the current blended program buffer is frozen into intermediate texture A and flagged with `from_snapshot = true`, guaranteeing continuous, zero-jump blending toward the new target.
+- **Rule Resolution Hierarchy & Validation**:
+  - Implemented and verified the 3-tier precedence: (1) Exact pair rule (`from_scene -> to_scene`) -> (2) Destination scene default -> (3) Global default.
+  - Parameter validation clamps duration (0 to 5s) and switch point (0 to 1), with stinger alpha detection checks.
+  - Live transition thumbnail previewing implemented via `render_transition_preview`.
+- **M5b Acceptance Validation**: Verified via `tests/transition_system_test.rs` testing every transition kind at 1080p60 holding frame budget (< 10 ms avg frame time), mid-transition snapshot interruption, priority hierarchy overrides, and live preview rendering.
+
 
