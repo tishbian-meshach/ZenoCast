@@ -59,6 +59,9 @@ bytemuck = { version = "1.20", features = ["derive"] }
 pollster = "0.4"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
+windows = { version = "0.58", default-features = false }
+parking_lot = "0.12"
+crossbeam-channel = "0.5"
 
 [workspace.lints.rust]
 unsafe_code = "allow" # Restricted per rule 4 to zeno-platform and FFI glue

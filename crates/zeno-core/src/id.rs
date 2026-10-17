@@ -96,3 +96,7 @@ define_id!(
     CompositionId,
     "Unique identifier for a standalone composition or template."
 );
+define_id!(
+    SourceId,
+    "Unique identifier for an active media or capture source."
+);

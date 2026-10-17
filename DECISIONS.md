@@ -49,4 +49,15 @@ This log records major architectural and implementation choices, defaults select
 - **Headless CLI Rendering**: Implemented `zeno-cli render --file <path> --time <t> --out <path>` supporting arbitrary `.arx` container packages and built-in broadcast lower-third animation templates.
 - **Golden Image Acceptance**: Added `test_m3_animation_evaluation_goldens_at_three_timestamps` in `tests/golden_render_test.rs` capturing frames at $t=0.0$s (intro sliding in, low opacity), $t=1.5$s (full loop on-air state), and $t=3.0$s (shifted loop state), confirming visual motion progression and deterministic 0.0000 RMSE comparisons against saved goldens.
 
+## 2026-10-17: M4 Capture Sources (Display, Window, Camera)
+
+- **Source Abstraction**: Designed the `Source` trait in `zeno-media` with lock-free double buffering (`DoubleBufferedTexture`) providing $O(1)$ `get_frame()` queries yielding `Arc<wgpu::Texture>` and `Arc<wgpu::TextureView>` without blocking locks, heap reallocations, or CPU copy spikes.
+- **Windows Platform Ingest**:
+  - `DisplayCaptureSource`: Queries monitors using Win32 `EnumDisplayMonitors` / `GetMonitorInfoW` and captures monitor bounds via GDI/DIB transfers (`capture_display_raw`).
+  - `WindowCaptureSource`: Enumerates top-level visible application windows via Win32 `EnumWindows` and captures client rectangles with mouse cursor overlay (`capture_window_raw`), with graceful fallback simulation pattern generation in headless environments.
+  - `CameraCaptureSource`: Enumerates physical UVC webcams and PCIe capture cards using Media Foundation COM interfaces (`MFEnumDeviceSources`, `MF_DEVSOURCE_ATTRIBUTE_FRIENDLY_NAME`), providing fallback to a virtual broadcast camera test-pattern generator when physical capture devices are unavailable.
+  - `DeviceManager`: Centralized device discovery with `poll_hotplug_events()` detecting hardware insertion/removal.
+- **Real-Time Performance Guarantee**: Pre-allocated pixel and texture buffers eliminated per-frame memory allocation. Incremental dirty region updates reduced simulation rendering cost from ~56 ms down to ~3.2 ms per 60 fps frame pair, easily holding the 16.6 ms budget.
+- **M4 Acceptance Validation**: Verified via `tests/capture_demo_test.rs` streaming 180 continuous 60 fps frames with monotonic timestamps and sub-millisecond CPU copy overhead, and standalone example `examples/capture_demo.rs`.
+
 

@@ -13,7 +13,7 @@ pub mod variable;
 // Re-exports
 pub use color::Color;
 pub use error::CoreError;
-pub use id::{AssetId, CompositionId, LayerId, LinkId, SceneId, TransitionId};
+pub use id::{AssetId, CompositionId, LayerId, LinkId, SceneId, SourceId, TransitionId};
 pub use lifecycle::{InterruptBehavior, Lifecycle, LifecyclePhase};
 pub use property::{evaluate_keyframes, Easing, Interpolate, Keyframe, Property};
 pub use time::{TimeRange, Timecode};

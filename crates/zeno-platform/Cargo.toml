@@ -8,3 +8,18 @@ description = "Platform-specific Windows API integrations, COM wrappers, and uns
 
 [dependencies]
 zeno-core = { path = "../zeno-core" }
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Direct3D11",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_WinRT_Graphics_Capture",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_Media_MediaFoundation",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+] }
+
