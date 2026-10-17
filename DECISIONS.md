@@ -430,6 +430,36 @@ This log records major architectural and implementation choices, defaults select
   - Page refresh dynamically re-evaluates page state without frame stutter.
   - 60 fps stream timing budget maintained with monotonic timestamp progression.
 
+## 2026-10-18: M17 Esports Pack (`feat(esports): templates, rosters and scene presets`)
+
+- **Broadcast Templates Pack (`templates/esports/`)**:
+  - Implemented generator and exported 14 complete production broadcast `.arx` container packages:
+    1. `starting_soon.arx`: Countdown card with tournament branding and match header.
+    2. `be_right_back.arx`: Intermission card with live series score summary.
+    3. `stream_ending.arx`: Post-show card with credits and match summary.
+    4. `scoreboard_bo1.arx`: Compact single-line BO1 scoreboard.
+    5. `scoreboard_bo3.arx`: BO3 scoreboard with map win pip indicators.
+    6. `scoreboard_bo5.arx`: Grand Finals BO5 scoreboard.
+    7. `lower_third.arx`: Talent lower-third banner with handle, name, and social handle.
+    8. `caster_desk_2.arx`: 2-caster dual frame overlay with nameplates.
+    9. `caster_desk_3.arx`: 3-caster tri-frame overlay with nameplates.
+    10. `caster_desk_4.arx`: 4-caster analyst desk frame overlay with nameplates.
+    11. `player_cam_frames.arx`: 5v5 player facecam boxes with player handles.
+    12. `map_veto.arx`: 5-map ban/pick selection board.
+    13. `kill_feed.arx`: Combat event notifications with killer, weapon, and victim.
+    14. `tournament_bracket.arx`: 8-team playoff tree with quarterfinals, semifinals, and grand finals cards.
+- **Roster & Team Manager (`RosterManager`)**:
+  - Full data models for `Player`, `Team`, `Caster`, and `TournamentMatch`.
+  - Built-in presets for major esports organizations (Sentinels, Fnatic, Cloud9, T1) and on-air casters.
+  - Reactive synchronization (`sync_to_data_store`): binds all match metadata, team names/colors/scores, player handles, and casters into `DataStore`.
+- **One-Click Scene Set Generator (`TournamentPresetGenerator`)**:
+  - Automatically creates and binds 6 full production scenes in `SceneCompositor` with game capture, webcam slots, and overlays: "Starting Soon", "Caster Desk", "Map Veto", "Live Match", "Break", "Stream Ending".
+  - Configures 5 per-scene transition rules (Crossfades, Slides, and Dips).
+- **M17 Acceptance Validation**: Verified via `tests/esports_pack_test.rs`:
+  - All 14 `.arx` template packages exported and validated as non-empty containers.
+  - Team rosters and match settings sync to `DataStore`.
+  - One-click tournament scene generation executes in < 50ms, producing a complete tournament stream setup in seconds.
+
 
 
 

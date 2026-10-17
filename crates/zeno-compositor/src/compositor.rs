@@ -153,6 +153,41 @@ impl SceneCompositor {
         }
     }
 
+    /// Returns the canvas dimensions (width, height) in pixels.
+    pub fn dimensions(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+
+    /// Returns the canvas width in pixels.
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Returns the canvas height in pixels.
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Returns the active program scene ID.
+    pub fn program_scene(&self) -> SceneId {
+        self.bus.program_scene
+    }
+
+    /// Returns the active preview scene ID.
+    pub fn preview_scene(&self) -> SceneId {
+        self.bus.preview_scene
+    }
+
+    /// Returns `true` if a scene transition is currently in progress.
+    pub fn is_transition_active(&self) -> bool {
+        self.active_transition.is_some()
+    }
+
+    /// Sets switcher mode (Direct or Studio).
+    pub fn set_mode(&mut self, mode: StudioMode) {
+        self.bus.set_mode(mode);
+    }
+
     /// Adds or registers a scene in the compositor.
     pub fn add_scene(&mut self, scene: Scene) {
         let id = scene.id;

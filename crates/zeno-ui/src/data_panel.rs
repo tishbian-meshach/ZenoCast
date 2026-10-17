@@ -284,5 +284,45 @@ pub fn ui_esports_data_panel(
                 }
             }
         });
+
+        // --- Tournament & Roster Presets ---
+        ui.add_space(GRID_UNIT * 1.5);
+        ui.separator();
+        ui.add_space(GRID_UNIT);
+
+        ui.label(
+            RichText::new("TOURNAMENT & ROSTER PRESETS")
+                .color(TEXT_MUTED)
+                .strong(),
+        );
+        ui.horizontal(|ui| {
+            let roster_mgr = zeno_data::RosterManager::new();
+            if ui
+                .add_sized(
+                    [160.0, BUTTON_HEIGHT],
+                    Button::new(RichText::new("Load SEN vs FNC").color(TEXT)).fill(SURFACE_2),
+                )
+                .clicked()
+            {
+                let m = roster_mgr.default_match();
+                roster_mgr.sync_to_data_store(&m, store);
+            }
+            if ui
+                .add_sized(
+                    [160.0, BUTTON_HEIGHT],
+                    Button::new(RichText::new("Load C9 vs T1").color(TEXT)).fill(SURFACE_2),
+                )
+                .clicked()
+            {
+                let mut m = roster_mgr.default_match();
+                if let Some(t1) = roster_mgr.find_team("C9") {
+                    m.team1 = t1.clone();
+                }
+                if let Some(t2) = roster_mgr.find_team("T1") {
+                    m.team2 = t2.clone();
+                }
+                roster_mgr.sync_to_data_store(&m, store);
+            }
+        });
     });
 }

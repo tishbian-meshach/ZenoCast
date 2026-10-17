@@ -11,6 +11,7 @@ zeno-core = { workspace = true }
 zeno-engine = { path = "../zeno-engine" }
 zeno-media = { path = "../zeno-media" }
 zeno-data = { path = "../zeno-data" }
+zeno-format = { path = "../zeno-format" }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 glam = { workspace = true }
@@ -32,6 +33,10 @@ path = "../../tests/scene_compositor_test.rs"
 [[test]]
 name = "transition_system_test"
 path = "../../tests/transition_system_test.rs"
+
+[[test]]
+name = "esports_pack_test"
+path = "../../tests/esports_pack_test.rs"
 
 
 

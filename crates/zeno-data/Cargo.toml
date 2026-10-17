@@ -9,6 +9,7 @@ description = "Live observable data store, bindings, and spreadsheet synchroniza
 [dependencies]
 zeno-core = { path = "../zeno-core" }
 zeno-engine = { path = "../zeno-engine" }
+zeno-format = { path = "../zeno-format" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 parking_lot = { workspace = true }

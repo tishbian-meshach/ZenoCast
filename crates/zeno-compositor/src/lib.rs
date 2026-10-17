@@ -6,6 +6,7 @@
 pub mod bus;
 pub mod compositor;
 pub mod error;
+pub mod esports_preset;
 pub mod overlay_source;
 pub mod pipeline;
 pub mod scene;
@@ -15,6 +16,7 @@ pub mod transition;
 pub use bus::{BusManager, StudioMode};
 pub use compositor::SceneCompositor;
 pub use error::CompositorError;
+pub use esports_preset::{TournamentPresetGenerator, TournamentSceneSet};
 pub use overlay_source::ArxOverlaySource;
 pub use pipeline::{CompositorGpuPipeline, ItemUniforms, TransitionUniforms};
 pub use scene::{

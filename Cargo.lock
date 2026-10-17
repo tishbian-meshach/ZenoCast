@@ -4126,6 +4126,7 @@ dependencies = [
  "zeno-core",
  "zeno-data",
  "zeno-engine",
+ "zeno-format",
  "zeno-media",
 ]
 
@@ -4171,6 +4172,7 @@ dependencies = [
  "tracing",
  "zeno-core",
  "zeno-engine",
+ "zeno-format",
  "zip",
 ]
 
