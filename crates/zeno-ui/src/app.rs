@@ -11,8 +11,9 @@ use tracing::info;
 
 use crate::dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 use crate::project::{Autosaver, Project};
-use crate::theme::{apply_theme, RED_LIVE, TEXT, TEXT_MUTED};
+use crate::theme::{apply_theme, AMBER_WARN, GREEN_OK, RED_LIVE, TEXT, TEXT_MUTED};
 use crate::wizard::FirstRunWizard;
+use zeno_license::{AntiTamperGuard, LicenseClient, LicenseState};
 use zeno_output::service::OutputManager;
 
 /// Main studio application state.
@@ -47,6 +48,10 @@ pub struct ZenocastApp {
     pub output_manager: Arc<OutputManager>,
     /// First-run setup and hardware auto-configuration wizard
     pub wizard: FirstRunWizard,
+    /// Client-side licensing and anti-tamper manager
+    pub license_client: Arc<LicenseClient>,
+    /// License key input in settings
+    pub license_key_input: String,
 }
 
 impl ZenocastApp {
@@ -102,6 +107,8 @@ impl ZenocastApp {
                 w.is_open = false;
                 w
             },
+            license_client: Arc::new(LicenseClient::new_mock_valid()),
+            license_key_input: String::new(),
         }
     }
 
@@ -130,6 +137,16 @@ impl ZenocastApp {
             self.stream_start_time = None;
             info!("Stopped live streaming");
         } else {
+            let now_sec = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let license_state = self.license_client.get_state(now_sec);
+            if !AntiTamperGuard::can_broadcast_output(&license_state) {
+                tracing::warn!("Streaming refused: restricted license mode or tamper detected");
+                return;
+            }
+
             let url = format!(
                 "{}/{}",
                 self.project
@@ -156,6 +173,16 @@ impl ZenocastApp {
             self.is_recording = false;
             info!("Stopped recording");
         } else {
+            let now_sec = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let license_state = self.license_client.get_state(now_sec);
+            if !AntiTamperGuard::can_broadcast_output(&license_state) {
+                tracing::warn!("Recording refused: restricted license mode or tamper detected");
+                return;
+            }
+
             let path =
                 PathBuf::from(&self.project.settings.output.record_directory).join("recording.mkv");
             if self.output_manager.start_recording(path).is_ok() {
@@ -358,6 +385,71 @@ impl App for ZenocastApp {
                             1000..=20000,
                         ));
                     });
+
+                    ui.separator();
+                    ui.heading("Licensing & Device Activation");
+                    let now_sec = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let license_state = self.license_client.get_state(now_sec);
+                    match &license_state {
+                        LicenseState::Valid { certificate } => {
+                            ui.horizontal(|ui| {
+                                ui.label("Status:");
+                                ui.colored_label(GREEN_OK, "Licensed & Active");
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Edition:");
+                                ui.colored_label(TEXT, certificate.edition.display_name());
+                            });
+                        }
+                        LicenseState::GracePeriod {
+                            offline_since_sec, ..
+                        } => {
+                            ui.horizontal(|ui| {
+                                ui.label("Status:");
+                                ui.colored_label(AMBER_WARN, "Offline Grace Period Active");
+                            });
+                            let days_offline = (now_sec.saturating_sub(*offline_since_sec)) / 86400;
+                            let days_left = 14u64.saturating_sub(days_offline);
+                            ui.label(format!(
+                                "Offline for {} days ({} days remaining)",
+                                days_offline, days_left
+                            ));
+                        }
+                        LicenseState::Restricted { reason } => {
+                            ui.horizontal(|ui| {
+                                ui.label("Status:");
+                                ui.colored_label(RED_LIVE, "Restricted Mode (Output Gated)");
+                            });
+                            ui.colored_label(RED_LIVE, reason.message());
+                        }
+                    }
+
+                    if let Some(wm) = AntiTamperGuard::get_watermark_text(&license_state) {
+                        ui.colored_label(AMBER_WARN, format!("Watermark Active: '{}'", wm));
+                    }
+
+                    ui.horizontal(|ui| {
+                        ui.label("Device Fingerprint:");
+                        let fp = zeno_license::get_device_fingerprint();
+                        let short_fp = if fp.len() >= 16 { &fp[..16] } else { &fp };
+                        ui.colored_label(TEXT_MUTED, format!("{}...", short_fp));
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("License Key:");
+                        ui.text_edit_singleline(&mut self.license_key_input);
+                        if ui.button("Deactivate This Device").clicked() {
+                            self.license_client.clear_certificate();
+                        }
+                    });
+
+                    ui.hyperlink_to(
+                        "Manage Seats & Renewals Online",
+                        "https://zenocast.live/portal",
+                    );
 
                     ui.separator();
                     ui.horizontal(|ui| {

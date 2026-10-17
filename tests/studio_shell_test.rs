@@ -138,6 +138,8 @@ fn test_m8_preview_to_program_transition_switching() {
         autosaver: Autosaver::new(Path::new(".")),
         output_manager,
         wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
     };
 
     assert_eq!(
@@ -202,6 +204,8 @@ fn test_m8_one_click_live_streaming_and_recording() {
         autosaver: Autosaver::new(Path::new(".")),
         output_manager,
         wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
     };
 
     assert!(!app.is_streaming);

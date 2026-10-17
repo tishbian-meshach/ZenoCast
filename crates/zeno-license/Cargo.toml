@@ -9,3 +9,12 @@ description = "Ed25519 offline license verification, seat tracking, and anti-tam
 [dependencies]
 zeno-core = { path = "../zeno-core" }
 zeno-platform = { path = "../zeno-platform" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+sha2 = "0.10"
+
+[[test]]
+name = "licensing_test"
+path = "../../tests/licensing_test.rs"

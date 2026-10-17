@@ -4229,6 +4229,11 @@ dependencies = [
 name = "zeno-license"
 version = "0.1.0"
 dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "sha2",
+ "uuid",
  "zeno-core",
  "zeno-platform",
 ]

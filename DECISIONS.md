@@ -544,3 +544,40 @@ This log records major architectural and implementation choices, defaults select
   - Multi-step wizard state transitions, destination configuration, and settings persistence verified.
   - Semver comparison and JSON update feed parsing verified.
   - WiX XML schema, GUID upgrade code, bundled DLLs, and shortcuts verified.
+
+## 2026-10-18: M21 Licensing and Anti-Tamper Hardening (`feat(license): key validation and anti-tamper hardening`)
+
+- **Pure-Rust Ed25519 Cryptography (`zeno-license/src/ed25519.rs`)**:
+  - Implemented RFC 8032 Ed25519 digital signature algorithm over Curve25519 ($x^2 + y^2 = 1 + d x^2 y^2$).
+  - Curve25519 field arithmetic using 5 limbs in radix $2^{51}$ for 64-bit architectures with constant-time modular arithmetic and reductions modulo $p = 2^{255} - 19$.
+  - Multi-limb scalar arithmetic with strict comparison (`ge_l`) ensuring safe reduction modulo curve order $l = 2^{252} + 27742317777372353535851937790883648493$ without underflow.
+  - Grouped Base32 token serialization (`XXXXX-XXXXX-XXXXX-...`) for user-friendly manual key entry and copy-paste.
+- **Certificate Model & Hardware Fingerprinting (`zeno-license/src/certificate.rs`, `fingerprint.rs`)**:
+  - Offline-verifiable `LicenseKey` containing `LicensePayload` (ID, customer, edition, seats, features, expiry) signed by authority.
+  - Device-bound `LicenseCertificate` storing server signature, active edition, feature bitmask, and hardware fingerprint.
+  - Multi-source hardware fingerprint combining Windows volume serial, machine GUID, processor identifier, and host machine name into a deterministic SHA-256 digest.
+- **Client-Server Protocol & Multi-Seat Management (`zeno-license/src/server_client.rs`)**:
+  - `LicenseServer` implementation of Section 16 authority:
+    - `POST /activate`: online device activation and seat allocation with device fingerprint binding.
+    - `POST /heartbeat`: periodic silent refresh (24-72h window) extending certificate validity.
+    - `POST /deactivate`: self-service seat release permitting workstation migration.
+    - `POST /revoke`: administrative revocation blocking future heartbeats and reactivations.
+  - Multi-seat limits: Solo (1 seat), Studio (3 seats), Team (10 seats).
+  - 14-day offline grace period: transparent broadcast operation during travel or internet interruption; transitions to `Restricted { reason: GracePeriodExpired }` if offline for >14 days.
+- **Anti-Tamper Hardening & Output Gating (`zeno-license/src/anti_tamper.rs`)**:
+  - Memory code segment integrity self-checking: hashes entry point executable machine instructions in memory.
+  - Anti-debugger telemetry: Win32 `IsDebuggerPresent` checks.
+  - Output gating: if tampered or in restricted mode, studio editor remains fully accessible (preventing customer project lockouts), while the broadcast output pipeline (hardware encoding, RTMP/SRT streaming, disk recording) is blocked.
+  - Watermark enforcement: on-air watermark banners rendered for Trial edition (`"ZENOCAST TRIAL - FOR EVALUATION ONLY"`) and restricted tamper mode (`"ZENOCAST RESTRICTED MODE - TAMPER DETECTED"`).
+- **UI Integration (`zeno-ui/src/app.rs`)**:
+  - Dedicated License panel in Studio Settings showing edition, seats used, expiry, grace period status, and Deactivate button.
+  - Output toggles (`toggle_streaming`, `toggle_recording`) guarded by `AntiTamperGuard::can_broadcast_output`.
+- **M21 Acceptance Validation**: Verified via `tests/licensing_test.rs`:
+  - Ed25519 key issuance and grouped Base32 format roundtrip validated.
+  - Online activation and device fingerprint binding verified.
+  - Multi-seat enforcement on server and self-service reissue verified.
+  - 14-day offline grace period and expired subscription transitions verified.
+  - Anti-tamper signals, debugger detection, output gating, and watermark banners verified.
+  - Administrative revocation blocking heartbeats and reactivations verified.
+- **Documentation**: Completed `docs/LICENSE_API.md`, `docs/FORMAT.md`, `docs/TEMPLATES.md`, and `docs/SHEETS.md` per Section 15 and 16.
+
