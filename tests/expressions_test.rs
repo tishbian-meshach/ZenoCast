@@ -9,8 +9,8 @@
 use std::collections::HashMap;
 use zeno_core::{Color, LayerId, Property, Vec3};
 use zeno_engine::eval::DataSnapshot;
-use zeno_engine::model::{Composition, Layer, LayerContent, ShapeContent, ShapeGeometry};
 use zeno_engine::evaluate;
+use zeno_engine::model::{Composition, Layer, LayerContent, ShapeContent, ShapeGeometry};
 use zeno_script::{ScriptError, ScriptRuntime};
 
 #[test]
@@ -20,9 +20,15 @@ fn test_wiggle_evaluation_across_time() {
     let amp = 20.0;
     let expr = format!("wiggle({freq}, {amp})");
 
-    let val_0 = runtime.eval_f64(&expr, 0.0, 0, 0.0, None).expect("eval at t=0");
-    let val_1 = runtime.eval_f64(&expr, 0.25, 0, 0.0, None).expect("eval at t=0.25");
-    let val_2 = runtime.eval_f64(&expr, 0.5, 0, 0.0, None).expect("eval at t=0.5");
+    let val_0 = runtime
+        .eval_f64(&expr, 0.0, 0, 0.0, None)
+        .expect("eval at t=0");
+    let val_1 = runtime
+        .eval_f64(&expr, 0.25, 0, 0.0, None)
+        .expect("eval at t=0.25");
+    let val_2 = runtime
+        .eval_f64(&expr, 0.5, 0, 0.0, None)
+        .expect("eval at t=0.5");
 
     // Values should stay within [-amp, amp]
     assert!(val_0.abs() <= amp + 0.001, "val_0 {val_0} exceeded amp");
@@ -63,13 +69,7 @@ fn test_data_driven_expressions() {
 
     // String interpolation using data
     let tag_str = runtime
-        .eval_string(
-            "\"TEAM: \" + data(\"team.tag\")",
-            0.0,
-            0,
-            "",
-            Some(&data),
-        )
+        .eval_string("\"TEAM: \" + data(\"team.tag\")", 0.0, 0, "", Some(&data))
         .expect("eval tag_str");
     assert_eq!(tag_str, "TEAM: SEN");
 }
@@ -114,10 +114,8 @@ fn test_engine_property_expression_evaluation() {
     // Opacity driven by expression
     layer.transform.opacity_percent = Property::expression("50.0 + 25.0", 100.0);
     // Position driven by expression with data
-    layer.transform.position = Property::expression(
-        "[data(\"hero.x\"), 200.0, 0.0]",
-        Vec3::new(0.0, 0.0, 0.0),
-    );
+    layer.transform.position =
+        Property::expression("[data(\"hero.x\"), 200.0, 0.0]", Vec3::new(0.0, 0.0, 0.0));
 
     comp.layers.push(layer);
 

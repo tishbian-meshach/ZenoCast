@@ -6,8 +6,13 @@
 pub mod color_convert;
 pub mod encoder;
 pub mod error;
+pub mod multi_stream;
+pub mod ndi;
 pub mod pipeline;
+pub mod replay;
 pub mod service;
+pub mod spout;
+pub mod srt;
 pub mod stats;
 pub mod youtube;
 
@@ -17,9 +22,18 @@ pub use encoder::{
     VideoEncoderSettings,
 };
 pub use error::{OutputError, OutputResult};
+pub use multi_stream::{MultiStreamManager, StreamDestination};
+pub use ndi::NdiOutput;
 pub use pipeline::{FfmpegPipeline, OutputDestination};
+pub use replay::{
+    BufferedAudioChunk, BufferedVideoFrame, ReplayBuffer, ReplayBufferConfig, ReplayBufferStatus,
+    ReplaySaveReport,
+};
 pub use service::OutputManager;
+pub use spout::SpoutOutput;
+pub use srt::{SrtConfig, SrtMode};
 pub use stats::LiveOutputStats;
+pub use zeno_platform::PlatformCredentialManager;
 
 #[cfg(test)]
 mod tests {

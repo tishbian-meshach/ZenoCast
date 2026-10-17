@@ -48,10 +48,15 @@ fn test_esports_templates_pack_export_and_integrity() {
         assert!(path.exists(), "Template file missing: {}", path.display());
 
         // Read and validate the .arx container
-        let pkg = ArxPackage::open(&path).expect(&format!("Open package {}", path.display()));
+        let pkg =
+            ArxPackage::open(&path).unwrap_or_else(|_| panic!("Open package {}", path.display()));
         assert!(!pkg.manifest.name.is_empty());
         assert_eq!(pkg.manifest.author, "Zenocast Esports Pack");
-        assert!(!pkg.scene.layers.is_empty(), "Scene layers must not be empty in {}", filename);
+        assert!(
+            !pkg.scene.layers.is_empty(),
+            "Scene layers must not be empty in {}",
+            filename
+        );
     }
 }
 
@@ -93,11 +98,15 @@ fn test_roster_manager_presets_and_datastore_sync() {
         Some("FNC".to_string())
     );
     assert_eq!(
-        store.get("match.team1.player_1.handle").map(|v| v.to_display_string()),
+        store
+            .get("match.team1.player_1.handle")
+            .map(|v| v.to_display_string()),
         Some("TenZ".to_string())
     );
     assert_eq!(
-        store.get("casters.caster_1.handle").map(|v| v.to_display_string()),
+        store
+            .get("casters.caster_1.handle")
+            .map(|v| v.to_display_string()),
         Some("Pansy".to_string())
     );
 }

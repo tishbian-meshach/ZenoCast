@@ -7,10 +7,12 @@
 
 pub mod camera;
 pub mod capture;
+pub mod credentials;
 pub mod display;
 pub mod window;
 
 pub use camera::{enumerate_camera_devices, CameraDeviceInfo, CameraFormat};
 pub use capture::{capture_display_raw, capture_window_raw};
+pub use credentials::PlatformCredentialManager;
 pub use display::{enumerate_displays, DisplayInfo};
 pub use window::{enumerate_windows, WindowInfo};

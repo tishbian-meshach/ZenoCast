@@ -141,7 +141,8 @@ impl BrowserSource {
             self.raw_buffer.fill(0);
         } else {
             // Check if custom CSS provides an opaque background color
-            let bg_color = parse_css_background_color(&self.custom_css).unwrap_or([255, 255, 255, 255]);
+            let bg_color =
+                parse_css_background_color(&self.custom_css).unwrap_or([255, 255, 255, 255]);
             for chunk in self.raw_buffer.chunks_exact_mut(4) {
                 chunk.copy_from_slice(&bg_color);
             }
@@ -154,9 +155,9 @@ impl BrowserSource {
 
         let team1_color = [0x4C, 0x8D, 0xFF, 0xFF]; // Broadcast Accent Blue
         let team2_color = [0xF5, 0xA5, 0x24, 0xFF]; // Broadcast Accent Amber
-        let card_bg = [0x15, 0x17, 0x1A, 0xF0];     // Dark neutral surface with slight transparency
+        let card_bg = [0x15, 0x17, 0x1A, 0xF0]; // Dark neutral surface with slight transparency
         let border_color = [0x27, 0x2B, 0x30, 0xFF]; // 1px solid border
-        let text_color: [u8; 4] = [0xE7, 0xE9, 0xEC, 0xFF];   // Crisp white/light text
+        let text_color: [u8; 4] = [0xE7, 0xE9, 0xEC, 0xFF]; // Crisp white/light text
 
         // Center scoreboard horizontally near top
         let bar_width = 800.min(w.saturating_sub(40));
@@ -248,6 +249,7 @@ impl BrowserSource {
 }
 
 /// Helper to draw a filled rectangle with optional 1px border into an RGBA8 buffer.
+#[allow(clippy::too_many_arguments)]
 fn draw_rect(
     buffer: &mut [u8],
     stride: usize,
@@ -266,8 +268,8 @@ fn draw_rect(
         for x in x0..x1 {
             let idx = (y * stride + x) * 4;
             if idx + 3 < buffer.len() {
-                let is_border = border_color.is_some()
-                    && (x == x0 || x == x1 - 1 || y == y0 || y == y1 - 1);
+                let is_border =
+                    border_color.is_some() && (x == x0 || x == x1 - 1 || y == y0 || y == y1 - 1);
 
                 if is_border {
                     buffer[idx..idx + 4].copy_from_slice(&border_color.unwrap());
@@ -282,7 +284,8 @@ fn draw_rect(
 /// Parses a simple CSS background-color string (e.g. `rgba(...)` or `#hex`).
 fn parse_css_background_color(css: &str) -> Option<[u8; 4]> {
     let lower = css.to_lowercase();
-    if lower.contains("background: transparent") || lower.contains("background-color: transparent") {
+    if lower.contains("background: transparent") || lower.contains("background-color: transparent")
+    {
         return Some([0, 0, 0, 0]);
     }
     if lower.contains("background-color: black") || lower.contains("background: black") {

@@ -17,6 +17,11 @@ tracing = { workspace = true }
 parking_lot = { workspace = true }
 crossbeam-channel = { workspace = true }
 
+[features]
+default = []
+ndi = []
+spout = []
+
 [dev-dependencies]
 zeno-engine = { path = "../zeno-engine" }
 pollster = { workspace = true }

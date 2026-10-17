@@ -4155,6 +4155,7 @@ dependencies = [
  "proptest",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "uuid",
 ]
@@ -4267,12 +4268,14 @@ dependencies = [
  "wgpu",
  "zeno-audio",
  "zeno-core",
+ "zeno-platform",
 ]
 
 [[package]]
 name = "zeno-platform"
 version = "0.1.0"
 dependencies = [
+ "parking_lot",
  "windows 0.58.0",
  "zeno-core",
 ]

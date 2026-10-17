@@ -97,7 +97,7 @@ fn test_browser_source_60fps_timing_and_budget() {
 
         let frame = browser
             .get_frame()
-            .expect(&format!("Frame {i} should be ready"));
+            .unwrap_or_else(|| panic!("Frame {i} should be ready"));
         assert_eq!(frame.width, 1920);
         assert_eq!(frame.height, 1080);
         assert!((frame.timestamp_seconds - current_time).abs() < 1e-4);

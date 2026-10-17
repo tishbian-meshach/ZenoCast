@@ -20,6 +20,10 @@ pub enum SourceKind {
     Color,
     /// Off-screen embedded web browser surface.
     Browser,
+    /// NDI network video stream.
+    Ndi,
+    /// Spout shared GPU texture.
+    Spout,
 }
 
 /// A captured video frame backed by an immutable GPU texture with a presentation timestamp.

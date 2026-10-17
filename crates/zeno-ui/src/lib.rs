@@ -8,7 +8,9 @@ pub mod data_panel;
 pub mod dock;
 pub mod editor;
 pub mod import_dialog;
+pub mod log_viewer;
 pub mod overlay_control;
+pub mod performance_hud;
 pub mod project;
 pub mod settings;
 pub mod spreadsheet_panel;
@@ -19,7 +21,9 @@ pub use data_panel::{ui_esports_data_panel, DataPanelState};
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
 pub use import_dialog::ImportReportDialog;
+pub use log_viewer::{LogEntry, LogRingBuffer, LogSeverity, LogViewerPanel};
 pub use overlay_control::ui_overlay_lifecycle_panel;
+pub use performance_hud::{PerformanceOverlay, PerformanceSnapshot};
 pub use project::{
     Autosaver, Project, ProjectError, SceneDefinition, SourceDefinition, SourceKind,
 };

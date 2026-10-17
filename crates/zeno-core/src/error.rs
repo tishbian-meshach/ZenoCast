@@ -2,6 +2,9 @@
 
 use thiserror::Error;
 
+/// Result alias for Core operations.
+pub type CoreResult<T> = Result<T, CoreError>;
+
 /// Fundamental errors occurring within core data types and operations.
 #[derive(Debug, Error)]
 pub enum CoreError {
@@ -29,4 +32,12 @@ pub enum CoreError {
     /// General I/O or conversion error.
     #[error("Internal error: {0}")]
     Internal(String),
+
+    /// File I/O error.
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+
+    /// Validation or serialization error.
+    #[error("Validation error: {0}")]
+    Validation(String),
 }

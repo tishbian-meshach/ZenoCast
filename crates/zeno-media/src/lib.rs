@@ -8,7 +8,9 @@ pub mod camera_source;
 pub mod device_manager;
 pub mod display_source;
 pub mod error;
+pub mod ndi;
 pub mod source;
+pub mod spout;
 pub mod texture_buffer;
 pub mod window_source;
 
@@ -18,7 +20,9 @@ pub use camera_source::CameraCaptureSource;
 pub use device_manager::{DeviceManager, HotplugEvent};
 pub use display_source::DisplayCaptureSource;
 pub use error::SourceError;
+pub use ndi::NdiSource;
 pub use source::{Source, SourceKind, VideoFrame};
+pub use spout::SpoutSource;
 pub use texture_buffer::DoubleBufferedTexture;
 pub use window_source::WindowCaptureSource;
 

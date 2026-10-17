@@ -47,9 +47,12 @@ impl TournamentPresetGenerator {
 
         let src_starting_overlay = SourceId::new();
         s_starting.add_item(
-            SceneItem::new("Starting Soon Overlay", SceneItemSource::Source(src_starting_overlay))
-                .with_position(width / 2.0, height / 2.0)
-                .with_scale(1.0, 1.0),
+            SceneItem::new(
+                "Starting Soon Overlay",
+                SceneItemSource::Source(src_starting_overlay),
+            )
+            .with_position(width / 2.0, height / 2.0)
+            .with_scale(1.0, 1.0),
         );
 
         // --------------------------------------------------------------------
@@ -77,8 +80,11 @@ impl TournamentPresetGenerator {
                 .with_scale(cam_w / width, cam_h / height),
         );
         s_casters.add_item(
-            SceneItem::new("Caster Desk Frames & Lower Third", SceneItemSource::Source(src_caster_overlay))
-                .with_position(width / 2.0, height / 2.0),
+            SceneItem::new(
+                "Caster Desk Frames & Lower Third",
+                SceneItemSource::Source(src_caster_overlay),
+            )
+            .with_position(width / 2.0, height / 2.0),
         );
 
         // --------------------------------------------------------------------
@@ -106,8 +112,11 @@ impl TournamentPresetGenerator {
 
         // Fullscreen gameplay
         s_match.add_item(
-            SceneItem::new("Game Capture (DirectX)", SceneItemSource::Source(src_gameplay))
-                .with_position(width / 2.0, height / 2.0),
+            SceneItem::new(
+                "Game Capture (DirectX)",
+                SceneItemSource::Source(src_gameplay),
+            )
+            .with_position(width / 2.0, height / 2.0),
         );
         // Player cam frames on flanks
         s_match.add_item(
@@ -116,8 +125,11 @@ impl TournamentPresetGenerator {
         );
         // Scoreboard overlay on top
         s_match.add_item(
-            SceneItem::new("Scoreboard Overlay", SceneItemSource::Source(src_scoreboard))
-                .with_position(width / 2.0, height / 2.0),
+            SceneItem::new(
+                "Scoreboard Overlay",
+                SceneItemSource::Source(src_scoreboard),
+            )
+            .with_position(width / 2.0, height / 2.0),
         );
         // Kill feed overlay on top right
         s_match.add_item(
@@ -133,8 +145,11 @@ impl TournamentPresetGenerator {
 
         let src_brb_overlay = SourceId::new();
         s_break.add_item(
-            SceneItem::new("Be Right Back Overlay", SceneItemSource::Source(src_brb_overlay))
-                .with_position(width / 2.0, height / 2.0),
+            SceneItem::new(
+                "Be Right Back Overlay",
+                SceneItemSource::Source(src_brb_overlay),
+            )
+            .with_position(width / 2.0, height / 2.0),
         );
 
         // --------------------------------------------------------------------
@@ -145,8 +160,11 @@ impl TournamentPresetGenerator {
 
         let src_ending_overlay = SourceId::new();
         s_ending.add_item(
-            SceneItem::new("Ending Credits & Bracket", SceneItemSource::Source(src_ending_overlay))
-                .with_position(width / 2.0, height / 2.0),
+            SceneItem::new(
+                "Ending Credits & Bracket",
+                SceneItemSource::Source(src_ending_overlay),
+            )
+            .with_position(width / 2.0, height / 2.0),
         );
 
         // --------------------------------------------------------------------

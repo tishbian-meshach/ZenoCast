@@ -44,13 +44,19 @@ impl ScriptRuntime {
         engine.set_max_array_size(1024);
 
         // 2. Register motion-graphics built-ins
-        engine.register_fn("linear", |t: f64, t_min: f64, t_max: f64, v1: f64, v2: f64| -> f64 {
-            calculate_linear(t, t_min, t_max, v1, v2)
-        });
+        engine.register_fn(
+            "linear",
+            |t: f64, t_min: f64, t_max: f64, v1: f64, v2: f64| -> f64 {
+                calculate_linear(t, t_min, t_max, v1, v2)
+            },
+        );
 
-        engine.register_fn("ease", |t: f64, t_min: f64, t_max: f64, v1: f64, v2: f64| -> f64 {
-            calculate_ease(t, t_min, t_max, v1, v2)
-        });
+        engine.register_fn(
+            "ease",
+            |t: f64, t_min: f64, t_max: f64, v1: f64, v2: f64| -> f64 {
+                calculate_ease(t, t_min, t_max, v1, v2)
+            },
+        );
 
         engine.register_fn("wiggle", |freq: f64, amp: f64| -> f64 {
             let t = CURRENT_TIME.with(|c| c.get());
@@ -146,7 +152,11 @@ impl ScriptRuntime {
     }
 
     /// Prepares contextual thread-local state prior to expression evaluation.
-    fn prepare_context(&self, time: f64, data_snapshot: Option<&HashMap<String, serde_json::Value>>) {
+    fn prepare_context(
+        &self,
+        time: f64,
+        data_snapshot: Option<&HashMap<String, serde_json::Value>>,
+    ) {
         CURRENT_TIME.with(|c| c.set(time));
         CURRENT_DATA.with(|d| {
             let mut map = d.borrow_mut();
@@ -235,9 +245,8 @@ impl ScriptRuntime {
         let mut scope = Scope::new();
         scope.push("time", time);
         scope.push("index", index);
-        let mut val_arr = rhai::Array::new();
-        val_arr.push(Dynamic::from(value.x as f64));
-        val_arr.push(Dynamic::from(value.y as f64));
+        let val_arr: rhai::Array =
+            vec![Dynamic::from(value.x as f64), Dynamic::from(value.y as f64)];
         scope.push("value", val_arr);
 
         let result = self
@@ -246,8 +255,22 @@ impl ScriptRuntime {
             .map_err(map_rhai_error)?;
 
         if let Some(arr) = result.clone().try_cast::<rhai::Array>() {
-            let x = arr.first().and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64))).unwrap_or(value.x as f64) as f32;
-            let y = arr.get(1).and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64))).unwrap_or(value.y as f64) as f32;
+            let x = arr
+                .first()
+                .and_then(|v| {
+                    v.as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                })
+                .unwrap_or(value.x as f64) as f32;
+            let y = arr
+                .get(1)
+                .and_then(|v| {
+                    v.as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                })
+                .unwrap_or(value.y as f64) as f32;
             Ok(Vec2::new(x, y))
         } else if let Ok(num) = result.as_float() {
             Ok(Vec2::splat(num as f32))
@@ -274,10 +297,11 @@ impl ScriptRuntime {
         let mut scope = Scope::new();
         scope.push("time", time);
         scope.push("index", index);
-        let mut val_arr = rhai::Array::new();
-        val_arr.push(Dynamic::from(value.x as f64));
-        val_arr.push(Dynamic::from(value.y as f64));
-        val_arr.push(Dynamic::from(value.z as f64));
+        let val_arr: rhai::Array = vec![
+            Dynamic::from(value.x as f64),
+            Dynamic::from(value.y as f64),
+            Dynamic::from(value.z as f64),
+        ];
         scope.push("value", val_arr);
 
         let result = self
@@ -286,9 +310,30 @@ impl ScriptRuntime {
             .map_err(map_rhai_error)?;
 
         if let Some(arr) = result.clone().try_cast::<rhai::Array>() {
-            let x = arr.first().and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64))).unwrap_or(value.x as f64) as f32;
-            let y = arr.get(1).and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64))).unwrap_or(value.y as f64) as f32;
-            let z = arr.get(2).and_then(|v| v.as_float().ok().or_else(|| v.as_int().ok().map(|i| i as f64))).unwrap_or(value.z as f64) as f32;
+            let x = arr
+                .first()
+                .and_then(|v| {
+                    v.as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                })
+                .unwrap_or(value.x as f64) as f32;
+            let y = arr
+                .get(1)
+                .and_then(|v| {
+                    v.as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                })
+                .unwrap_or(value.y as f64) as f32;
+            let z = arr
+                .get(2)
+                .and_then(|v| {
+                    v.as_float()
+                        .ok()
+                        .or_else(|| v.as_int().ok().map(|i| i as f64))
+                })
+                .unwrap_or(value.z as f64) as f32;
             Ok(Vec3::new(x, y, z))
         } else if let Ok(num) = result.as_float() {
             Ok(Vec3::splat(num as f32))
@@ -302,11 +347,12 @@ impl ScriptRuntime {
 }
 
 /// Maps Rhai evaluation error variants into our typed `ScriptError`.
+#[allow(clippy::boxed_local)]
 fn map_rhai_error(err: Box<rhai::EvalAltResult>) -> ScriptError {
     match *err {
-        rhai::EvalAltResult::ErrorTooManyOperations(_) => {
-            ScriptError::InstructionLimitExceeded("Execution operation limit exceeded (infinite loop prevented)".into())
-        }
+        rhai::EvalAltResult::ErrorTooManyOperations(_) => ScriptError::InstructionLimitExceeded(
+            "Execution operation limit exceeded (infinite loop prevented)".into(),
+        ),
         other => ScriptError::RuntimeError(other.to_string()),
     }
 }

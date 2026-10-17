@@ -3,6 +3,7 @@
 //! Core primitives, mathematical structures, property wrappers, time handling, and identifiers for Zenocast.
 
 pub mod color;
+pub mod crash_recovery;
 pub mod error;
 pub mod id;
 pub mod lifecycle;
@@ -12,6 +13,7 @@ pub mod variable;
 
 // Re-exports
 pub use color::Color;
+pub use crash_recovery::{CrashRecoveryManager, CrashRecoveryReport, SessionLockData};
 pub use error::CoreError;
 pub use id::{AssetId, CompositionId, LayerId, LinkId, SceneId, SourceId, TransitionId};
 pub use lifecycle::{InterruptBehavior, Lifecycle, LifecyclePhase};

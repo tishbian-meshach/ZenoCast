@@ -5,15 +5,15 @@
 //! - Team & roster manager with esports team presets and player profiles.
 //! - Automatic synchronization into the live reactive `DataStore`.
 
+use crate::store::DataStore;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
 use zeno_core::{Color, LayerId, Property, Vec2, Vec3};
 use zeno_engine::model::{
     Composition, Fill, Layer, LayerContent, ShapeContent, ShapeGeometry, TextContent,
 };
 use zeno_format::{ArxPackage, FormatError, Manifest};
-use crate::store::DataStore;
 // use crate::value::DataValue;
 
 /// An esports competitor player profile.
@@ -123,11 +123,36 @@ impl RosterManager {
                 secondary_color: Color::WHITE,
                 logo_path: "assets/logos/sen.png".to_string(),
                 roster: vec![
-                    Player { handle: "TenZ".into(), real_name: "Tyson Ngo".into(), role: "Initiator".into(), photo_path: "".into() },
-                    Player { handle: "zekken".into(), real_name: "Zachary Patrone".into(), role: "Duelist".into(), photo_path: "".into() },
-                    Player { handle: "Sacy".into(), real_name: "Gustavo Rossi".into(), role: "Initiator".into(), photo_path: "".into() },
-                    Player { handle: "johnqt".into(), real_name: "Mohamed Amine Ouarid".into(), role: "IGL / Sentinel".into(), photo_path: "".into() },
-                    Player { handle: "Zellsis".into(), real_name: "Jordan Montemurro".into(), role: "Flex / Controller".into(), photo_path: "".into() },
+                    Player {
+                        handle: "TenZ".into(),
+                        real_name: "Tyson Ngo".into(),
+                        role: "Initiator".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "zekken".into(),
+                        real_name: "Zachary Patrone".into(),
+                        role: "Duelist".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Sacy".into(),
+                        real_name: "Gustavo Rossi".into(),
+                        role: "Initiator".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "johnqt".into(),
+                        real_name: "Mohamed Amine Ouarid".into(),
+                        role: "IGL / Sentinel".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Zellsis".into(),
+                        real_name: "Jordan Montemurro".into(),
+                        role: "Flex / Controller".into(),
+                        photo_path: "".into(),
+                    },
                 ],
             },
             Team {
@@ -138,11 +163,36 @@ impl RosterManager {
                 secondary_color: Color::BLACK,
                 logo_path: "assets/logos/fnc.png".to_string(),
                 roster: vec![
-                    Player { handle: "Boaster".into(), real_name: "Jake Howlett".into(), role: "IGL".into(), photo_path: "".into() },
-                    Player { handle: "Derke".into(), real_name: "Nikita Sirmitev".into(), role: "Duelist".into(), photo_path: "".into() },
-                    Player { handle: "Alfajer".into(), real_name: "Emir Ali Beder".into(), role: "Sentinel".into(), photo_path: "".into() },
-                    Player { handle: "Chronicle".into(), real_name: "Timofey Khromov".into(), role: "Initiator".into(), photo_path: "".into() },
-                    Player { handle: "Leo".into(), real_name: "Leo Jannesson".into(), role: "Initiator".into(), photo_path: "".into() },
+                    Player {
+                        handle: "Boaster".into(),
+                        real_name: "Jake Howlett".into(),
+                        role: "IGL".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Derke".into(),
+                        real_name: "Nikita Sirmitev".into(),
+                        role: "Duelist".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Alfajer".into(),
+                        real_name: "Emir Ali Beder".into(),
+                        role: "Sentinel".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Chronicle".into(),
+                        real_name: "Timofey Khromov".into(),
+                        role: "Initiator".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Leo".into(),
+                        real_name: "Leo Jannesson".into(),
+                        role: "Initiator".into(),
+                        photo_path: "".into(),
+                    },
                 ],
             },
             Team {
@@ -153,11 +203,36 @@ impl RosterManager {
                 secondary_color: Color::WHITE,
                 logo_path: "assets/logos/c9.png".to_string(),
                 roster: vec![
-                    Player { handle: "OXY".into(), real_name: "Francis Hoang".into(), role: "Duelist".into(), photo_path: "".into() },
-                    Player { handle: "vanity".into(), real_name: "Anthony Malaspina".into(), role: "IGL".into(), photo_path: "".into() },
-                    Player { handle: "Xeppaa".into(), real_name: "Erick Bach".into(), role: "Flex".into(), photo_path: "".into() },
-                    Player { handle: "moose".into(), real_name: "Kaleb Jayne".into(), role: "Sentinel".into(), photo_path: "".into() },
-                    Player { handle: "runi".into(), real_name: "Dylan Cade".into(), role: "Initiator".into(), photo_path: "".into() },
+                    Player {
+                        handle: "OXY".into(),
+                        real_name: "Francis Hoang".into(),
+                        role: "Duelist".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "vanity".into(),
+                        real_name: "Anthony Malaspina".into(),
+                        role: "IGL".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Xeppaa".into(),
+                        real_name: "Erick Bach".into(),
+                        role: "Flex".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "moose".into(),
+                        real_name: "Kaleb Jayne".into(),
+                        role: "Sentinel".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "runi".into(),
+                        real_name: "Dylan Cade".into(),
+                        role: "Initiator".into(),
+                        photo_path: "".into(),
+                    },
                 ],
             },
             Team {
@@ -168,20 +243,61 @@ impl RosterManager {
                 secondary_color: Color::BLACK,
                 logo_path: "assets/logos/t1.png".to_string(),
                 roster: vec![
-                    Player { handle: "Sayaplayer".into(), real_name: "Ha Jung-woo".into(), role: "Duelist".into(), photo_path: "".into() },
-                    Player { handle: "Carpe".into(), real_name: "Lee Jae-hyeok".into(), role: "Initiator".into(), photo_path: "".into() },
-                    Player { handle: "xeta".into(), real_name: "Son Seon-ho".into(), role: "Flex".into(), photo_path: "".into() },
-                    Player { handle: "iZu".into(), real_name: "Ham Woo-joo".into(), role: "Controller".into(), photo_path: "".into() },
-                    Player { handle: "Rossy".into(), real_name: "Daniel Abedrabbo".into(), role: "IGL".into(), photo_path: "".into() },
+                    Player {
+                        handle: "Sayaplayer".into(),
+                        real_name: "Ha Jung-woo".into(),
+                        role: "Duelist".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Carpe".into(),
+                        real_name: "Lee Jae-hyeok".into(),
+                        role: "Initiator".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "xeta".into(),
+                        real_name: "Son Seon-ho".into(),
+                        role: "Flex".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "iZu".into(),
+                        real_name: "Ham Woo-joo".into(),
+                        role: "Controller".into(),
+                        photo_path: "".into(),
+                    },
+                    Player {
+                        handle: "Rossy".into(),
+                        real_name: "Daniel Abedrabbo".into(),
+                        role: "IGL".into(),
+                        photo_path: "".into(),
+                    },
                 ],
             },
         ];
 
         self.casters = vec![
-            Caster { name: "Lauren Scott".into(), handle: "Pansy".into(), social: "@pansy".into() },
-            Caster { name: "Michael Robins".into(), handle: "hypoc".into(), social: "@hypoc".into() },
-            Caster { name: "Josh Hough".into(), handle: "Sideshow".into(), social: "@SideshowGaming".into() },
-            Caster { name: "Brennon Hook".into(), handle: "Bren".into(), social: "@BrenCasts".into() },
+            Caster {
+                name: "Lauren Scott".into(),
+                handle: "Pansy".into(),
+                social: "@pansy".into(),
+            },
+            Caster {
+                name: "Michael Robins".into(),
+                handle: "hypoc".into(),
+                social: "@hypoc".into(),
+            },
+            Caster {
+                name: "Josh Hough".into(),
+                handle: "Sideshow".into(),
+                social: "@SideshowGaming".into(),
+            },
+            Caster {
+                name: "Brennon Hook".into(),
+                handle: "Bren".into(),
+                social: "@BrenCasts".into(),
+            },
         ];
     }
 
@@ -193,13 +309,21 @@ impl RosterManager {
     /// Finds a team by its ID or tag.
     pub fn find_team(&self, query: &str) -> Option<&Team> {
         let q = query.to_lowercase();
-        self.teams.iter().find(|t| t.id.to_lowercase() == q || t.tag.to_lowercase() == q)
+        self.teams
+            .iter()
+            .find(|t| t.id.to_lowercase() == q || t.tag.to_lowercase() == q)
     }
 
     /// Default grand finals tournament match preset.
     pub fn default_match(&self) -> TournamentMatch {
-        let team1 = self.find_team("SEN").cloned().unwrap_or_else(|| self.teams[0].clone());
-        let team2 = self.find_team("FNC").cloned().unwrap_or_else(|| self.teams[1].clone());
+        let team1 = self
+            .find_team("SEN")
+            .cloned()
+            .unwrap_or_else(|| self.teams[0].clone());
+        let team2 = self
+            .find_team("FNC")
+            .cloned()
+            .unwrap_or_else(|| self.teams[1].clone());
 
         TournamentMatch {
             tournament_name: "ZENOCAST MASTERS 2026".to_string(),
@@ -274,13 +398,7 @@ impl Default for RosterManager {
 // ----------------------------------------------------------------------------
 
 /// Helper to generate a text layer with given properties.
-fn make_text_layer(
-    name: &str,
-    text: &str,
-    font_size: f32,
-    pos: Vec3,
-    color: Color,
-) -> Layer {
+fn make_text_layer(name: &str, text: &str, font_size: f32, pos: Vec3, color: Color) -> Layer {
     let mut layer = Layer::new(
         LayerId::new(),
         name,
@@ -296,12 +414,7 @@ fn make_text_layer(
 }
 
 /// Helper to generate a rectangle box shape layer.
-fn make_rect_layer(
-    name: &str,
-    size: Vec2,
-    pos: Vec3,
-    fill_color: Color,
-) -> Layer {
+fn make_rect_layer(name: &str, size: Vec2, pos: Vec3, fill_color: Color) -> Layer {
     let mut layer = Layer::new(
         LayerId::new(),
         name,
@@ -642,7 +755,13 @@ pub fn create_caster_desk_template(num_casters: usize) -> ArxPackage {
 
 /// Creates Player Cam Frames overlay (5v5 box frames).
 pub fn create_player_cam_frames_template() -> ArxPackage {
-    let manifest = Manifest::new("Player Cam Frames", "Zenocast Esports Pack", 1920, 1080, 60.0);
+    let manifest = Manifest::new(
+        "Player Cam Frames",
+        "Zenocast Esports Pack",
+        1920,
+        1080,
+        60.0,
+    );
     let mut comp = Composition::new(1920, 1080, 60.0, 10.0);
 
     // Left team: 5 player mini boxes stacked along the left margin
@@ -751,7 +870,13 @@ pub fn create_kill_feed_template() -> ArxPackage {
 
 /// Creates the Tournament Bracket playoff tree overlay template.
 pub fn create_tournament_bracket_template() -> ArxPackage {
-    let manifest = Manifest::new("Tournament Bracket", "Zenocast Esports Pack", 1920, 1080, 60.0);
+    let manifest = Manifest::new(
+        "Tournament Bracket",
+        "Zenocast Esports Pack",
+        1920,
+        1080,
+        60.0,
+    );
     let mut comp = Composition::new(1920, 1080, 60.0, 15.0);
 
     comp.layers.push(make_text_layer(
@@ -814,7 +939,10 @@ pub fn export_esports_pack(output_dir: &Path) -> Result<Vec<PathBuf>, FormatErro
         ("player_cam_frames.arx", create_player_cam_frames_template()),
         ("map_veto.arx", create_map_veto_template()),
         ("kill_feed.arx", create_kill_feed_template()),
-        ("tournament_bracket.arx", create_tournament_bracket_template()),
+        (
+            "tournament_bracket.arx",
+            create_tournament_bracket_template(),
+        ),
     ];
 
     let mut written_paths = Vec::with_capacity(templates.len());
@@ -828,4 +956,3 @@ pub fn export_esports_pack(output_dir: &Path) -> Result<Vec<PathBuf>, FormatErro
 
     Ok(written_paths)
 }
-

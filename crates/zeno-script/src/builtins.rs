@@ -3,7 +3,9 @@
 /// Fast 1D deterministic hash returning a pseudo-random value in [0.0..1.0].
 #[inline]
 pub fn noise_hash(seed: u64, i: i64) -> f64 {
-    let mut h = seed.wrapping_add((i as u64) << 32).wrapping_add(0x9e3779b97f4a7c15);
+    let mut h = seed
+        .wrapping_add((i as u64) << 32)
+        .wrapping_add(0x9e3779b97f4a7c15);
     h ^= h >> 30;
     h = h.wrapping_mul(0xbf58476d1ce4e5b9);
     h ^= h >> 27;

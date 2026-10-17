@@ -20,6 +20,12 @@ serde_json = { workspace = true }
 uuid = { workspace = true }
 sha2 = "0.10"
 base64 = "0.22"
+zeno-platform = { path = "../zeno-platform" }
+
+[features]
+default = []
+ndi = []
+spout = []
 
 [dev-dependencies]
 tempfile = { workspace = true }
@@ -31,3 +37,8 @@ path = "../../tests/output_pipeline_test.rs"
 [[test]]
 name = "youtube_integration_test"
 path = "../../tests/youtube_integration_test.rs"
+
+[[test]]
+name = "hardening_test"
+path = "../../tests/hardening_test.rs"
+
