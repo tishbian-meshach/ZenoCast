@@ -6,12 +6,17 @@
 //! UI, windowing, device capture, or video encoding systems.
 
 pub mod model;
+pub mod render;
 
 // Re-exports
 pub use model::{
     AnimationState, AssetKind, AssetRef, BlendMode, CameraSettings, Composition, Effect, Fill,
     GradientStop, Layer, LayerContent, Mask, MaskMode, ParticleEmitter, ShapeContent,
     ShapeGeometry, StatePlayback, Stroke, TextAlignment, TextContent, Transform3D,
+};
+pub use render::{
+    CompositorPipeline, GpuContext, LayerUniforms, PooledTexture, RasterCache, ResolvedLayer,
+    TexturePool, ZenoRenderer,
 };
 
 #[cfg(test)]

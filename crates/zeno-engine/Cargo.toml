@@ -12,3 +12,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+pollster = { workspace = true }
+image = { workspace = true }
+
+[[test]]
+name = "golden_render_test"
+path = "../../tests/golden_render_test.rs"
