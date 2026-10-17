@@ -7,5 +7,20 @@ license.workspace = true
 description = "Multi-track audio capture, mixer, DSP filters, and master meters for Zenocast."
 
 [dependencies]
-zeno-core = { path = "../zeno-core" }
+zeno-core = { workspace = true }
 zeno-platform = { path = "../zeno-platform" }
+cpal = "0.15"
+rubato = "0.15"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+uuid = { workspace = true }
+
+[[test]]
+name = "audio_mixer_test"
+path = "../../tests/audio_mixer_test.rs"
+
+

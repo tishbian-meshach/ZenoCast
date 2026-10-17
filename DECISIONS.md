@@ -88,4 +88,30 @@ This log records major architectural and implementation choices, defaults select
   - Live transition thumbnail previewing implemented via `render_transition_preview`.
 - **M5b Acceptance Validation**: Verified via `tests/transition_system_test.rs` testing every transition kind at 1080p60 holding frame budget (< 10 ms avg frame time), mid-transition snapshot interruption, priority hierarchy overrides, and live preview rendering.
 
+## 2026-10-17: M6 Audio Mixer, Meters, Filters, and Clock Drift Correction
 
+- **Core Audio Architecture**: Implemented full broadcast-grade audio engine in `zeno-audio`:
+  - Standardized internal master mixing rate to 48 kHz float (`f32` stereo interleaved).
+  - 6-track audio routing per source, with master channel summing, per-source volume/gain, and mute controls.
+  - Multi-threaded lock-free ring buffering between capture threads and the real-time render/mix pipeline.
+- **DSP Filter Pipeline**:
+  - `AudioFilter` trait enabling arbitrary per-source and master DSP chaining.
+  - `GainFilter`: Smooth decibel-to-linear amplification.
+  - `NoiseGateFilter`: Attack/release smoothing envelope with configurable threshold and attenuation ratio.
+  - `CompressorFilter`: Peak/RMS feedforward gain reduction with adjustable threshold, ratio, attack, release, and makeup gain.
+  - `LimiterFilter`: Lookahead brickwall limiter with fast attack and peak clamp guaranteeing signal never exceeds digital ceiling (e.g. -0.1 dBFS).
+  - `EqualizerFilter`: 3-band parametric/peaking biquad IIR filter (Low 100 Hz, Mid 1 kHz, High 8 kHz) with bilinear transform coefficient derivation.
+- **Meters and Ballistics**:
+  - `AudioMeter` providing sample-accurate True-Peak (dBFS), RMS (dBFS), and ITU-R BS.1770 short-term LUFS loudness tracking.
+  - IEC 60268-18 PPM ballistics with instantaneous attack and 1.7s decay release.
+- **Rubato Resampling**:
+  - Integrated `rubato` FastFixedIn resampler converting non-48kHz inputs (e.g., 44.1 kHz, 96 kHz) to 48 kHz stereo on ingest.
+- **Clock Drift Correction**:
+  - `DriftCorrector`: Monitors incoming audio timestamp progression against the master broadcast video clock.
+  - Corrects clock skew (e.g. ±40 ppm hardware oscillator drift) using zero-overhead micro-resampling (interpolating or dropping one sample pair at ±5 ms skew bounds).
+  - Keeps cumulative audio-video drift bounded strictly below 5 ms (well beneath the 20 ms tolerance over 30+ minutes of continuous streaming).
+- **WASAPI Device Ingest**:
+  - Implemented `enumerate_audio_devices()` via `cpal` to discover microphones, line inputs, and default loopback audio endpoints.
+- **M6 Acceptance Validation**: Verified via `tests/audio_mixer_test.rs`:
+  - Multi-source mix test with live peak and RMS meters.
+  - 30-minute soak simulation (90,000 chunks) with +40 ppm skew verifying clock drift remains under 5 ms (< 20 ms budget requirement).
