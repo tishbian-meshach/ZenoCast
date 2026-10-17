@@ -25,6 +25,11 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 );
             }
 
+            if ui.button("+ Camera").clicked() {
+                let name = format!("Camera {}", editor.composition.layers.len() + 1);
+                editor.add_camera_layer(&name);
+            }
+
             let can_delete = editor.selected_layer_id.is_some();
             if ui.add_enabled(can_delete, Button::new("Delete")).clicked() {
                 editor.delete_selected_layer();
@@ -76,6 +81,13 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                             {
                                 editor.composition.layers[i].visible =
                                     !editor.composition.layers[i].visible;
+                            }
+
+                            // 3D toggle
+                            let is_3d = editor.composition.layers[i].is_3d;
+                            let mode_3d_label = if is_3d { "[3D]" } else { "[2D]" };
+                            if ui.selectable_label(is_3d, mode_3d_label).clicked() {
+                                editor.composition.layers[i].is_3d = !is_3d;
                             }
 
                             // Layer Name click selects layer

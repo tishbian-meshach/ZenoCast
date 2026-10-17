@@ -374,11 +374,52 @@ impl Default for CameraSettings {
     fn default() -> Self {
         Self {
             field_of_view_degrees: Property::constant(60.0),
-            position: Property::constant(Vec3::new(0.0, 0.0, 1000.0)),
-            target: Property::constant(Vec3::ZERO),
+            position: Property::constant(Vec3::new(960.0, 540.0, -935.3074)),
+            target: Property::constant(Vec3::new(960.0, 540.0, 0.0)),
             near_plane: 0.1,
             far_plane: 10000.0,
         }
+    }
+}
+
+impl CameraSettings {
+    /// Constructs a standard broadcast perspective camera matching composition dimensions.
+    ///
+    /// At default distance `(height / 2.0) / tan(fov / 2)`, an object at z = 0.0 with size
+    /// equal to the composition resolution maps 1:1 with canvas pixels.
+    pub fn broadcast_default(width: u32, height: u32) -> Self {
+        let fov: f32 = 60.0;
+        let half_fov_rad = (fov / 2.0).to_radians();
+        let dist = (height as f32 / 2.0) / half_fov_rad.tan();
+        let center_x = width as f32 / 2.0;
+        let center_y = height as f32 / 2.0;
+
+        Self {
+            field_of_view_degrees: Property::constant(fov),
+            position: Property::constant(Vec3::new(center_x, center_y, -dist)),
+            target: Property::constant(Vec3::new(center_x, center_y, 0.0)),
+            near_plane: 0.1,
+            far_plane: 10000.0,
+        }
+    }
+
+    /// Evaluates camera properties at timestamp `t` and computes view, projection, and combined view-proj matrices.
+    pub fn compute_view_projection(&self, width: u32, height: u32, t: f64) -> (Mat4, Mat4, Mat4) {
+        let fov = self.field_of_view_degrees.evaluate_at(t);
+        let pos = self.position.evaluate_at(t);
+        let tgt = self.target.evaluate_at(t);
+        let aspect = (width as f32) / (height as f32).max(1.0);
+
+        let proj = Mat4::perspective_lh(
+            fov.to_radians(),
+            aspect,
+            self.near_plane.max(0.01),
+            self.far_plane.max(10.0),
+        );
+        let view = Mat4::look_at_lh(pos, tgt, Vec3::new(0.0, -1.0, 0.0));
+        let view_proj = proj * view;
+
+        (view, proj, view_proj)
     }
 }
 

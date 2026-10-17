@@ -40,6 +40,8 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
         // 1. Transform Section
         ui.collapsing("Transform", |ui| {
+            ui.checkbox(&mut layer.is_3d, "3D Layer (2.5D)");
+
             // Position
             ui.horizontal(|ui| {
                 let is_anim = layer.transform.position.is_animated();
@@ -54,11 +56,14 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
                 ui.label("Position X:");
                 let mut pos = *layer.transform.position.fallback_value();
-                if ui.add(DragValue::new(&mut pos.x).speed(1.0)).changed() {
-                    layer.transform.position = Property::constant(pos);
-                }
+                let mut changed = ui.add(DragValue::new(&mut pos.x).speed(1.0)).changed();
                 ui.label("Y:");
-                if ui.add(DragValue::new(&mut pos.y).speed(1.0)).changed() {
+                changed |= ui.add(DragValue::new(&mut pos.y).speed(1.0)).changed();
+                if layer.is_3d {
+                    ui.label("Z:");
+                    changed |= ui.add(DragValue::new(&mut pos.z).speed(1.0)).changed();
+                }
+                if changed {
                     layer.transform.position = Property::constant(pos);
                 }
             });
@@ -67,26 +72,40 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
             ui.horizontal(|ui| {
                 ui.label("Scale X (%):");
                 let mut scale = *layer.transform.scale_percent.fallback_value();
-                if ui
+                let mut changed = ui
                     .add(DragValue::new(&mut scale.x).speed(1.0).range(0.0..=1000.0))
-                    .changed()
-                {
-                    layer.transform.scale_percent = Property::constant(scale);
-                }
+                    .changed();
                 ui.label("Y (%):");
-                if ui
+                changed |= ui
                     .add(DragValue::new(&mut scale.y).speed(1.0).range(0.0..=1000.0))
-                    .changed()
-                {
+                    .changed();
+                if layer.is_3d {
+                    ui.label("Z (%):");
+                    changed |= ui
+                        .add(DragValue::new(&mut scale.z).speed(1.0).range(0.0..=1000.0))
+                        .changed();
+                }
+                if changed {
                     layer.transform.scale_percent = Property::constant(scale);
                 }
             });
 
             // Rotation
             ui.horizontal(|ui| {
-                ui.label("Rotation Z (deg):");
                 let mut rot = *layer.transform.rotation_degrees.fallback_value();
-                if ui.add(DragValue::new(&mut rot.z).speed(0.5)).changed() {
+                let mut changed = false;
+                if layer.is_3d {
+                    ui.label("Rot X:");
+                    changed |= ui.add(DragValue::new(&mut rot.x).speed(0.5)).changed();
+                    ui.label("Y (Flip):");
+                    changed |= ui.add(DragValue::new(&mut rot.y).speed(0.5)).changed();
+                    ui.label("Z:");
+                    changed |= ui.add(DragValue::new(&mut rot.z).speed(0.5)).changed();
+                } else {
+                    ui.label("Rotation Z (deg):");
+                    changed |= ui.add(DragValue::new(&mut rot.z).speed(0.5)).changed();
+                }
+                if changed {
                     layer.transform.rotation_degrees = Property::constant(rot);
                 }
             });
@@ -206,6 +225,58 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                         });
                     }
                     _ => {}
+                });
+            }
+            LayerContent::Camera(cam) => {
+                ui.collapsing("Camera Settings", |ui| {
+                    ui.horizontal(|ui| {
+                        let mut fov = *cam.field_of_view_degrees.fallback_value();
+                        ui.label("Field of View (deg):");
+                        if ui.add(Slider::new(&mut fov, 10.0..=120.0)).changed() {
+                            cam.field_of_view_degrees = Property::constant(fov);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut pos = *cam.position.fallback_value();
+                        ui.label("Position X:");
+                        let mut c = ui.add(DragValue::new(&mut pos.x).speed(1.0)).changed();
+                        ui.label("Y:");
+                        c |= ui.add(DragValue::new(&mut pos.y).speed(1.0)).changed();
+                        ui.label("Z:");
+                        c |= ui.add(DragValue::new(&mut pos.z).speed(1.0)).changed();
+                        if c {
+                            cam.position = Property::constant(pos);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut tgt = *cam.target.fallback_value();
+                        ui.label("Target X:");
+                        let mut c = ui.add(DragValue::new(&mut tgt.x).speed(1.0)).changed();
+                        ui.label("Y:");
+                        c |= ui.add(DragValue::new(&mut tgt.y).speed(1.0)).changed();
+                        ui.label("Z:");
+                        c |= ui.add(DragValue::new(&mut tgt.z).speed(1.0)).changed();
+                        if c {
+                            cam.target = Property::constant(tgt);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Near Plane:");
+                        ui.add(
+                            DragValue::new(&mut cam.near_plane)
+                                .speed(0.1)
+                                .range(0.01..=100.0),
+                        );
+                        ui.label("Far Plane:");
+                        ui.add(
+                            DragValue::new(&mut cam.far_plane)
+                                .speed(10.0)
+                                .range(100.0..=100000.0),
+                        );
+                    });
                 });
             }
             _ => {}

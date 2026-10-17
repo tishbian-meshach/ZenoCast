@@ -182,4 +182,10 @@ pub struct ResolvedFrame {
     pub height: u32,
     /// Ordered list of active, visible layers ready for drawing.
     pub layers: Vec<ResolvedLayer>,
+    /// Evaluated view-projection matrix (perspective if Camera layer exists, else orthographic).
+    pub view_proj_matrix: Mat4,
+    /// Whether this frame was evaluated with a 3D perspective camera.
+    pub is_perspective: bool,
+    /// Evaluated camera view matrix if a camera is active.
+    pub camera_view: Option<Mat4>,
 }

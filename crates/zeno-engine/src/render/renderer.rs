@@ -104,15 +104,27 @@ impl ZenoRenderer {
         target_width: u32,
         target_height: u32,
     ) {
-        // 1. Compute view-projection matrix
-        let view_proj = Mat4::orthographic_lh(
-            0.0,
-            target_width as f32,
-            target_height as f32,
-            0.0,
-            -1000.0,
-            1000.0,
-        );
+        // 1. Compute view-projection matrix from evaluated frame
+        let view_proj = if target_width == frame.width && target_height == frame.height {
+            frame.view_proj_matrix
+        } else if frame.is_perspective {
+            let aspect = target_width as f32 / (target_height as f32).max(1.0);
+            let proj = Mat4::perspective_lh(60.0f32.to_radians(), aspect, 0.1, 10000.0);
+            if let Some(view) = frame.camera_view {
+                proj * view
+            } else {
+                frame.view_proj_matrix
+            }
+        } else {
+            Mat4::orthographic_lh(
+                0.0,
+                target_width as f32,
+                target_height as f32,
+                0.0,
+                -10000.0,
+                10000.0,
+            )
+        };
 
         self.pipeline.update_global_matrix(queue, view_proj);
 

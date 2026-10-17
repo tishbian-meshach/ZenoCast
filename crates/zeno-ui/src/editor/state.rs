@@ -153,6 +153,26 @@ impl OverlayEditor {
         id
     }
 
+    /// Adds a new perspective camera layer with undo support.
+    pub fn add_camera_layer(&mut self, name: &str) -> LayerId {
+        let id = LayerId::new();
+        let cam_settings = zeno_engine::CameraSettings::broadcast_default(
+            self.composition.width,
+            self.composition.height,
+        );
+        let mut layer = Layer::new(id, name, LayerContent::Camera(cam_settings));
+        layer.is_3d = true;
+
+        let index = self.composition.layers.len();
+        self.history.execute(
+            Box::new(AddLayerCommand::new(layer, index)),
+            &mut self.composition,
+        );
+
+        self.selected_layer_id = Some(id);
+        id
+    }
+
     /// Deletes the currently selected layer with undo support.
     pub fn delete_selected_layer(&mut self) -> bool {
         if let Some(id) = self.selected_layer_id {

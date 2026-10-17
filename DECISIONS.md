@@ -344,5 +344,27 @@ This log records major architectural and implementation choices, defaults select
   - Lottie animation import: verified cubic bezier keyframes evaluate smoothly over time (t=0.0s, 1.0s, 2.0s).
   - Auto data-binding generation verified for both PSD and Lottie layers.
 
+## 2026-10-18: M13 2.5D Transforms and Camera
+
+- **Perspective Camera Layer (`CameraSettings`)**:
+  - Implemented `CameraSettings::broadcast_default(width, height)`: automatically positions the virtual camera at focal distance $d = (height / 2.0) / \tan(fov / 2)$ looking towards canvas center $(width / 2, height / 2, 0)$, establishing exact 1:1 pixel coordinates on the $Z=0$ composition plane.
+  - Implemented `compute_view_projection(&self, width, height, t)`: resolves animated FOV, camera eye position, and target into left-handed view matrix (`Mat4::look_at_lh`) and perspective projection matrix (`Mat4::perspective_lh`).
+  - `ResolvedFrame` carries `view_proj_matrix`, `is_perspective`, and `camera_view`.
+- **2.5D Layer Transforms (`is_3d`)**:
+  - Layers with `is_3d = true` participate in full 3D translation (X, Y, Z), 3D anchor points, 3D scale, and 3D Euler rotations (pitch along X, card-flip yaw along Y, roll along Z).
+  - Renderer uses `frame.view_proj_matrix` directly, mapping 3D layer quads through GPU vertex shader into perspective clip coordinates.
+- **Depth Sorting Rules (Layer Order + Per-Layer Depth)**:
+  - Implemented Section 13 M13 sorting: when 3D layers or a camera are present, layers are sorted back-to-front by their distance from camera (`view.transform_point3(center).z` descending).
+  - When layer depths are equal (e.g. 2D planes at $Z=0$ or within epsilon $0.001$), composition layer index order breaks the tie, strictly preserving 2D broadcast layer stacking.
+- **Broadcast Motion Graphics Editor 3D Gizmos**:
+  - `canvas.rs`: renders 3D coordinate axes gizmo (Red for X, Green for Y, Blue for Z) with interactive handles when a 3D layer is selected.
+  - `layers_panel.rs`: adds `+ Camera` button and `[3D]` / `[2D]` badge toggles.
+  - `properties_panel.rs`: adds 3D transform fields (X, Y, Z Position, X, Y, Z Rotation with card-flip label, Z Scale) and full Camera settings inspector (FOV slider, eye position, target, near/far planes).
+- **M13 Acceptance Validation**: Verified via `tests/transforms_3d_test.rs`:
+  - 3D card-flip animation: verified Y-axis rotation from 0° (front face) to 90° (edge-on) to 180° (flipped).
+  - Parallax lower-third with camera move: verified depth sorting order (Background -> Midground -> Foreground) and perspective parallax ratio (> 2.5x foreground displacement vs background).
+  - Tie-breaker depth sorting: verified original layer order is maintained on depth ties.
+
+
 
 

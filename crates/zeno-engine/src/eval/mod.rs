@@ -129,9 +129,31 @@ pub fn evaluate(
         .collect();
 
     let mut layer_map: HashMap<LayerId, &Layer> = HashMap::with_capacity(active_layers.len());
+    let mut active_camera = None;
     for layer in &active_layers {
         layer_map.insert(layer.id, layer);
+        if active_camera.is_none() {
+            if let LayerContent::Camera(ref cam_settings) = layer.content {
+                active_camera = Some(cam_settings.clone());
+            }
+        }
     }
+
+    let (view_proj_matrix, is_perspective, camera_view) = if let Some(cam) = active_camera {
+        let (view, _proj, view_proj) =
+            cam.compute_view_projection(composition.width, composition.height, time_seconds);
+        (view_proj, true, Some(view))
+    } else {
+        let ortho = Mat4::orthographic_lh(
+            0.0,
+            composition.width as f32,
+            composition.height as f32,
+            0.0,
+            -10000.0,
+            10000.0,
+        );
+        (ortho, false, None)
+    };
 
     // 2. Evaluate local transforms and content for each active layer
     let mut local_matrices: HashMap<LayerId, Mat4> = HashMap::with_capacity(active_layers.len());
@@ -537,11 +559,47 @@ pub fn evaluate(
     }
     resolved_layers.extend(repeater_instances);
 
+    // Section 13 M13: Depth sorting rules (layer order plus per-layer depth)
+    let has_3d = resolved_layers.iter().any(|l| l.is_3d) || is_perspective;
+    if has_3d {
+        let mut indexed_layers: Vec<(usize, f32, ResolvedLayer)> = resolved_layers
+            .into_iter()
+            .enumerate()
+            .map(|(idx, l)| {
+                let center = l.world_matrix.transform_point3(Vec3::ZERO);
+                let depth = if let Some(view) = camera_view {
+                    view.transform_point3(center).z
+                } else {
+                    center.z
+                };
+                (idx, depth, l)
+            })
+            .collect();
+
+        // Sort back-to-front (far to near).
+        // In left-handed coordinates, camera looks along +Z, so higher positive Z is further away.
+        // Therefore, descending order of depth (largest Z first, smallest Z last).
+        indexed_layers.sort_by(|(idx_a, depth_a, _), (idx_b, depth_b, _)| {
+            if (depth_a - depth_b).abs() > 0.001 {
+                depth_b
+                    .partial_cmp(depth_a)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            } else {
+                idx_a.cmp(idx_b)
+            }
+        });
+
+        resolved_layers = indexed_layers.into_iter().map(|(_, _, l)| l).collect();
+    }
+
     ResolvedFrame {
         time_seconds,
         width: composition.width,
         height: composition.height,
         layers: resolved_layers,
+        view_proj_matrix,
+        is_perspective,
+        camera_view,
     }
 }
 

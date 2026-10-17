@@ -25,3 +25,8 @@ path = "../../tests/golden_render_test.rs"
 [[test]]
 name = "lifecycle_test"
 path = "../../tests/lifecycle_test.rs"
+
+[[test]]
+name = "transforms_3d_test"
+path = "../../tests/transforms_3d_test.rs"
+
