@@ -413,10 +413,41 @@ pub fn evaluate(
                     layer.content.clone(),
                 )
             }
-            LayerContent::Model3D { asset } => (
-                ResolvedContent::Model3D { asset: *asset },
-                LayerContent::Model3D { asset: *asset },
-            ),
+            LayerContent::Model3D(model3d) => {
+                let auto_rot = resolve_vec3(
+                    &model3d.auto_rotate_deg_per_sec,
+                    data_snapshot,
+                    time_seconds,
+                );
+                let speed = resolve_f32(&model3d.animation_speed, data_snapshot, time_seconds);
+                let rotation_degrees = auto_rot * (time_seconds as f32 * speed);
+                let metallic =
+                    resolve_f32(&model3d.metallic, data_snapshot, time_seconds).clamp(0.0, 1.0);
+                let roughness =
+                    resolve_f32(&model3d.roughness, data_snapshot, time_seconds).clamp(0.01, 1.0);
+                let base_color =
+                    resolve_color(&model3d.base_color, data_snapshot, time_seconds).to_f32_array();
+                let light_dir = resolve_vec3(&model3d.light_direction, data_snapshot, time_seconds)
+                    .normalize_or_zero();
+                let light_col =
+                    resolve_color(&model3d.light_color, data_snapshot, time_seconds).to_f32_array();
+                let amb_col = resolve_color(&model3d.ambient_color, data_snapshot, time_seconds)
+                    .to_f32_array();
+
+                (
+                    ResolvedContent::Model3D {
+                        asset: model3d.asset,
+                        rotation_degrees,
+                        metallic,
+                        roughness,
+                        base_color,
+                        light_direction: [light_dir.x, light_dir.y, light_dir.z, 0.0],
+                        light_color: light_col,
+                        ambient_color: amb_col,
+                    },
+                    layer.content.clone(),
+                )
+            }
             LayerContent::Camera(_) => (ResolvedContent::Camera, layer.content.clone()),
             LayerContent::Repeater {
                 template_group,

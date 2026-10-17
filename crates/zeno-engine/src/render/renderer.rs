@@ -2,28 +2,47 @@ use crate::eval::{
     evaluate_at, ResolvedContent, ResolvedFill, ResolvedFrame, ResolvedShapeGeometry,
 };
 use crate::model::{Composition, LayerContent};
+use crate::render::model3d::{GltfModel, GpuMesh, Model3DPipeline, ModelUniforms};
 use crate::render::pipeline::{CompositorPipeline, LayerUniforms};
 use crate::render::text_raster::RasterCache;
 use crate::render::texture_pool::TexturePool;
+use glam::Quat;
 use std::collections::HashMap;
+use std::sync::Arc;
 use wgpu::{
-    BufferUsages, CommandEncoderDescriptor, Device, Extent3d, Origin3d, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, TexelCopyBufferInfo, TexelCopyBufferLayout,
-    TexelCopyTextureInfo, TextureAspect, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureUsages, TextureView, TextureViewDescriptor,
+    BindGroup, BufferUsages, CommandEncoderDescriptor, Device, Extent3d, IndexFormat, Origin3d,
+    Queue, RenderPassColorAttachment, RenderPassDescriptor, TexelCopyBufferInfo,
+    TexelCopyBufferLayout, TexelCopyTextureInfo, TextureAspect, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
 use zeno_core::{AssetId, Color, Mat4, Vec3};
+
+/// Internal rendering command representing either a 2D composite quad or a 3D lit mesh.
+enum RenderCommand {
+    Quad {
+        layer_bind_group: BindGroup,
+        tex_bind_group: Option<BindGroup>,
+    },
+    Mesh3D {
+        model_bind_group: BindGroup,
+        gpu_mesh: Arc<GpuMesh>,
+    },
+}
 
 /// Headless and on-screen compositor rendering engine.
 pub struct ZenoRenderer {
     /// GPU shader pipeline and mesh buffers.
     pub pipeline: CompositorPipeline,
+    /// Dedicated 3D PBR shader pipeline.
+    pub model_pipeline: Model3DPipeline,
     /// Texture pool for zero-allocation intermediate frame targets.
     pub texture_pool: TexturePool,
     /// Text and vector rasterization cache.
     pub raster_cache: RasterCache,
     /// Loaded image texture cache: AssetId -> (Texture, TextureView, width, height).
     pub image_cache: HashMap<AssetId, (wgpu::Texture, TextureView, u32, u32)>,
+    /// Loaded 3D GPU mesh cache: AssetId -> GpuMesh.
+    pub model_cache: HashMap<AssetId, Arc<GpuMesh>>,
     /// Target surface format.
     pub target_format: TextureFormat,
 }
@@ -32,16 +51,26 @@ impl ZenoRenderer {
     /// Initialize a new renderer instance.
     pub fn new(device: &Device, queue: &Queue, target_format: TextureFormat) -> Self {
         let pipeline = CompositorPipeline::new(device, queue, target_format);
+        let model_pipeline =
+            Model3DPipeline::new(device, &pipeline.global_bind_group_layout, target_format);
         let texture_pool = TexturePool::new();
         let raster_cache = RasterCache::new();
 
         Self {
             pipeline,
+            model_pipeline,
             texture_pool,
             raster_cache,
             image_cache: HashMap::new(),
+            model_cache: HashMap::new(),
             target_format,
         }
+    }
+
+    /// Registers a 3D model asset in the GPU mesh cache.
+    pub fn register_model_asset(&mut self, device: &Device, asset_id: AssetId, model: &GltfModel) {
+        let gpu_mesh = GpuMesh::from_model(device, model);
+        self.model_cache.insert(asset_id, Arc::new(gpu_mesh));
     }
 
     /// Register a raw RGBA8 bitmap image asset into the GPU texture cache.
@@ -135,8 +164,8 @@ impl ZenoRenderer {
             }
         }
 
-        // 3. Build per-layer draw items
-        let mut draw_items = Vec::new();
+        // 3. Build per-layer draw commands
+        let mut draw_commands = Vec::new();
 
         for resolved in &frame.layers {
             let opacity = resolved.net_opacity;
@@ -215,7 +244,10 @@ impl ZenoRenderer {
                     let (_buf, layer_bind_group) =
                         self.pipeline.create_layer_bind_group(device, &uniforms);
 
-                    draw_items.push((layer_bind_group, None));
+                    draw_commands.push(RenderCommand::Quad {
+                        layer_bind_group,
+                        tex_bind_group: None,
+                    });
                 }
                 ResolvedContent::Image { asset } => {
                     if let Some((_tex, view, width, height)) = self.image_cache.get(asset) {
@@ -236,7 +268,10 @@ impl ZenoRenderer {
                             self.pipeline.create_layer_bind_group(device, &uniforms);
                         let tex_bind_group = self.pipeline.create_texture_bind_group(device, view);
 
-                        draw_items.push((layer_bind_group, Some(tex_bind_group)));
+                        draw_commands.push(RenderCommand::Quad {
+                            layer_bind_group,
+                            tex_bind_group: Some(tex_bind_group),
+                        });
                     }
                 }
                 ResolvedContent::Text(_) => {
@@ -265,7 +300,10 @@ impl ZenoRenderer {
                             let tex_bind_group =
                                 self.pipeline.create_texture_bind_group(device, &text_view);
 
-                            draw_items.push((layer_bind_group, Some(tex_bind_group)));
+                            draw_commands.push(RenderCommand::Quad {
+                                layer_bind_group,
+                                tex_bind_group: Some(tex_bind_group),
+                            });
                         }
                     }
                 }
@@ -299,8 +337,59 @@ impl ZenoRenderer {
                         let tex_bind_group = sprite_view
                             .map(|view| self.pipeline.create_texture_bind_group(device, view));
 
-                        draw_items.push((layer_bind_group, tex_bind_group));
+                        draw_commands.push(RenderCommand::Quad {
+                            layer_bind_group,
+                            tex_bind_group,
+                        });
                     }
+                }
+                ResolvedContent::Model3D {
+                    asset,
+                    rotation_degrees,
+                    metallic,
+                    roughness,
+                    base_color,
+                    light_direction,
+                    light_color,
+                    ambient_color,
+                } => {
+                    let gpu_mesh = if let Some(mesh) = self.model_cache.get(asset) {
+                        mesh.clone()
+                    } else {
+                        let default_logo = GltfModel::create_esports_logo();
+                        let mesh = Arc::new(GpuMesh::from_model(device, &default_logo));
+                        self.model_cache.insert(*asset, mesh.clone());
+                        mesh
+                    };
+
+                    let rot_rad = Vec3::new(
+                        rotation_degrees.x.to_radians(),
+                        rotation_degrees.y.to_radians(),
+                        rotation_degrees.z.to_radians(),
+                    );
+                    let rot_quat =
+                        Quat::from_euler(glam::EulerRot::YXZ, rot_rad.y, rot_rad.x, rot_rad.z);
+                    let model_world = resolved.world_matrix * Mat4::from_quat(rot_quat);
+                    let normal_matrix = model_world.inverse().transpose();
+
+                    let uniforms = ModelUniforms {
+                        world: model_world.to_cols_array_2d(),
+                        normal_matrix: normal_matrix.to_cols_array_2d(),
+                        base_color: *base_color,
+                        light_dir: *light_direction,
+                        light_color: *light_color,
+                        ambient_color: *ambient_color,
+                        pbr_params: [*metallic, *roughness, opacity, 0.0],
+                    };
+
+                    let (_buf, model_bind_group) = self
+                        .model_pipeline
+                        .create_model_bind_group(device, &uniforms);
+
+                    draw_commands.push(RenderCommand::Mesh3D {
+                        model_bind_group,
+                        gpu_mesh,
+                    });
                 }
                 _ => {}
             }
@@ -332,18 +421,44 @@ impl ZenoRenderer {
                 occlusion_query_set: None,
             });
 
-            rpass.set_pipeline(&self.pipeline.pipeline);
-            rpass.set_bind_group(0, &self.pipeline.global_bind_group, &[]);
-            self.pipeline.bind_quad(&mut rpass);
+            let mut active_pipeline_kind = 0; // 0: None, 1: Quad, 2: 3D Mesh
 
-            for (layer_bind_group, tex_bind_group) in &draw_items {
-                rpass.set_bind_group(1, layer_bind_group, &[]);
-                if let Some(tex_bg) = tex_bind_group {
-                    rpass.set_bind_group(2, tex_bg, &[]);
-                } else {
-                    rpass.set_bind_group(2, &self.pipeline.white_bind_group, &[]);
+            for cmd in &draw_commands {
+                match cmd {
+                    RenderCommand::Quad {
+                        layer_bind_group,
+                        tex_bind_group,
+                    } => {
+                        if active_pipeline_kind != 1 {
+                            rpass.set_pipeline(&self.pipeline.pipeline);
+                            rpass.set_bind_group(0, &self.pipeline.global_bind_group, &[]);
+                            self.pipeline.bind_quad(&mut rpass);
+                            active_pipeline_kind = 1;
+                        }
+                        rpass.set_bind_group(1, layer_bind_group, &[]);
+                        if let Some(tex_bg) = tex_bind_group {
+                            rpass.set_bind_group(2, tex_bg, &[]);
+                        } else {
+                            rpass.set_bind_group(2, &self.pipeline.white_bind_group, &[]);
+                        }
+                        rpass.draw_indexed(0..6, 0, 0..1);
+                    }
+                    RenderCommand::Mesh3D {
+                        model_bind_group,
+                        gpu_mesh,
+                    } => {
+                        if active_pipeline_kind != 2 {
+                            rpass.set_pipeline(&self.model_pipeline.pipeline);
+                            rpass.set_bind_group(0, &self.pipeline.global_bind_group, &[]);
+                            active_pipeline_kind = 2;
+                        }
+                        rpass.set_bind_group(1, model_bind_group, &[]);
+                        rpass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));
+                        rpass
+                            .set_index_buffer(gpu_mesh.index_buffer.slice(..), IndexFormat::Uint32);
+                        rpass.draw_indexed(0..gpu_mesh.index_count, 0, 0..1);
+                    }
                 }
-                rpass.draw_indexed(0..6, 0, 0..1);
             }
         }
 

@@ -553,6 +553,45 @@ impl CameraSettings {
     }
 }
 
+/// 3D glTF mesh model layer configuration.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Model3DContent {
+    /// Asset identifier referencing the 3D model data.
+    pub asset: AssetId,
+    /// Playback speed multiplier for animations (1.0 = normal).
+    pub animation_speed: Property<f32>,
+    /// Continuous auto-rotation speed in degrees per second around X, Y, Z.
+    pub auto_rotate_deg_per_sec: Property<Vec3>,
+    /// PBR metallic factor (0.0 to 1.0).
+    pub metallic: Property<f32>,
+    /// PBR roughness factor (0.0 to 1.0).
+    pub roughness: Property<f32>,
+    /// Base tint / albedo color.
+    pub base_color: Property<Color>,
+    /// Directional key light vector (normalized).
+    pub light_direction: Property<Vec3>,
+    /// Directional light color and intensity.
+    pub light_color: Property<Color>,
+    /// Ambient illumination color.
+    pub ambient_color: Property<Color>,
+}
+
+impl Default for Model3DContent {
+    fn default() -> Self {
+        Self {
+            asset: AssetId::new(),
+            animation_speed: Property::constant(1.0),
+            auto_rotate_deg_per_sec: Property::constant(Vec3::new(0.0, 60.0, 0.0)),
+            metallic: Property::constant(0.85),
+            roughness: Property::constant(0.2),
+            base_color: Property::constant(Color::rgb(0.95, 0.8, 0.2)),
+            light_direction: Property::constant(Vec3::new(-0.5, 0.8, -0.6).normalize()),
+            light_color: Property::constant(Color::WHITE),
+            ambient_color: Property::constant(Color::rgb(0.25, 0.25, 0.3)),
+        }
+    }
+}
+
 /// Specific content payload of a layer.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -585,10 +624,7 @@ pub enum LayerContent {
     /// GPU accelerated particle emitter.
     Particles(ParticleEmitter),
     /// 3D glTF mesh model.
-    Model3D {
-        /// Asset identifier.
-        asset: AssetId,
-    },
+    Model3D(Model3DContent),
     /// Virtual 3D camera layer.
     Camera(CameraSettings),
     /// Repeater layer instancing a template group once per data row.

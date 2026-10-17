@@ -497,8 +497,25 @@ This log records major architectural and implementation choices, defaults select
   - Crash recovery and autosave state restoration verified.
   - Memory soak test: ran 1,000 continuous frames through memory ring buffers with strictly < 5.0% memory variance (0.00% growth after prime).
 
+## 2026-10-18: M19 glTF Model Layers (`feat(engine): glTF model layers`)
 
-
-
-
-
+- **3D Model Layer Content (`Model3DContent`)**:
+  - Added `Model3DContent` in `zeno-engine/src/model.rs` and corresponding `LayerContent::Model3D(Model3DContent)`.
+  - Animatable properties: `asset` (AssetId), `auto_rotate_deg_per_sec` (Property<Vec3>), `metallic` (Property<f32>), `roughness` (Property<f32>), `base_color` (Property<Color>), `light_direction`, `light_color`, and `ambient_color`.
+- **Procedural 3D Mesh & Binary GLB Parser (`zeno-engine/src/render/model3d.rs`)**:
+  - `GltfModel` and `ModelVertex` structure containing 3D spatial position, analytical surface normals, and UV coordinates.
+  - Procedural 3D esports championship crest / shield logo generation with beveled facets and front relief emblems.
+  - Procedural cube generator with 6 discrete face normals for broadcast stage props.
+  - Binary GLB parser: decodes GLB 12-byte header, verifies magic `0x46546C67` ("glTF"), version 2, JSON chunk type `0x4E4F534A`, and BIN chunk type `0x004E4942`.
+  - `GpuMesh`: uploads vertex and index data into dedicated GPU buffers.
+- **PBR Render Pipeline & WGSL Shaders (`Model3DPipeline`)**:
+  - Dedicated WGSL PBR shader with Blinn-Phong/microfacet specular highlights, metallic surface reflection, directional key lighting, and ambient fill.
+  - Depth-aware overlay blending into the compositor render pass.
+- **Timeline Evaluation & Renderer Integration**:
+  - `zeno-engine/src/eval/mod.rs`: continuous evaluation of auto-rotation per second (`base_rotation + auto_rotate * time`), resolving to `ResolvedContent::Model3D`.
+  - `zeno-engine/src/render/renderer.rs`: integrated 3D mesh draw commands alongside 2D quads in `ZenoRenderer::render_resolved_frame`.
+- **M19 Acceptance Validation**: Verified via `tests/gltf_render_test.rs`:
+  - Procedural geometry and unit normal vectors verified.
+  - GLB header and chunk decoding verified.
+  - Deterministic rotation playback across timestamps ($60^\circ/\text{s} \times 1.5\text{s} = 90^\circ$) validated.
+  - 1080p GPU overlay render verified with 72,000+ lit pixels and bright specular highlights (>250 brightness).

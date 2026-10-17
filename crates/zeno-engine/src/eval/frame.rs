@@ -1,7 +1,7 @@
 //! Fully evaluated frame and layer structures consumed by renderers and export pipelines.
 
 use crate::model::{BlendMode, GradientStop, Layer, TextAlignment};
-use zeno_core::{AssetId, Color, LayerId, Mat4, Vec2};
+use zeno_core::{AssetId, Color, LayerId, Mat4, Vec2, Vec3};
 
 /// Evaluated shape fill with concrete color or gradient stops.
 #[derive(Debug, Clone, PartialEq)]
@@ -147,10 +147,24 @@ pub enum ResolvedContent {
         /// Optional sprite texture asset.
         sprite_asset: Option<AssetId>,
     },
-    /// 3D model asset.
+    /// 3D model asset with resolved PBR parameters.
     Model3D {
         /// Asset reference ID.
         asset: AssetId,
+        /// Cumulative rotation in degrees [x, y, z].
+        rotation_degrees: Vec3,
+        /// Metallic factor.
+        metallic: f32,
+        /// Roughness factor.
+        roughness: f32,
+        /// Base color.
+        base_color: [f32; 4],
+        /// Directional light vector.
+        light_direction: [f32; 4],
+        /// Directional light color.
+        light_color: [f32; 4],
+        /// Ambient light color.
+        ambient_color: [f32; 4],
     },
     /// Scene perspective or orthographic camera.
     Camera,

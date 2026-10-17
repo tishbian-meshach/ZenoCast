@@ -39,4 +39,9 @@ path = "../../tests/particle_system_test.rs"
 name = "expressions_test"
 path = "../../tests/expressions_test.rs"
 
+[[test]]
+name = "gltf_render_test"
+path = "../../tests/gltf_render_test.rs"
+
+
 

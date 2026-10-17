@@ -18,12 +18,12 @@ pub use eval::{
 };
 pub use model::{
     AnimationState, AssetKind, AssetRef, BlendMode, CameraSettings, Composition, Effect, Fill,
-    GradientStop, Layer, LayerContent, Mask, MaskMode, ParticleEmitter, ShapeContent,
-    ShapeGeometry, StatePlayback, Stroke, TextAlignment, TextContent, Transform3D,
+    GradientStop, Layer, LayerContent, Mask, MaskMode, Model3DContent, ParticleEmitter,
+    ShapeContent, ShapeGeometry, StatePlayback, Stroke, TextAlignment, TextContent, Transform3D,
 };
 pub use render::{
-    CompositorPipeline, GpuContext, LayerUniforms, PooledTexture, RasterCache, TexturePool,
-    ZenoRenderer,
+    CompositorPipeline, GltfModel, GpuContext, GpuMesh, LayerUniforms, Model3DPipeline,
+    ModelUniforms, ModelVertex, PooledTexture, RasterCache, TexturePool, ZenoRenderer,
 };
 
 #[cfg(test)]

@@ -108,6 +108,8 @@ pub struct CompositorPipeline {
     pub index_buffer: Buffer,
     /// Global uniform buffer.
     pub global_buffer: Buffer,
+    /// Global uniform bind group layout.
+    pub global_bind_group_layout: BindGroupLayout,
     /// Global bind group.
     pub global_bind_group: BindGroup,
     /// Layer uniform bind group layout.
@@ -342,6 +344,7 @@ impl CompositorPipeline {
             vertex_buffer,
             index_buffer,
             global_buffer,
+            global_bind_group_layout,
             global_bind_group,
             layer_bind_group_layout,
             texture_bind_group_layout,
