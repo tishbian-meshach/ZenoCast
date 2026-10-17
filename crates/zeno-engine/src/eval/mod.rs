@@ -2,6 +2,7 @@
 
 pub mod clock;
 pub mod frame;
+pub mod lifecycle;
 pub mod snapshot;
 
 pub use clock::{PlaybackClock, PlaybackState};
@@ -9,6 +10,7 @@ pub use frame::{
     ResolvedContent, ResolvedFill, ResolvedFrame, ResolvedLayer, ResolvedShape,
     ResolvedShapeGeometry, ResolvedStroke, ResolvedText,
 };
+pub use lifecycle::{LifecycleController, LifecycleManager};
 pub use snapshot::DataSnapshot;
 
 use crate::model::{

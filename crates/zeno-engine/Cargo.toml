@@ -16,7 +16,12 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true }
 pollster = { workspace = true }
 image = { workspace = true }
+uuid = { workspace = true }
 
 [[test]]
 name = "golden_render_test"
 path = "../../tests/golden_render_test.rs"
+
+[[test]]
+name = "lifecycle_test"
+path = "../../tests/lifecycle_test.rs"

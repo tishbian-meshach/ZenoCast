@@ -251,6 +251,22 @@ This log records major architectural and implementation choices, defaults select
   - JSON and CSV files loaded into data store; 1,000 keys updated across 60 frames (60 Hz) well beneath 16.6ms real-time frame budget without dropped frames.
   - Text layer with string template bound to data store updates within 1 frame.
   - State machine transitions sequentially through Idle -> In -> Active -> Out, each firing corresponding action.
-  - Data-triggered state transition verified with throttling.
+
+## 2026-10-18: M10b Overlay and Screen In/Loop/Out Lifecycle
+
+- **Lifecycle Model & Controllers (`LifecycleController`, `LifecycleManager`)**:
+  - Implemented standard broadcast overlay lifecycle state machine (`Hidden`, `In`, `Loop`, `Out`) according to Section 6.
+  - Entrance (`play_in`): transitions from `Hidden` into `In`, advancing timeline clock through the intro span, smoothly handing off to `Loop`.
+  - Looping (`Loop`): supports indefinite looping with standard or ping-pong playback (forward and reverse oscillation across `loop_range`).
+  - Exit (`play_out`): transitions cleanly into `Out`, advancing through exit span and cutting to `Hidden` upon completion.
+  - Zero-Pop Interruption Blending: When `play_out` is triggered mid-entrance or `play_in` is triggered mid-exit, `effective_alpha()` computes the normalized instantaneous opacity without snapping or 1-frame pops.
+  - Multi-Overlay Management: `LifecycleManager` coordinates multiple independent screen overlays with per-overlay triggers and broadcast-wide "All In" / "All Out" commands.
+- **Broadcast Operator UI**:
+  - Implemented `ui_overlay_lifecycle_panel` displaying per-overlay live status chips, phase indicators (Hidden / In / Loop / Out), progress bars, ping-pong loop toggles, and instant manual triggers.
+- **M10b Acceptance Validation**: Verified via `tests/lifecycle_test.rs`:
+  - Overlay Play In plays entrance, smoothly loops, and Play Out cuts cleanly to hidden.
+  - Ping-pong loop toggles and oscillates correctly between start and end bounds.
+  - Out triggered mid-In transition smoothly interrupts without visual pop.
+  - Multiple independent overlays advance simultaneously with distinct lifecycle phases.
 
 

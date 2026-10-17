@@ -6,6 +6,7 @@
 pub mod app;
 pub mod dock;
 pub mod editor;
+pub mod overlay_control;
 pub mod project;
 pub mod settings;
 pub mod theme;
@@ -13,6 +14,7 @@ pub mod theme;
 pub use app::ZenocastApp;
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
+pub use overlay_control::ui_overlay_lifecycle_panel;
 pub use project::{
     Autosaver, Project, ProjectError, SceneDefinition, SourceDefinition, SourceKind,
 };
