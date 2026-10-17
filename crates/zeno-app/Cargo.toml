@@ -17,3 +17,8 @@ zeno-ui = { path = "../zeno-ui" }
 zeno-compositor = { path = "../zeno-compositor" }
 zeno-output = { path = "../zeno-output" }
 zeno-control = { path = "../zeno-control" }
+zeno-audio = { path = "../zeno-audio" }
+zeno-media = { path = "../zeno-media" }
+eframe = { workspace = true }
+egui = { workspace = true }
+tracing = { workspace = true }

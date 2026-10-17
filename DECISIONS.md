@@ -172,3 +172,33 @@ This log records major architectural and implementation choices, defaults select
   - Manual stream key fallback bypassing OAuth and streaming directly.
   - PKCE code verifier and SHA-256 S256 challenge generation.
 
+## 2026-10-17: M8 App Shell and UI Foundation
+
+- **Visual Design & Token Strictness**:
+  - Implemented broadcast design token palette in `zeno-ui/src/theme.rs` according to Section 7:
+    - Neutral surfaces: `SURFACE_0` (`#0E0F11`), `SURFACE_1` (`#15171A`), `SURFACE_2` (`#1D2024`), `SURFACE_3` (`#272B30`).
+    - Typography: `TEXT` (`#E7E9EC`), `TEXT_MUTED` (`#8E959D`).
+    - Semantic indicators: `ACCENT` (`#4C8DFF`), `RED_LIVE` (`#E5484D`), `AMBER_WARN` (`#F5A524`).
+    - Layout: 8px spatial grid, 1px solid borders, 4px corner radii, 28px list row heights, 32px button heights.
+  - Zero-gradient and no-color-literals policy enforced via static unit test scanner in `tests::test_strict_theme_and_no_color_literals_outside_theme`.
+- **Dockable Studio Layout (`egui_dock`)**:
+  - Implemented `create_default_live_layout()` providing dockable panels across 6 primary studio views:
+    - `PreviewProgramTab`: Dual preview and program broadcast monitors with centered studio T-Bar slider and Quick Cut / Auto transition triggers.
+    - `ScenesTab`: Scene list with Add, Duplicate, Remove, Rename, click-to-preview, and double-click-to-live.
+    - `SourcesTab`: Scene item hierarchy supporting Display Capture, Window Capture, Camera Feed, and ARX Overlay sources with visibility toggling and transform locks.
+    - `MixerTab`: 6-track audio mixer featuring master and per-source faders with logarithmic decibel scaling (-60 to +12 dB), mute toggling, and live visual meters.
+    - `TransitionsTab`: Selector for Cut, Fade, Slide, Wipe, and Stinger transitions with adjustable duration (50ms - 2000ms).
+    - `StreamControlsTab`: Live streaming toggle, crash-resilient recording toggle, and real-time statistics readout (FPS, dropped frame ratio, bitrate, duration).
+- **Project Model, 30s Autosave & Crash Recovery**:
+  - Project file serialization (`.arxproj`) preserving scene hierarchy, source settings, and output configurations.
+  - `Autosaver` tracking 30-second intervals to write `.autosave.arxproj` crash markers, with automatic detection and restoration on startup.
+- **Settings Dialog**:
+  - Studio modal controlling video output resolution/FPS, audio sampling, hardware encoder selection, RTMP/YouTube destinations, and operator hotkeys.
+- **M8 Acceptance Validation**: Verified via `tests/studio_shell_test.rs`:
+  - Scene creation and source addition across all supported source types.
+  - Cut & Auto transition switching between preview and program buses.
+  - One-click Live streaming and recording toggles.
+  - Full project serialization, deserialization, and 30s autosave crash recovery.
+  - Strict broadcast UI token compliance.
+
+

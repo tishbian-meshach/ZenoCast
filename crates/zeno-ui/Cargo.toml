@@ -15,3 +15,21 @@ zeno-control = { path = "../zeno-control" }
 zeno-audio = { path = "../zeno-audio" }
 zeno-output = { path = "../zeno-output" }
 zeno-license = { path = "../zeno-license" }
+zeno-media = { path = "../zeno-media" }
+egui = { workspace = true }
+eframe = { workspace = true }
+egui_dock = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[test]]
+name = "studio_shell_test"
+path = "../../tests/studio_shell_test.rs"
