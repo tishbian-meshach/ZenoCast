@@ -4007,6 +4007,7 @@ dependencies = [
  "uuid",
  "wgpu",
  "zeno-core",
+ "zeno-data",
  "zeno-engine",
  "zeno-media",
 ]
@@ -4015,9 +4016,17 @@ dependencies = [
 name = "zeno-control"
 version = "0.1.0"
 dependencies = [
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
  "zeno-compositor",
  "zeno-core",
  "zeno-data",
+ "zeno-engine",
 ]
 
 [[package]]

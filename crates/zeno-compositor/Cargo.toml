@@ -10,6 +10,7 @@ description = "GPU live scene compositing, multi-scene management, and transitio
 zeno-core = { workspace = true }
 zeno-engine = { path = "../zeno-engine" }
 zeno-media = { path = "../zeno-media" }
+zeno-data = { path = "../zeno-data" }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 glam = { workspace = true }

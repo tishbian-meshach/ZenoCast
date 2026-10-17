@@ -4,6 +4,7 @@
 //! timeline keyframe manipulation, bezier curve editor, and strict design token theme.
 
 pub mod app;
+pub mod data_panel;
 pub mod dock;
 pub mod editor;
 pub mod overlay_control;
@@ -13,6 +14,7 @@ pub mod spreadsheet_panel;
 pub mod theme;
 
 pub use app::ZenocastApp;
+pub use data_panel::{ui_esports_data_panel, DataPanelState};
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
 pub use overlay_control::ui_overlay_lifecycle_panel;

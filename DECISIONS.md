@@ -288,6 +288,35 @@ This log records major architectural and implementation choices, defaults select
 - **M10c Acceptance Validation**: Verified via `tests/spreadsheet_integration_test.rs`:
   - Editing a cell in a spreadsheet file updates bound scoreboard text and fires `score_change` state transition.
   - Missing or locked file retains last good values in `DataStore` and presents warning status badge.
-  - A 10-row range fills a Repeater layer with 10 concrete instanced layers with monotonic positional offsets.
+
+## 2026-10-18: M11 Overlay as Live Source and Control API
+
+- **Live Overlay Compositor Source (`ArxOverlaySource`)**:
+  - Implemented `ArxOverlaySource` in `zeno-compositor` bridging `.arx` vector compositions directly into live compositor scenes.
+  - Shares the identical pure evaluation engine (`zeno-engine`) and reactive `DataStore` with zero export steps or intermediate file rendering.
+  - On each tick/frame, dynamically resolves variable bindings (`apply_bindings_to_composition`) and produces `ResolvedFrame` for off-screen rendering.
+- **REST & WebSocket Remote Control Server (`ControlServer`, `ControlState`)**:
+  - High-performance, zero-dependency TCP server listening on `127.0.0.1:4466`.
+  - HTTP Endpoints:
+    - `GET /status`, `GET /api/v1/status`: live telemetry, streaming/recording states, active scene.
+    - `GET /scenes`, `GET /api/v1/scenes`: scene list and active scene name.
+    - `POST /scene/switch`, `POST /api/v1/scene/switch`: triggers instant or transitioned scene changes.
+    - `POST /data/set`, `POST /api/v1/data/set`: atomic variable updates to `DataStore` (driving live on-air overlays immediately).
+    - `GET /data/get`: variable queries by path.
+    - `POST /overlay/trigger`: triggers overlay entrance (`play_in`), exit (`play_out`), or `toggle`.
+    - `POST /stream/start`, `POST /stream/stop`, `POST /record/start`, `POST /record/stop`.
+  - WebSocket Protocol (RFC 6455):
+    - Handshake key computation (`Sec-WebSocket-Key` + RFC GUID SHA-1 base64 encoding).
+    - Real-time event broadcasting (`data_change`, `scene_change`, `overlay_trigger`, `stream_status`, `record_status`) to connected clients (Stream Deck, Bitfocus Companion).
+  - Optional Bearer token authentication via `Authorization` header or query string.
+- **Operator Hotkeys & Esports Control Panel**:
+  - `HotkeyManager`: configurable keyboard shortcuts (`Ctrl+1..9`, `F-keys`, custom combos) routing to scene switching, overlay triggers, and stream toggles.
+  - `ui_esports_data_panel` (Data mode): rapid production controls featuring +/- score adjusters, team/player inputs, one-click scene buttons, and rapid overlay triggers.
+  - Detailed external API documentation published in `docs/API.md`.
+- **M11 Acceptance Validation**: Verified via `tests/control_api_overlay_test.rs`:
+  - An overlay on the program output is updated through both the UI and `curl` HTTP calls.
+  - REST endpoints execute and return valid responses.
+  - Hotkey combinations dispatch correct actions.
+  - WebSocket upgrade handshake and client frame push notifications succeed.
 
 

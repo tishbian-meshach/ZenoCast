@@ -19,6 +19,16 @@ pub struct DataStore {
     listeners: Arc<RwLock<Vec<ListenerCallback>>>,
 }
 
+impl std::fmt::Debug for DataStore {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let guard = self.values.read();
+        f.debug_struct("DataStore")
+            .field("values", &*guard)
+            .field("listeners_count", &self.listeners.read().len())
+            .finish()
+    }
+}
+
 impl DataStore {
     /// Constructs a new empty data store.
     pub fn new() -> Self {

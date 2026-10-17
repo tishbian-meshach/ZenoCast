@@ -8,5 +8,19 @@ description = "HTTP and WebSocket remote control server and global hotkey engine
 
 [dependencies]
 zeno-core = { path = "../zeno-core" }
+zeno-engine = { path = "../zeno-engine" }
 zeno-data = { path = "../zeno-data" }
 zeno-compositor = { path = "../zeno-compositor" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[test]]
+name = "control_api_overlay_test"
+path = "../../tests/control_api_overlay_test.rs"
