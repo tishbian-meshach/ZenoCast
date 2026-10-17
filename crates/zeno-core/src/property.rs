@@ -443,6 +443,19 @@ impl<Value> Property<Value> {
         }
     }
 
+    /// Returns a slice of keyframes if this property is animated, or empty slice otherwise.
+    pub fn as_keyframes(&self) -> &[Keyframe<Value>] {
+        match self {
+            Self::Keyframes(keys) => keys.as_slice(),
+            _ => &[],
+        }
+    }
+
+    /// Checks if this property is driven by keyframes.
+    pub fn is_animated(&self) -> bool {
+        matches!(self, Self::Keyframes(_))
+    }
+
     /// Extracts the static or fallback value.
     pub fn fallback_value(&self) -> &Value {
         match self {

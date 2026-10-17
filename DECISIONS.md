@@ -201,4 +201,33 @@ This log records major architectural and implementation choices, defaults select
   - Full project serialization, deserialization, and 30s autosave crash recovery.
   - Strict broadcast UI token compliance.
 
+## 2026-10-18: M9 Overlay Editor with Timeline and Curve Editor
+
+- **Overlay Editor Architecture**:
+  - Implemented `OverlayEditor` state model managing composition graph, `PlaybackClock`, undo/redo command history, timeline markers, and viewport zoom/pan.
+  - Interactive canvas (`ui_canvas`) rendering evaluated frames via `evaluate_at` with zoom, pan, and transform gizmos (bounding boxes, corner resize handles, center position drag).
+- **Command History Pattern**:
+  - Implemented `CommandHistory` with `EditorCommand` trait providing unlimited undo/redo:
+    - `AddLayerCommand`: Layer addition and insertion at arbitrary index.
+    - `DeleteLayerCommand`: Layer removal preserving layer data and index for complete inversion.
+    - `ReorderLayerCommand`: Layer order permutation in composition stack.
+    - `SetTransformCommand`: Reversible modifications to 3D affine transformations.
+    - `AddPositionKeyframeCommand` & `AddOpacityKeyframeCommand`: Keyframe insertion/editing on animated properties.
+    - `ModifyTextCommand`: Real-time text changes with step-by-step revision rollback.
+- **Layers & Properties Inspector**:
+  - `ui_layers_panel`: Layer hierarchy management, visibility eye toggles, add text/shape layers, reorder up/down, and delete.
+  - `ui_properties_panel`: Property inspectors for Position (X/Y), Scale (% X/Y), Rotation (Z), and Opacity (%) with stopwatch toggles for keyframe insertion at current playhead time; text properties (font family, font size) and shape geometry (rectangle width, height, corner radius).
+- **Timeline & Bezier Curve Editor**:
+  - `ui_timeline`: Dual-mode bottom timeline supporting Dope Sheet and Curve Editor.
+  - Dope Sheet: Time ruler with second markers, timeline markers (name and cue timestamp), layer track spans with In/Out bounds, keyframe diamond icons, and interactive playhead scrubbing.
+  - Curve Editor: Visual representation of cubic Bezier curves with control handles and quick easing presets (`Linear`, `EaseIn`, `EaseOut`, `EaseInOut`).
+- **Direct Container Storage & Clipboard**:
+  - Full `.arx` container package load and save round-trip via `ArxPackage` and `Manifest`.
+  - Layer clipboard copy/paste duplicating layers with newly allocated UUIDs and offset positions.
+- **M9 Acceptance Validation**: Verified via `tests/overlay_editor_test.rs`:
+  - Build lower-third with text, shapes, and animated intro entirely in the editor; save as `.arx`, reload, and assert exact match.
+  - Bezier handles modify curve tangents; evaluate value at t=0.5 matching manual cubic formula to `< 1e-4`.
+  - Undo/redo 50 sequential operations verifying state matches step-by-step history.
+  - Layer clipboard copy/paste duplicating layers with unique IDs.
+
 

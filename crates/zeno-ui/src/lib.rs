@@ -5,64 +5,78 @@
 
 pub mod app;
 pub mod dock;
+pub mod editor;
 pub mod project;
 pub mod settings;
 pub mod theme;
 
 pub use app::ZenocastApp;
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
+pub use editor::OverlayEditor;
 pub use project::{
     Autosaver, Project, ProjectError, SceneDefinition, SourceDefinition, SourceKind,
 };
 pub use settings::{AudioSettings, HotkeySettings, OutputSettings, StudioSettings, VideoSettings};
 pub use theme::{
-    apply_theme, ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT,
-    RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
+    apply_theme, color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS,
+    GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3, TEXT,
+    TEXT_MUTED,
 };
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use tempfile::tempdir;
+
+    fn collect_rs_files(dir: &Path, list: &mut Vec<PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    collect_rs_files(&path, list);
+                } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                    list.push(path);
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_strict_theme_and_no_color_literals_outside_theme() {
         let ui_src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         assert!(ui_src_dir.exists(), "zeno-ui/src directory must exist");
 
-        for entry in fs::read_dir(ui_src_dir).expect("Failed to read zeno-ui/src") {
-            let entry = entry.expect("Directory entry error");
-            let path = entry.path();
+        let mut files = Vec::new();
+        collect_rs_files(&ui_src_dir, &mut files);
 
-            if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("rs") {
-                let file_name = path.file_name().unwrap().to_str().unwrap();
-                if file_name == "theme.rs" || file_name == "lib.rs" {
-                    continue; // theme.rs defines tokens; lib.rs contains the scanner test itself
-                }
-
-                let content = fs::read_to_string(&path).expect("Failed to read file");
-
-                // Check 1: No color constructor literals outside theme.rs
-                assert!(
-                    !content.contains("Color32::from_rgb"),
-                    "File '{}' contains Color32::from_rgb! All colors must be imported from theme::*",
-                    file_name
-                );
-                assert!(
-                    !content.contains("Color32::from_rgba"),
-                    "File '{}' contains Color32::from_rgba! All colors must be imported from theme::*",
-                    file_name
-                );
-
-                // Check 2: No gradient APIs allowed anywhere per Section 7
-                assert!(
-                    !content.to_lowercase().contains("gradient"),
-                    "File '{}' mentions gradients! Broadcast specification strictly forbids gradients.",
-                    file_name
-                );
+        for path in files {
+            let file_name = path.file_name().unwrap().to_str().unwrap();
+            if file_name == "theme.rs" || file_name == "lib.rs" {
+                continue; // theme.rs defines tokens; lib.rs contains the scanner test itself
             }
+
+            let content = fs::read_to_string(&path).expect("Failed to read file");
+
+            // Check 1: No color constructor literals outside theme.rs
+            assert!(
+                !content.contains("Color32::from_rgb"),
+                "File '{}' contains Color32::from_rgb! All colors must be imported from theme::*",
+                file_name
+            );
+            assert!(
+                !content.contains("Color32::from_rgba"),
+                "File '{}' contains Color32::from_rgba! All colors must be imported from theme::*",
+                file_name
+            );
+
+            // Check 2: No gradient APIs allowed anywhere per Section 7
+            assert!(
+                !content.to_lowercase().contains("gradient"),
+                "File '{}' mentions gradients! Broadcast specification strictly forbids gradients.",
+                file_name
+            );
         }
     }
 

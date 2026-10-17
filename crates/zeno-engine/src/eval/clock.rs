@@ -55,6 +55,18 @@ impl PlaybackClock {
         self.state = PlaybackState::Paused;
     }
 
+    /// Stops playback and resets playhead to start.
+    pub fn stop(&mut self) {
+        self.pause();
+        self.reset();
+    }
+
+    /// Scrubs or seeks the playhead to an exact timestamp.
+    #[inline]
+    pub fn seek(&mut self, time_seconds: f64) {
+        self.set_time(time_seconds);
+    }
+
     /// Toggles between playing and paused states.
     pub fn toggle_playback(&mut self) {
         self.state = match self.state {

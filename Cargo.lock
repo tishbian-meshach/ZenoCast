@@ -4157,6 +4157,7 @@ dependencies = [
  "zeno-core",
  "zeno-data",
  "zeno-engine",
+ "zeno-format",
  "zeno-license",
  "zeno-media",
  "zeno-output",

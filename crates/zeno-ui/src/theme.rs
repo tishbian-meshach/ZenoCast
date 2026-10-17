@@ -33,6 +33,16 @@ pub const CORNER_RADIUS: f32 = 4.0;
 pub const ROW_HEIGHT_LIST: f32 = 28.0;
 pub const BUTTON_HEIGHT: f32 = 32.0;
 
+/// Converts a `zeno_core::Color` into an `egui::Color32`.
+pub fn color_to_egui(c: zeno_core::Color) -> Color32 {
+    Color32::from_rgba_premultiplied(
+        (c.r.clamp(0.0, 1.0) * 255.0) as u8,
+        (c.g.clamp(0.0, 1.0) * 255.0) as u8,
+        (c.b.clamp(0.0, 1.0) * 255.0) as u8,
+        (c.a.clamp(0.0, 1.0) * 255.0) as u8,
+    )
+}
+
 /// Applies the Zenocast broadcast production theme to an egui Context.
 pub fn apply_theme(ctx: &egui::Context) {
     let mut visuals = Visuals::dark();

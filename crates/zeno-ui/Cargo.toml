@@ -16,6 +16,7 @@ zeno-audio = { path = "../zeno-audio" }
 zeno-output = { path = "../zeno-output" }
 zeno-license = { path = "../zeno-license" }
 zeno-media = { path = "../zeno-media" }
+zeno-format = { path = "../zeno-format" }
 egui = { workspace = true }
 eframe = { workspace = true }
 egui_dock = { workspace = true }
@@ -33,3 +34,7 @@ tempfile = { workspace = true }
 [[test]]
 name = "studio_shell_test"
 path = "../../tests/studio_shell_test.rs"
+
+[[test]]
+name = "overlay_editor_test"
+path = "../../tests/overlay_editor_test.rs"
