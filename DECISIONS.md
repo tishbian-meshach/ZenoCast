@@ -267,6 +267,27 @@ This log records major architectural and implementation choices, defaults select
   - Overlay Play In plays entrance, smoothly loops, and Play Out cuts cleanly to hidden.
   - Ping-pong loop toggles and oscillates correctly between start and end bounds.
   - Out triggered mid-In transition smoothly interrupts without visual pop.
-  - Multiple independent overlays advance simultaneously with distinct lifecycle phases.
+
+## 2026-10-18: M10c Spreadsheet-Linked Data Sources (Excel, CSV, Google Sheets)
+
+- **Spreadsheet Integration Architecture (`SheetLink`, `CellBinding`, `SheetSyncEngine`)**:
+  - Implemented multi-format file readers supporting CSV/TSV, OpenXML Excel (`.xlsx`, `.xlsm`), and remote/mock Google Sheets and published CSV endpoints.
+  - Locked-File Resilience & `~$` Ignore Rule:
+    - Automatically ignores temporary Excel lock files prefixed with `~$`.
+    - Handles Windows `ERROR_SHARING_VIOLATION` on files open in Excel via temporary copy and backoff retry.
+    - If a spreadsheet file is missing, locked, or corrupted, the engine retains the last good values in the `DataStore` and displays non-blocking warning badges (`SheetLinkStatus::Warning`).
+  - Change Detection & State Machine Triggers:
+    - Compares typed cell values (`Number`, `Text`, `Color`, `ImagePath`, `Boolean`) against existing data store entries, writing only modified paths.
+    - Updates trigger registered change listeners, driving real-time state machine transitions (such as `score_change`).
+    - Supports locking paths to spreadsheet writes (`locked_to_sheet`) to prevent manual operator overwrites.
+  - Range Bindings & Repeater Layers:
+    - Multi-cell ranges (e.g. `A1:C10`) are ingested into 2D tables (`DataValue::Table`) and indexed row/cell subkeys.
+    - Repeater layers (`LayerContent::Repeater`) instance their template group once per data row up to `max_rows`, applying incremental positional offsets (`row_offset`).
+- **Broadcast Operator UI**:
+  - Implemented `ui_spreadsheet_links_panel` with status badges (OK, WARN, ERR), live value displays, binding editor, and interactive 2D grid cell picker.
+- **M10c Acceptance Validation**: Verified via `tests/spreadsheet_integration_test.rs`:
+  - Editing a cell in a spreadsheet file updates bound scoreboard text and fires `score_change` state transition.
+  - Missing or locked file retains last good values in `DataStore` and presents warning status badge.
+  - A 10-row range fills a Repeater layer with 10 concrete instanced layers with monotonic positional offsets.
 
 

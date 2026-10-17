@@ -25,6 +25,7 @@ pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x8E, 0x95, 0x9D);
 pub const ACCENT: Color32 = Color32::from_rgb(0x4C, 0x8D, 0xFF);
 pub const RED_LIVE: Color32 = Color32::from_rgb(0xE5, 0x48, 0x4D);
 pub const AMBER_WARN: Color32 = Color32::from_rgb(0xF5, 0xA5, 0x24);
+pub const GREEN_OK: Color32 = Color32::from_rgb(0x46, 0xA7, 0x58);
 
 // Spacing & Sizing Constants
 pub const GRID_UNIT: f32 = 8.0;

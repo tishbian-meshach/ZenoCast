@@ -477,6 +477,66 @@ pub fn evaluate(
         });
     }
 
+    // Expand Repeater layers into concrete row instances
+    let mut repeater_instances = Vec::new();
+    for r_layer in &resolved_layers {
+        if let ResolvedContent::Repeater {
+            template_group,
+            data_path,
+            max_rows,
+            row_offset,
+        } = &r_layer.content
+        {
+            if let Some(template_resolved) =
+                resolved_layers.iter().find(|l| l.id == *template_group)
+            {
+                // Determine row count from data snapshot
+                let count = if let Some(snap) = data_snapshot {
+                    if let Some(val) = snap.get(data_path) {
+                        if let Some(arr) = val.as_array() {
+                            arr.len()
+                        } else {
+                            1
+                        }
+                    } else {
+                        // Count indexed entries data_path[i]
+                        let mut idx = 0;
+                        while snap.contains(&format!("{}[{}]", data_path, idx)) {
+                            idx += 1;
+                        }
+                        idx
+                    }
+                } else {
+                    0
+                };
+
+                let instances_to_spawn = (count as u32).min(*max_rows);
+                for i in 0..instances_to_spawn {
+                    let trans = glam::Mat4::from_translation(glam::Vec3::new(
+                        row_offset.x * i as f32,
+                        row_offset.y * i as f32,
+                        0.0,
+                    ));
+                    let inst_world_matrix = r_layer.world_matrix * trans;
+                    let inst_layer = ResolvedLayer {
+                        id: zeno_core::LayerId::new(),
+                        name: format!("{}_row{}", template_resolved.name, i),
+                        parent: Some(r_layer.id),
+                        world_matrix: inst_world_matrix,
+                        net_opacity: r_layer.net_opacity * template_resolved.net_opacity,
+                        blend_mode: template_resolved.blend_mode,
+                        is_3d: template_resolved.is_3d,
+                        visible: r_layer.visible && template_resolved.visible,
+                        content: template_resolved.content.clone(),
+                        layer: template_resolved.layer.clone(),
+                    };
+                    repeater_instances.push(inst_layer);
+                }
+            }
+        }
+    }
+    resolved_layers.extend(repeater_instances);
+
     ResolvedFrame {
         time_seconds,
         width: composition.width,

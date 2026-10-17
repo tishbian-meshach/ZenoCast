@@ -9,6 +9,7 @@ pub mod editor;
 pub mod overlay_control;
 pub mod project;
 pub mod settings;
+pub mod spreadsheet_panel;
 pub mod theme;
 
 pub use app::ZenocastApp;
@@ -19,10 +20,11 @@ pub use project::{
     Autosaver, Project, ProjectError, SceneDefinition, SourceDefinition, SourceKind,
 };
 pub use settings::{AudioSettings, HotkeySettings, OutputSettings, StudioSettings, VideoSettings};
+pub use spreadsheet_panel::{ui_spreadsheet_links_panel, SpreadsheetPanelState};
 pub use theme::{
     apply_theme, color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS,
-    GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3, TEXT,
-    TEXT_MUTED,
+    GREEN_OK, GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3,
+    TEXT, TEXT_MUTED,
 };
 
 #[cfg(test)]

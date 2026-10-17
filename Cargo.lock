@@ -4045,6 +4045,7 @@ dependencies = [
  "tracing",
  "zeno-core",
  "zeno-engine",
+ "zip",
 ]
 
 [[package]]
