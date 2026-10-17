@@ -1830,6 +1830,17 @@ dependencies = [
 name = "zeno-compositor"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
+ "glam",
+ "image",
+ "parking_lot",
+ "pollster",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+ "wgpu",
  "zeno-core",
  "zeno-engine",
  "zeno-media",

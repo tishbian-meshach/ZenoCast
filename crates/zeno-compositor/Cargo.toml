@@ -7,6 +7,25 @@ license.workspace = true
 description = "GPU live scene compositing, multi-scene management, and transition engine for Zenocast."
 
 [dependencies]
-zeno-core = { path = "../zeno-core" }
+zeno-core = { workspace = true }
 zeno-engine = { path = "../zeno-engine" }
 zeno-media = { path = "../zeno-media" }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+parking_lot = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+pollster = { workspace = true }
+image = { workspace = true }
+
+[[test]]
+name = "scene_compositor_test"
+path = "../../tests/scene_compositor_test.rs"
+
+

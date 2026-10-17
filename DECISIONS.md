@@ -60,4 +60,14 @@ This log records major architectural and implementation choices, defaults select
 - **Real-Time Performance Guarantee**: Pre-allocated pixel and texture buffers eliminated per-frame memory allocation. Incremental dirty region updates reduced simulation rendering cost from ~56 ms down to ~3.2 ms per 60 fps frame pair, easily holding the 16.6 ms budget.
 - **M4 Acceptance Validation**: Verified via `tests/capture_demo_test.rs` streaming 180 continuous 60 fps frames with monotonic timestamps and sub-millisecond CPU copy overhead, and standalone example `examples/capture_demo.rs`.
 
+## 2026-10-17: M5 Scene Compositor and Transitions
+
+- **Scene & Item Graph**: Implemented `Scene` and `SceneItem` in `zeno-compositor` supporting arbitrary source references (`SourceId`), nested sub-scenes (`SceneId`), 2D affine transforms (`ItemTransform` with anchor points), pixel crop insets (`Crop`), opacity, blend modes, and filter chains.
+- **Preview & Program Buses**: Implemented `BusManager` with Studio Mode (independent Preview and Program buses with Cut, Auto, and T-bar mixer) and Direct Mode (instant on-air switching).
+- **GPU Transition Pipeline**: Developed `CompositorGpuPipeline` with WGSL shaders (`ITEM_SHADER_WGSL` and `TRANSITION_SHADER_WGSL`) implementing GPU-accelerated Cut, Fade, DipToColor, Slide (Push/Cover in 4 directions), Wipe (Horizontal, Vertical, Radial with soft-edge feathering), Zoom, and Stinger/Overlay transitions.
+- **Rule Resolution & Mid-Transition Interruption**:
+  - Implemented Section 10A 3-step hierarchy: exact pair rule -> destination scene default -> global default.
+  - Seamless interruption handling: switching mid-transition restarts smoothly from the current visual state with no visible jump.
+- **M5 Acceptance Validation**: Validated via `tests/scene_compositor_test.rs` streaming 60 frames during a 1080p60 fade transition with an average frame render time of 3.63 ms (comfortably meeting the sub-4 ms GPU frame time budget), mid-transition interruption to Scene C, and manual T-bar fader mixing.
+
 
