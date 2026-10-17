@@ -17,6 +17,7 @@ zeno-output = { path = "../zeno-output" }
 zeno-license = { path = "../zeno-license" }
 zeno-media = { path = "../zeno-media" }
 zeno-format = { path = "../zeno-format" }
+zeno-import = { path = "../zeno-import" }
 egui = { workspace = true }
 eframe = { workspace = true }
 egui_dock = { workspace = true }

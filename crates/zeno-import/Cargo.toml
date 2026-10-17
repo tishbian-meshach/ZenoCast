@@ -8,4 +8,19 @@ description = "Asset and project importers (PSD, Lottie) for Zenocast."
 
 [dependencies]
 zeno-core = { path = "../zeno-core" }
-zeno-format = { path = "../zeno-format" }
+zeno-engine = { path = "../zeno-engine" }
+zeno-data = { path = "../zeno-data" }
+image = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+glam = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[test]]
+name = "importers_test"
+path = "../../tests/importers_test.rs"

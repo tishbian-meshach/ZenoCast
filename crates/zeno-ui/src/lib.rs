@@ -7,6 +7,7 @@ pub mod app;
 pub mod data_panel;
 pub mod dock;
 pub mod editor;
+pub mod import_dialog;
 pub mod overlay_control;
 pub mod project;
 pub mod settings;
@@ -17,6 +18,7 @@ pub use app::ZenocastApp;
 pub use data_panel::{ui_esports_data_panel, DataPanelState};
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
+pub use import_dialog::ImportReportDialog;
 pub use overlay_control::ui_overlay_lifecycle_panel;
 pub use project::{
     Autosaver, Project, ProjectError, SceneDefinition, SourceDefinition, SourceKind,

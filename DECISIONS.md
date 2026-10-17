@@ -319,4 +319,30 @@ This log records major architectural and implementation choices, defaults select
   - Hotkey combinations dispatch correct actions.
   - WebSocket upgrade handshake and client frame push notifications succeed.
 
+## 2026-10-18: M12 PSD and Lottie Importers
+
+- **Binary PSD Importer (`PsdImporter`)**:
+  - Implemented standalone binary parser for Photoshop `.psd` documents conforming to Adobe Photoshop File Formats Specification.
+  - Header validation (`8BPS`, version 1, channels, dimension, depth, color mode).
+  - Layer Record extraction: bounding rectangles, blend mode signatures (`norm`, `mul `, `scrn`, `over`, `dark`, `lite`, `add `), opacity scaling (0..255 -> 0..100%), and visibility flags.
+  - Group hierarchy resolution: parsed section divider settings (`lsct` type 1/2 for group open, 3 for group boundary) maintaining child-parent relationships in `LayerId` stack.
+  - Alpha and inverted masks: extracted layer mask bounds and default colors, mapping into `zeno-engine` `Mask` structures (`MaskMode::Alpha`, `MaskMode::InvertedAlpha`).
+  - Text layer extraction: parsed Type Tool descriptors (`TySh`, `Txt2`), mapping typography (font family, font size, color) into native `LayerContent::Text`.
+- **Lottie / Bodymovin JSON Importer (`LottieImporter`)**:
+  - High-performance Bodymovin JSON animation ingestion.
+  - Transforms (`ks`): position (`p`), scale (`s`), rotation (`r`), opacity (`o`), and anchor point (`a`).
+  - Cubic Bezier timing curve extraction: parsed in/out tangent control points (`i`, `o`), normalizing values into `Easing::CubicBezier { control_1_x, control_1_y, control_2_x, control_2_y }` for smooth mathematical evaluation over time.
+  - Vector Shape elements: rectangles (`rc`), ellipses (`el`), solid fills (`fl`), strokes (`st`), and nested shape groups (`gr`).
+- **Data-Binding Convention Auto-Detection**:
+  - Layers matching the `bind:<key>` naming convention (e.g. `bind:match.team1_name`, `bind:scores.team1_score`) automatically link to reactive `DataStore` variables (`{match.team1_name}`).
+  - Records generated variable associations in `ImportReport.bindings_created`.
+- **Import Audit Reporting & Dialog (`ImportReportDialog`)**:
+  - `ImportReport` tracks imported layer counts, group structures, unsupported features, fallback substitutions, and warnings.
+  - `ImportReportDialog` in `zeno-ui`: broadcast modal window with 100% theme adherence (zero external color literals), statistics badges, and expandable issue summaries.
+- **M12 Acceptance Validation**: Verified via `tests/importers_test.rs`:
+  - Multi-layer PSD import: verified layer positioning, blend mode mapping (Multiply), alpha masking, and group hierarchy.
+  - Lottie animation import: verified cubic bezier keyframes evaluate smoothly over time (t=0.0s, 1.0s, 2.0s).
+  - Auto data-binding generation verified for both PSD and Lottie layers.
+
+
 

@@ -4091,8 +4091,17 @@ dependencies = [
 name = "zeno-import"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "image",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
  "zeno-core",
- "zeno-format",
+ "zeno-data",
+ "zeno-engine",
 ]
 
 [[package]]
@@ -4177,6 +4186,7 @@ dependencies = [
  "zeno-data",
  "zeno-engine",
  "zeno-format",
+ "zeno-import",
  "zeno-license",
  "zeno-media",
  "zeno-output",
