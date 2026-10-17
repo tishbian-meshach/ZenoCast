@@ -1,0 +1,10 @@
+[package]
+name = "zeno-format"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = ".arx container format loading, saving, and schema migrations for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }

@@ -1,0 +1,10 @@
+[package]
+name = "zeno-script"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Sandboxed expression runtime for dynamic motion-graphics properties in Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }

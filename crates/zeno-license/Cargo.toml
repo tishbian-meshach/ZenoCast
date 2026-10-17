@@ -1,0 +1,11 @@
+[package]
+name = "zeno-license"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Ed25519 offline license verification, seat tracking, and anti-tamper protections for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-platform = { path = "../zeno-platform" }

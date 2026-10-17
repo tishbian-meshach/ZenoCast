@@ -1,0 +1,17 @@
+[package]
+name = "zeno-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Egui broadcast UI, dockable layouts, motion-graphics editor, and theme tokens for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-engine = { path = "../zeno-engine" }
+zeno-data = { path = "../zeno-data" }
+zeno-compositor = { path = "../zeno-compositor" }
+zeno-control = { path = "../zeno-control" }
+zeno-audio = { path = "../zeno-audio" }
+zeno-output = { path = "../zeno-output" }
+zeno-license = { path = "../zeno-license" }

@@ -1,0 +1,12 @@
+[package]
+name = "zeno-compositor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "GPU live scene compositing, multi-scene management, and transition engine for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-engine = { path = "../zeno-engine" }
+zeno-media = { path = "../zeno-media" }

@@ -1,0 +1,12 @@
+[package]
+name = "zeno-control"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "HTTP and WebSocket remote control server and global hotkey engine for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-data = { path = "../zeno-data" }
+zeno-compositor = { path = "../zeno-compositor" }

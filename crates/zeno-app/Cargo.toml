@@ -1,0 +1,19 @@
+[package]
+name = "zeno-app"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Main desktop application binary for the Zenocast esports broadcast studio."
+
+[[bin]]
+name = "zenocast"
+path = "src/main.rs"
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-engine = { path = "../zeno-engine" }
+zeno-ui = { path = "../zeno-ui" }
+zeno-compositor = { path = "../zeno-compositor" }
+zeno-output = { path = "../zeno-output" }
+zeno-control = { path = "../zeno-control" }

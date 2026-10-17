@@ -1,0 +1,10 @@
+[package]
+name = "zeno-data"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Live observable data store, bindings, and spreadsheet synchronization for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }

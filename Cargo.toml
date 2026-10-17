@@ -1,0 +1,45 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/zeno-core",
+    "crates/zeno-engine",
+    "crates/zeno-format",
+    "crates/zeno-import",
+    "crates/zeno-script",
+    "crates/zeno-data",
+    "crates/zeno-media",
+    "crates/zeno-audio",
+    "crates/zeno-compositor",
+    "crates/zeno-output",
+    "crates/zeno-control",
+    "crates/zeno-platform",
+    "crates/zeno-license",
+    "crates/zeno-ui",
+    "crates/zeno-app",
+    "crates/zeno-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Zenocast Team"]
+license = "Proprietary"
+repository = "https://github.com/zenocast/zenocast"
+
+[workspace.lints.rust]
+unsafe_code = "allow" # Restricted per rule 4 to zeno-platform and FFI glue
+
+[workspace.lints.clippy]
+all = "warn"
+correctness = "deny"
+suspicious = "deny"
+complexity = "warn"
+perf = "warn"
+style = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

@@ -1,0 +1,10 @@
+[package]
+name = "zeno-platform"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Platform-specific Windows API integrations, COM wrappers, and unsafe hooks for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }

@@ -1,0 +1,11 @@
+[package]
+name = "zeno-output"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Hardware encoding, RTMP/SRT streaming, and recording pipeline for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-audio = { path = "../zeno-audio" }

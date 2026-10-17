@@ -1,0 +1,16 @@
+[package]
+name = "zeno-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Headless CLI for rendering, validating, and converting .arx files in Zenocast."
+
+[[bin]]
+name = "zeno-cli"
+path = "src/main.rs"
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-engine = { path = "../zeno-engine" }
+zeno-format = { path = "../zeno-format" }

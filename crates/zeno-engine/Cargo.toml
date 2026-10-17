@@ -1,0 +1,13 @@
+[package]
+name = "zeno-engine"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Pure scene graph, timeline evaluation, and render-command builder for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-format = { path = "../zeno-format" }
+zeno-script = { path = "../zeno-script" }
+zeno-data = { path = "../zeno-data" }

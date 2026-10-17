@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-format-clippy-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rustfmt Check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy Lint
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Workspace Tests
+        run: cargo test --workspace

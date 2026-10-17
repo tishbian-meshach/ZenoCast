@@ -1,0 +1,11 @@
+[package]
+name = "zeno-audio"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Multi-track audio capture, mixer, DSP filters, and master meters for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-platform = { path = "../zeno-platform" }

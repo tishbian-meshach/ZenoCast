@@ -1,0 +1,11 @@
+[package]
+name = "zeno-import"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Asset and project importers (PSD, Lottie) for Zenocast."
+
+[dependencies]
+zeno-core = { path = "../zeno-core" }
+zeno-format = { path = "../zeno-format" }
