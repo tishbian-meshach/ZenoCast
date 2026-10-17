@@ -30,3 +30,8 @@ path = "../../tests/lifecycle_test.rs"
 name = "transforms_3d_test"
 path = "../../tests/transforms_3d_test.rs"
 
+[[test]]
+name = "particle_system_test"
+path = "../../tests/particle_system_test.rs"
+
+

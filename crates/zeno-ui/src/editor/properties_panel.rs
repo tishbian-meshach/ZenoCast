@@ -279,6 +279,98 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     });
                 });
             }
+            LayerContent::Particles(emitter) => {
+                ui.collapsing("GPU Particle System", |ui| {
+                    ui.horizontal(|ui| {
+                        ui.label("Presets:");
+                        if ui.button("Confetti").clicked() {
+                            *emitter = zeno_engine::ParticleEmitter::confetti();
+                        }
+                        if ui.button("Sparks").clicked() {
+                            *emitter = zeno_engine::ParticleEmitter::sparks();
+                        }
+                        if ui.button("Smoke").clicked() {
+                            *emitter = zeno_engine::ParticleEmitter::smoke();
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut rate = *emitter.rate_per_second.fallback_value();
+                        ui.label("Rate (parts/s):");
+                        if ui
+                            .add(DragValue::new(&mut rate).speed(5.0).range(1.0..=50000.0))
+                            .changed()
+                        {
+                            emitter.rate_per_second = Property::constant(rate);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut lt = *emitter.lifetime_seconds.fallback_value();
+                        ui.label("Lifetime (s):");
+                        if ui
+                            .add(DragValue::new(&mut lt).speed(0.1).range(0.05..=30.0))
+                            .changed()
+                        {
+                            emitter.lifetime_seconds = Property::constant(lt);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut spd = *emitter.initial_speed.fallback_value();
+                        ui.label("Speed (px/s):");
+                        if ui
+                            .add(DragValue::new(&mut spd).speed(5.0).range(0.0..=5000.0))
+                            .changed()
+                        {
+                            emitter.initial_speed = Property::constant(spd);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut spread = *emitter.spread_degrees.fallback_value();
+                        ui.label("Spread (deg):");
+                        if ui.add(Slider::new(&mut spread, 0.0..=360.0)).changed() {
+                            emitter.spread_degrees = Property::constant(spread);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut s_sz = *emitter.start_size_px.fallback_value();
+                        let mut e_sz = *emitter.end_size_px.fallback_value();
+                        ui.label("Start Size:");
+                        let mut c = ui
+                            .add(DragValue::new(&mut s_sz).speed(0.5).range(0.0..=300.0))
+                            .changed();
+                        ui.label("End Size:");
+                        c |= ui
+                            .add(DragValue::new(&mut e_sz).speed(0.5).range(0.0..=300.0))
+                            .changed();
+                        if c {
+                            emitter.start_size_px = Property::constant(s_sz);
+                            emitter.end_size_px = Property::constant(e_sz);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        let mut grav = *emitter.gravity.fallback_value();
+                        ui.label("Gravity X:");
+                        let mut c = ui.add(DragValue::new(&mut grav.x).speed(5.0)).changed();
+                        ui.label("Y:");
+                        c |= ui.add(DragValue::new(&mut grav.y).speed(5.0)).changed();
+                        if c {
+                            emitter.gravity = Property::constant(grav);
+                        }
+                    });
+
+                    ui.checkbox(&mut emitter.additive_blend, "Additive Blend");
+
+                    ui.horizontal(|ui| {
+                        ui.label("Seed:");
+                        ui.add(DragValue::new(&mut emitter.seed));
+                    });
+                });
+            }
             _ => {}
         }
 

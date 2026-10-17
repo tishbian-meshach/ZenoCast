@@ -173,6 +173,30 @@ impl OverlayEditor {
         id
     }
 
+    /// Adds a new GPU particle emitter layer with undo support.
+    pub fn add_particle_layer(
+        &mut self,
+        name: &str,
+        emitter: zeno_engine::ParticleEmitter,
+    ) -> LayerId {
+        let id = LayerId::new();
+        let mut layer = Layer::new(id, name, LayerContent::Particles(emitter));
+        layer.transform.position = zeno_core::Property::constant(Vec3::new(
+            self.composition.width as f32 / 2.0,
+            self.composition.height as f32 / 2.0,
+            0.0,
+        ));
+
+        let index = self.composition.layers.len();
+        self.history.execute(
+            Box::new(AddLayerCommand::new(layer, index)),
+            &mut self.composition,
+        );
+
+        self.selected_layer_id = Some(id);
+        id
+    }
+
     /// Deletes the currently selected layer with undo support.
     pub fn delete_selected_layer(&mut self) -> bool {
         if let Some(id) = self.selected_layer_id {

@@ -363,7 +363,17 @@ pub fn evaluate(
                     children: children.clone(),
                 },
             ),
-            LayerContent::Particles(_) => (ResolvedContent::Particles, layer.content.clone()),
+            LayerContent::Particles(emitter) => {
+                let particles = emitter.simulate_at(time_seconds);
+                (
+                    ResolvedContent::Particles {
+                        particles,
+                        additive_blend: emitter.additive_blend,
+                        sprite_asset: emitter.sprite_asset,
+                    },
+                    layer.content.clone(),
+                )
+            }
             LayerContent::Model3D { asset } => (
                 ResolvedContent::Model3D { asset: *asset },
                 LayerContent::Model3D { asset: *asset },

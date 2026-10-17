@@ -96,6 +96,20 @@ pub struct ResolvedText {
     pub alignment: TextAlignment,
 }
 
+/// Simulated particle instance for GPU rendering and CPU verification.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ParticleInstance {
+    /// 2D position in emitter coordinate space.
+    pub position: [f32; 2],
+    /// Current particle size (diameter in pixels).
+    pub size: f32,
+    /// Normalized age in [0.0..1.0].
+    pub age_normalized: f32,
+    /// RGBA color channels [r, g, b, a].
+    pub color: [f32; 4],
+}
+
 /// Evaluated content payload for a layer.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedContent {
@@ -125,7 +139,14 @@ pub enum ResolvedContent {
         children: Vec<LayerId>,
     },
     /// GPU particle emitter.
-    Particles,
+    Particles {
+        /// Active simulated particle instances.
+        particles: Vec<ParticleInstance>,
+        /// Whether additive blending is enabled.
+        additive_blend: bool,
+        /// Optional sprite texture asset.
+        sprite_asset: Option<AssetId>,
+    },
     /// 3D model asset.
     Model3D {
         /// Asset reference ID.

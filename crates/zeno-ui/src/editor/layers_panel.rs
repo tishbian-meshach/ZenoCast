@@ -30,6 +30,11 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 editor.add_camera_layer(&name);
             }
 
+            if ui.button("+ Particles").clicked() {
+                let name = format!("Particles {}", editor.composition.layers.len() + 1);
+                editor.add_particle_layer(&name, zeno_engine::ParticleEmitter::sparks());
+            }
+
             let can_delete = editor.selected_layer_id.is_some();
             if ui.add_enabled(can_delete, Button::new("Delete")).clicked() {
                 editor.delete_selected_layer();

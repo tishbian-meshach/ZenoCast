@@ -338,20 +338,150 @@ pub struct ParticleEmitter {
 
 impl Default for ParticleEmitter {
     fn default() -> Self {
+        Self::sparks()
+    }
+}
+
+impl ParticleEmitter {
+    /// Confetti explosion preset: multi-color, buoyant downward drift.
+    pub fn confetti() -> Self {
         Self {
-            rate_per_second: Property::constant(50.0),
-            lifetime_seconds: Property::constant(2.0),
-            initial_speed: Property::constant(100.0),
-            spread_degrees: Property::constant(45.0),
-            start_size_px: Property::constant(8.0),
-            end_size_px: Property::constant(0.0),
-            start_color: Property::constant(Color::WHITE),
-            end_color: Property::constant(Color::TRANSPARENT),
-            gravity: Property::constant(Vec2::new(0.0, 98.0)),
+            rate_per_second: Property::constant(150.0),
+            lifetime_seconds: Property::constant(3.5),
+            initial_speed: Property::constant(400.0),
+            spread_degrees: Property::constant(360.0),
+            start_size_px: Property::constant(12.0),
+            end_size_px: Property::constant(8.0),
+            start_color: Property::constant(Color::rgba(1.0, 0.8, 0.2, 1.0)),
+            end_color: Property::constant(Color::rgba(0.2, 0.8, 1.0, 0.8)),
+            gravity: Property::constant(Vec2::new(0.0, 250.0)),
+            additive_blend: false,
+            sprite_asset: None,
+            seed: 42,
+        }
+    }
+
+    /// Incandescent sparks preset: fast directional emission with fiery additive glow.
+    pub fn sparks() -> Self {
+        Self {
+            rate_per_second: Property::constant(500.0),
+            lifetime_seconds: Property::constant(0.8),
+            initial_speed: Property::constant(650.0),
+            spread_degrees: Property::constant(60.0),
+            start_size_px: Property::constant(6.0),
+            end_size_px: Property::constant(1.0),
+            start_color: Property::constant(Color::rgba(1.0, 0.95, 0.7, 1.0)),
+            end_color: Property::constant(Color::rgba(1.0, 0.25, 0.0, 0.0)),
+            gravity: Property::constant(Vec2::new(0.0, 600.0)),
             additive_blend: true,
             sprite_asset: None,
             seed: 1337,
         }
+    }
+
+    /// Billowing smoke preset: slow rising dispersal with soft expansion.
+    pub fn smoke() -> Self {
+        Self {
+            rate_per_second: Property::constant(40.0),
+            lifetime_seconds: Property::constant(3.0),
+            initial_speed: Property::constant(60.0),
+            spread_degrees: Property::constant(30.0),
+            start_size_px: Property::constant(16.0),
+            end_size_px: Property::constant(80.0),
+            start_color: Property::constant(Color::rgba(0.4, 0.4, 0.4, 0.6)),
+            end_color: Property::constant(Color::rgba(0.2, 0.2, 0.2, 0.0)),
+            gravity: Property::constant(Vec2::new(0.0, -40.0)),
+            additive_blend: false,
+            sprite_asset: None,
+            seed: 2026,
+        }
+    }
+
+    /// High performance deterministic hash returning float in [0.0, 1.0].
+    #[inline]
+    pub fn deterministic_hash(seed: u64, index: u32, stream: u32) -> f32 {
+        let mut h = seed
+            .wrapping_add((index as u64) << 32)
+            .wrapping_add(stream as u64);
+        h ^= h >> 30;
+        h = h.wrapping_mul(0xbf58476d1ce4e5b9);
+        h ^= h >> 27;
+        h = h.wrapping_mul(0x94d049bb133111eb);
+        h ^= h >> 31;
+        ((h & 0xFFFFFFFF) as f32) / (u32::MAX as f32)
+    }
+
+    /// Evaluates deterministic particle state at timestamp `t` in closed form.
+    pub fn simulate_at(&self, t: f64) -> Vec<crate::eval::frame::ParticleInstance> {
+        if t <= 0.0 {
+            return Vec::new();
+        }
+
+        let rate = self.rate_per_second.evaluate_at(t).max(1.0);
+        let lifetime = self.lifetime_seconds.evaluate_at(t).max(0.01);
+        let speed = self.initial_speed.evaluate_at(t);
+        let spread_rad = self.spread_degrees.evaluate_at(t).to_radians();
+        let start_sz = self.start_size_px.evaluate_at(t);
+        let end_sz = self.end_size_px.evaluate_at(t);
+        let start_c = self.start_color.evaluate_at(t);
+        let end_c = self.end_color.evaluate_at(t);
+        let grav = self.gravity.evaluate_at(t);
+
+        let total_emitted = (t * rate as f64).floor() as u64;
+        let oldest_alive = ((t - lifetime as f64) * rate as f64).floor().max(0.0) as u64;
+
+        let count = (total_emitted.saturating_sub(oldest_alive)) as usize;
+        let max_particles = 100_000;
+        let instances_count = count.min(max_particles);
+        let mut instances = Vec::with_capacity(instances_count);
+
+        let start_idx = if count > max_particles {
+            total_emitted - max_particles as u64
+        } else {
+            oldest_alive
+        };
+
+        for i in start_idx..total_emitted {
+            let birth_time = (i as f64) / (rate as f64);
+            let age = (t - birth_time) as f32;
+            if age < 0.0 || age > lifetime {
+                continue;
+            }
+
+            let u = (age / lifetime).clamp(0.0, 1.0);
+            let i32_idx = (i & 0xFFFFFFFF) as u32;
+
+            // Deterministic launch velocity
+            let rnd_angle = Self::deterministic_hash(self.seed, i32_idx, 0);
+            let rnd_speed = Self::deterministic_hash(self.seed, i32_idx, 1);
+
+            let angle = -std::f32::consts::FRAC_PI_2 + (rnd_angle - 0.5) * spread_rad;
+            let initial_v = speed * (0.75 + 0.5 * rnd_speed);
+            let vx = initial_v * angle.cos();
+            let vy = initial_v * angle.sin();
+
+            // Closed-form motion: p = v0 * t + 0.5 * g * t^2
+            let px = vx * age + 0.5 * grav.x * age * age;
+            let py = vy * age + 0.5 * grav.y * age * age;
+
+            // Linear interpolation of size and color
+            let size = start_sz + u * (end_sz - start_sz);
+            let color = [
+                start_c.r + u * (end_c.r - start_c.r),
+                start_c.g + u * (end_c.g - start_c.g),
+                start_c.b + u * (end_c.b - start_c.b),
+                start_c.a + u * (end_c.a - start_c.a),
+            ];
+
+            instances.push(crate::eval::frame::ParticleInstance {
+                position: [px, py],
+                size,
+                age_normalized: u,
+                color,
+            });
+        }
+
+        instances
     }
 }
 

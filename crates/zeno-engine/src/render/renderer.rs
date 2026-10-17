@@ -269,6 +269,39 @@ impl ZenoRenderer {
                         }
                     }
                 }
+                ResolvedContent::Particles {
+                    particles,
+                    additive_blend: _,
+                    sprite_asset,
+                } => {
+                    let sprite_view = sprite_asset
+                        .and_then(|id| self.image_cache.get(&id).map(|(_, view, _, _)| view));
+
+                    for p in particles {
+                        let p_scale = Mat4::from_scale(Vec3::new(p.size, p.size, 1.0));
+                        let p_trans =
+                            Mat4::from_translation(Vec3::new(p.position[0], p.position[1], 0.0));
+                        let final_world = resolved.world_matrix * p_trans * p_scale;
+
+                        let render_mode = if sprite_view.is_some() { 1.0 } else { 0.0 };
+                        let uniforms = LayerUniforms {
+                            world: final_world.to_cols_array_2d(),
+                            color: p.color,
+                            params: [render_mode, opacity * p.color[3], p.size * 0.5, 0.0],
+                            gradient_start: [0.0, 0.0],
+                            gradient_end: [1.0, 1.0],
+                            gradient_color_end: [1.0, 1.0, 1.0, 1.0],
+                        };
+
+                        let (_buf, layer_bind_group) =
+                            self.pipeline.create_layer_bind_group(device, &uniforms);
+
+                        let tex_bind_group = sprite_view
+                            .map(|view| self.pipeline.create_texture_bind_group(device, view));
+
+                        draw_items.push((layer_bind_group, tex_bind_group));
+                    }
+                }
                 _ => {}
             }
         }

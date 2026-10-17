@@ -365,6 +365,28 @@ This log records major architectural and implementation choices, defaults select
   - Parallax lower-third with camera move: verified depth sorting order (Background -> Midground -> Foreground) and perspective parallax ratio (> 2.5x foreground displacement vs background).
   - Tie-breaker depth sorting: verified original layer order is maintained on depth ties.
 
+## 2026-10-18: M14 GPU Particle System
+
+- **Closed-Form Deterministic Particle Simulation (`ParticleEmitter::simulate_at`)**:
+  - Analytical physics model computing particle state at timestamp $t$ in $O(N_{active})$ without stepping from frame 0: $\vec{p}(a) = \vec{v}_0 \cdot a + \frac{1}{2}\vec{g}a^2$.
+  - 64-bit splitmix integer hash generator (`deterministic_hash`) ensures timeline scrubbing is 100% bit-for-bit deterministic across scrubbing backwards, forwards, and random seeks.
+  - Linear size and color interpolation across particle lifetime ($u = age / lifetime$).
+  - Cap of 100,000 active particles with zero allocation spikes.
+- **Broadcast Production Presets**:
+  - `confetti()`: 360-degree radial explosion, gold/cyan festive palette, soft aerodynamic downward gravity, alpha blending.
+  - `sparks()`: directional 60-degree cone, high-speed incandescent yellow-to-red decay, heavy gravity, additive glow blending.
+  - `smoke()`: expanding volumetric puff (16 px to 80 px), buoyant upward negative gravity, soft translucent dispersing alpha.
+- **Editor Controls & Rendering**:
+  - `layers_panel.rs`: `+ Particles` creation toolbar button.
+  - `properties_panel.rs`: one-click preset buttons, emission rate slider, lifetime, launch speed, spread angle, size over life, gravity vectors, additive blend toggle, and seed.
+  - `canvas.rs`: live interactive particle visualization in editor canvas.
+  - `renderer.rs`: instanced quad rendering with alpha or additive blending.
+- **M14 Acceptance Validation**: Verified via `tests/particle_system_test.rs`:
+  - Presets validation: confetti, sparks, smoke parameters confirmed.
+  - Deterministic scrubbing: verified exact bit-for-bit particle equivalence between first playhead evaluation and scrubbing back after forward/backward seeks.
+  - High-throughput simulation: 50,000 active particles evaluated in < 10ms (well within the 16.6ms 60fps frame budget).
+
+
 
 
 

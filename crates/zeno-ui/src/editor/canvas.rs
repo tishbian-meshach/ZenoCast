@@ -115,6 +115,16 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                         );
                     }
                 }
+                ResolvedContent::Particles { ref particles, .. } => {
+                    for p in particles {
+                        let p_pos = layer_pos
+                            + vec2(p.position[0] * editor.zoom, p.position[1] * editor.zoom);
+                        let col = color_to_egui(zeno_core::Color::rgba(
+                            p.color[0], p.color[1], p.color[2], p.color[3],
+                        ));
+                        painter.circle_filled(p_pos, (p.size * 0.5 * editor.zoom).max(1.0), col);
+                    }
+                }
                 _ => {}
             }
 
