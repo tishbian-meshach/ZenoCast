@@ -412,6 +412,24 @@ This log records major architectural and implementation choices, defaults select
   - Infinite loop (`while true {}`) cleanly triggers `ScriptError::InstructionLimitExceeded` in < 1ms without freezing or blocking.
   - Composition layer property evaluation resolves expressions dynamically per frame.
 
+## 2026-10-18: M16 Browser Source (`feat(media): browser source`)
+
+- **Off-screen Web Browser Source (`BrowserSource`)**:
+  - Implemented `BrowserSource` in `zeno-media` adhering to Section 13 M16 and Section 14 fallbacks:
+    - High-performance off-screen rendering pipeline delivering GPU textures via `DoubleBufferedTexture` directly to `zeno-compositor`.
+    - Transparent alpha support: background initialized to RGBA(0, 0, 0, 0) preserving transparency for overlay elements (e.g. web-based esports scoreboards, chat boxes, sponsor loops).
+    - Custom CSS injection: supports arbitrary user CSS overrides (e.g. `.clock { display: none }`, font styling, background overrides) applied during off-screen rendering.
+    - Page reload / refresh capability: dynamic `refresh()` method forcing instant re-evaluation without dropped frames.
+    - Configurable canvas resolution (e.g. 1920x1080, 1280x720) and target framerate (default 60 fps).
+    - Audio mute toggle (`audio_muted`).
+- **UI Integration**:
+  - Integrated "Browser Source (Web)" in `zeno-ui/src/dock.rs` source creation menu with default target URL `https://zenocast.live/scoreboard`.
+- **M16 Acceptance Validation**: Verified via `tests/browser_source_test.rs`:
+  - Web scoreboard page renders as a transparent overlay at 1080p60.
+  - Custom CSS injection correctly modifies DOM rendering and hides/displays targeted elements.
+  - Page refresh dynamically re-evaluates page state without frame stutter.
+  - 60 fps stream timing budget maintained with monotonic timestamp progression.
+
 
 
 

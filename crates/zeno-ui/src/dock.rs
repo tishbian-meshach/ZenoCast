@@ -340,6 +340,25 @@ impl<'a> StudioTabViewer<'a> {
                         });
                         *self.selected_source_id = Some(id);
                     }
+
+                    if ui.selectable_label(false, "Browser Source (Web)").clicked() {
+                        let id = format!("src_browser_{}", scene.sources.len() + 1);
+                        scene.sources.push(SourceDefinition {
+                            id: id.clone(),
+                            name: "Web Scoreboard".into(),
+                            kind: SourceKind::Browser,
+                            target: "https://zenocast.live/scoreboard".into(),
+                            visible: true,
+                            locked: false,
+                            volume: 1.0,
+                            muted: false,
+                            x: 0.0,
+                            y: 0.0,
+                            width: 1920.0,
+                            height: 1080.0,
+                        });
+                        *self.selected_source_id = Some(id);
+                    }
                 });
 
             if ui.button("- Delete").clicked() {

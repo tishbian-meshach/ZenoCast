@@ -25,6 +25,10 @@ pollster = { workspace = true }
 name = "capture_demo_test"
 path = "../../tests/capture_demo_test.rs"
 
+[[test]]
+name = "browser_source_test"
+path = "../../tests/browser_source_test.rs"
+
 [[example]]
 name = "capture_demo"
 path = "examples/capture_demo.rs"

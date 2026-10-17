@@ -3,6 +3,7 @@
 //! Live video and frame capture sources: Windows Graphics Capture, Media Foundation cameras,
 //! and physical monitor/window ingest pipelines.
 
+pub mod browser_source;
 pub mod camera_source;
 pub mod device_manager;
 pub mod display_source;
@@ -12,6 +13,7 @@ pub mod texture_buffer;
 pub mod window_source;
 
 // Re-exports
+pub use browser_source::BrowserSource;
 pub use camera_source::CameraCaptureSource;
 pub use device_manager::{DeviceManager, HotplugEvent};
 pub use display_source::DisplayCaptureSource;
