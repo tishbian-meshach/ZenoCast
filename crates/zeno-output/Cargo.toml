@@ -9,3 +9,19 @@ description = "Hardware encoding, RTMP/SRT streaming, and recording pipeline for
 [dependencies]
 zeno-core = { path = "../zeno-core" }
 zeno-audio = { path = "../zeno-audio" }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+crossbeam-channel = { workspace = true }
+parking_lot = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[[test]]
+name = "output_pipeline_test"
+path = "../../tests/output_pipeline_test.rs"

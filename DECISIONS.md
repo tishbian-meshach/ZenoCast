@@ -115,3 +115,30 @@ This log records major architectural and implementation choices, defaults select
 - **M6 Acceptance Validation**: Verified via `tests/audio_mixer_test.rs`:
   - Multi-source mix test with live peak and RMS meters.
   - 30-minute soak simulation (90,000 chunks) with +40 ppm skew verifying clock drift remains under 5 ms (< 20 ms budget requirement).
+
+## 2026-10-17: M7 Hardware Video Encoding, RTMP Streaming, and Recording
+
+- **Encoder Abstraction & Probing**:
+  - Implemented `EncoderKind` supporting `NvencH264`, `AmfH264`, `QsvH264`, `X264`, HEVC variants (`NvencHevc`, `AmfHevc`, `QsvHevc`, `X265`), and AV1 variants (`NvencAv1`, `AmfAv1`, `QsvAv1`).
+  - `EncoderProbe::auto_select_best_h264()` queries host hardware capabilities and auto-selects the optimal available hardware encoder (NVENC -> AMF -> QSV), gracefully falling back to `libx264` with a diagnostic notice per Section 14.
+  - Configurable rate control (`Cbr`, `Vbr`, `Cqp`), keyframe GOP interval, bitrate, presets, and profile.
+- **GPU RGBA to NV12 Color Conversion**:
+  - Standard ITU-R BT.709 integer SIMD and WGSL compute shader (`RGBA_TO_NV12_WGSL`) mapping 32-bit RGBA frames to planar NV12 (Y + interleaved UV).
+  - Pre-allocated `Nv12Buffer` reusable cache guarantees zero per-frame heap allocations during the real-time render loop (Rule 5).
+- **FFmpeg Subprocess Muxing Pipeline**:
+  - Subprocess architecture bypassing C-header/CRT ABI collisions while accessing full host hardware encoding features.
+  - Dual-input TCP loopback: video stream on input 0, 48 kHz stereo float audio on input 1.
+  - Injected probe frame handshake: dispatches an initial blank NV12 frame upon connection to instantly satisfy FFmpeg container format detection, eliminating multi-input socket deadlocks.
+  - Standard I/O handles configured to `Stdio::null()` to prevent Windows OS pipe buffer deadlocks.
+- **Real-Time Output Manager (`OutputManager`)**:
+  - Dedicated concurrent video and audio worker threads reading from bounded crossbeam ring buffers (`VIDEO_QUEUE_CAPACITY`, `AUDIO_QUEUE_CAPACITY`).
+  - Guarantees video and audio streams progress concurrently with zero cross-thread blocking.
+  - Automatic frame shedding during network/encoder congestion to maintain real-time presentation constraints.
+  - Auto-reconnect with exponential backoff on stream disruption.
+  - Crash-resilient MKV recording with instant zero-reencode remuxing to MP4 on stop (`-c copy`).
+- **Live Output Statistics**:
+  - `LiveOutputStats` tracks total frames, dropped frames, dropped ratio/percentage, instantaneous bitrate, encode latency, CPU/GPU usage estimates, and duration.
+- **M7 Acceptance Validation**: Verified via `tests/output_pipeline_test.rs`:
+  - 10-minute continuous streaming budget simulation asserting dropped frame ratio remains strictly under 0.1% (< 0.001).
+  - Synchronized video and 48 kHz stereo audio recording to MKV and lossless remux to MP4.
+  - RTMP stream queueing with zero dropped frames.
