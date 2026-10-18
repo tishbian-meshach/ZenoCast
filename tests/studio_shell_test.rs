@@ -491,3 +491,268 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
         .items
         .is_empty());
 }
+
+#[test]
+fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
+    let instance = wgpu::Instance::default();
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        force_fallback_adapter: false,
+        compatible_surface: None,
+    }))
+    .or_else(|| {
+        pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            force_fallback_adapter: true,
+            compatible_surface: None,
+        }))
+    })
+    .expect("WGPU test adapter initialization");
+
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("Test Section 2.2 Device"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .expect("WGPU test device creation");
+
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    let mut project = Project::default();
+    project.scenes.retain(|s| s.id == "scene_gameplay");
+    project.scenes[0].sources.clear();
+
+    let sc_id = zeno_ui::app::string_to_scene_id("scene_gameplay");
+    let mut comp =
+        zeno_compositor::SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+    let mut scene = zeno_compositor::Scene::new("Gameplay Scene");
+    scene.id = sc_id;
+    comp.add_scene(scene);
+    comp.set_program(sc_id);
+    comp.set_preview(sc_id);
+
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some("scene_gameplay".into()),
+        selected_source_id: None,
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Cut".into(),
+        transition_duration_ms: 0,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(Some(comp))),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: Some(device.clone()),
+        wgpu_queue: Some(queue.clone()),
+    };
+
+    // The 10 broadcast source types required by Section 2.2
+    let ten_types = [
+        (
+            zeno_ui::SourceKind::DisplayCapture,
+            "Main Display",
+            "Display 0",
+        ),
+        (
+            zeno_ui::SourceKind::WindowCapture,
+            "Target Window",
+            "Zenocast Window",
+        ),
+        (
+            zeno_ui::SourceKind::Color,
+            "Stage Backdrop",
+            "rgba(0.2,0.4,0.8,1.0)",
+        ),
+        (
+            zeno_ui::SourceKind::Text,
+            "Lower Third Headline",
+            "CHAMPIONSHIP FINALS",
+        ),
+        (
+            zeno_ui::SourceKind::Image,
+            "Sponsor Watermark",
+            "nonexistent_fallback.png",
+        ),
+        (
+            zeno_ui::SourceKind::MediaFile,
+            "Hype Intro Reel",
+            "intro_video.mp4",
+        ),
+        (
+            zeno_ui::SourceKind::CameraFeed,
+            "Caster Webcam",
+            "Default Camera",
+        ),
+        (
+            zeno_ui::SourceKind::AudioInput,
+            "Caster Microphone",
+            "Default Microphone",
+        ),
+        (
+            zeno_ui::SourceKind::AudioOutput,
+            "Game Audio Loopback",
+            "Default Audio Output",
+        ),
+        (
+            zeno_ui::SourceKind::Browser,
+            "Web Tournament Overlay",
+            "https://tournaments.live",
+        ),
+    ];
+
+    let mut added_ids = Vec::new();
+
+    // 1. Verify adding all 10 source types produces real backend instances
+    for (idx, (kind, name, target)) in ten_types.iter().enumerate() {
+        app.create_and_add_source(zeno_ui::SourceDialogAction::Create {
+            name: (*name).to_string(),
+            kind: *kind,
+            target: (*target).to_string(),
+            width: 1920,
+            height: 1080,
+            color_rgba: [0.2, 0.4, 0.8, 1.0],
+            capture_cursor: true,
+            file_path: (*target).to_string(),
+            text_content: (*target).to_string(),
+            font_size: 42.0,
+            url: (*target).to_string(),
+            looping: true,
+            volume: 0.85,
+            muted: false,
+        });
+
+        assert_eq!(
+            app.source_registry.read().count(),
+            idx + 1,
+            "Registry count should match added source index"
+        );
+
+        let created_id = app.selected_source_id.clone().expect("Source created ID");
+        added_ids.push((created_id, *kind));
+    }
+
+    assert_eq!(app.source_registry.read().count(), 10);
+    assert_eq!(app.project.scenes[0].sources.len(), 10);
+
+    // 2. Tick engine loop and verify all 10 sources update GPU textures and compositor renders
+    app.source_registry
+        .write()
+        .update_all(&device, &queue, 1.0 / 60.0);
+    let frame_views = app.source_registry.write().get_all_frame_views();
+
+    let mut comp_lock = app.compositor.write();
+    let render_res = comp_lock
+        .as_mut()
+        .unwrap()
+        .render_frame(&frame_views, 1.0 / 60.0);
+    assert!(
+        render_res.is_ok(),
+        "GPU Compositor renders all 10 sources simultaneously"
+    );
+    drop(comp_lock);
+
+    // 3. Edit properties live for each of the 10 sources and verify backend reflects changes
+    for (id_str, kind) in &added_ids {
+        let src_id = zeno_ui::app::string_to_source_id(id_str);
+        app.create_and_add_source(zeno_ui::SourceDialogAction::Update {
+            id: id_str.clone(),
+            name: format!("Updated {:?}", kind),
+            target: "Updated Target".into(),
+            width: 1280,
+            height: 720,
+            color_rgba: [0.5, 0.5, 0.5, 1.0],
+            capture_cursor: false,
+            file_path: "updated_path.png".into(),
+            text_content: "UPDATED TEXT CONTENT".into(),
+            font_size: 32.0,
+            url: "https://zenocast.live/updated".into(),
+            looping: false,
+            volume: 0.5,
+            muted: true,
+        });
+
+        let reg = app.source_registry.read();
+        let src = reg.get(src_id).expect("Source must exist in registry");
+        assert_eq!(src.name(), &format!("Updated {:?}", kind));
+    }
+
+    // 4. Teardown all 10 sources and verify complete resource reclamation
+    for (id_str, _) in &added_ids {
+        app.remove_source_by_id(id_str);
+    }
+
+    assert_eq!(
+        app.source_registry.read().count(),
+        0,
+        "Source registry must be empty after removing all sources"
+    );
+    assert_eq!(
+        app.project.scenes[0].sources.len(),
+        0,
+        "Project scene sources must be empty"
+    );
+
+    // 5. Stress test: rapid 20-cycle add & remove loop to verify flat handle and memory state
+    for cycle in 0..20 {
+        let test_name = format!("Stress Source {}", cycle);
+        app.create_and_add_source(zeno_ui::SourceDialogAction::Create {
+            name: test_name,
+            kind: zeno_ui::SourceKind::Color,
+            target: "rgba(0.1,0.1,0.1,1.0)".into(),
+            width: 640,
+            height: 360,
+            color_rgba: [0.1, 0.1, 0.1, 1.0],
+            capture_cursor: false,
+            file_path: "".into(),
+            text_content: "".into(),
+            font_size: 24.0,
+            url: "".into(),
+            looping: false,
+            volume: 1.0,
+            muted: false,
+        });
+
+        let id = app.selected_source_id.clone().unwrap();
+        app.remove_source_by_id(&id);
+    }
+
+    assert_eq!(app.source_registry.read().count(), 0);
+}

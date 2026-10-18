@@ -6,7 +6,7 @@
 use egui::{vec2, Align2, Window};
 
 use crate::project::SourceKind;
-use crate::theme::{GRID_UNIT, RED_LIVE, TEXT, TEXT_MUTED};
+use crate::theme::{AMBER_WARN, GRID_UNIT, RED_LIVE, TEXT, TEXT_MUTED};
 use zeno_media::DeviceManager;
 
 /// Operating mode of the source dialog modal.
@@ -69,6 +69,8 @@ pub struct SourceDialogState {
     pub display_index: usize,
     pub window_title: String,
     pub camera_device: String,
+    pub audio_device: String,
+    pub scale_mode: String,
     pub file_path: String,
     pub text_content: String,
     pub font_size: f32,
@@ -91,6 +93,8 @@ impl Default for SourceDialogState {
             display_index: 0,
             window_title: String::new(),
             camera_device: String::new(),
+            audio_device: String::new(),
+            scale_mode: "Fit".to_string(),
             file_path: String::new(),
             text_content: "Zenocast Live".into(),
             font_size: 48.0,
@@ -154,6 +158,9 @@ impl SourceDialogState {
             }
             SourceKind::Browser => {
                 self.url = target.to_string();
+            }
+            SourceKind::AudioInput | SourceKind::AudioOutput => {
+                self.audio_device = target.to_string();
             }
             _ => {}
         }
@@ -412,7 +419,7 @@ impl SourceDialogState {
                                         cameras
                                             .first()
                                             .map(|c| c.name.clone())
-                                            .unwrap_or_else(|| "Default Camera".into())
+                                            .unwrap_or_else(|| "Virtual Broadcast Camera (Simulation)".into())
                                     } else {
                                         self.camera_device.clone()
                                     };
@@ -429,16 +436,89 @@ impl SourceDialogState {
                                                     .clicked()
                                                 {
                                                     self.camera_device = cam.name.clone();
+                                                    if let Some(fmt) = cam.formats.first() {
+                                                        self.width = fmt.width;
+                                                        self.height = fmt.height;
+                                                    }
                                                 }
                                             }
                                         });
                                 });
+
+                                if cameras.is_empty() {
+                                    ui.colored_label(
+                                        AMBER_WARN,
+                                        "No physical cameras detected. Virtual broadcast simulation will be used.",
+                                    );
+                                } else if let Some(selected_cam) =
+                                    cameras.iter().find(|c| c.name == self.camera_device)
+                                {
+                                    if !selected_cam.formats.is_empty() {
+                                        ui.horizontal(|ui| {
+                                            ui.colored_label(TEXT, "Resolution / Format:");
+                                            let cur_fmt = format!(
+                                                "{}x{} ({})",
+                                                self.width, self.height, selected_cam.formats[0].format_name
+                                            );
+                                            egui::ComboBox::from_id_salt("cam_fmt_picker")
+                                                .selected_text(cur_fmt)
+                                                .show_ui(ui, |ui| {
+                                                    for fmt in &selected_cam.formats {
+                                                        let label = format!(
+                                                            "{}x{} @ {:.0}fps ({})",
+                                                            fmt.width,
+                                                            fmt.height,
+                                                            fmt.frame_rate,
+                                                            fmt.format_name
+                                                        );
+                                                        if ui
+                                                            .selectable_label(
+                                                                self.width == fmt.width
+                                                                    && self.height == fmt.height,
+                                                                label,
+                                                            )
+                                                            .clicked()
+                                                        {
+                                                            self.width = fmt.width;
+                                                            self.height = fmt.height;
+                                                        }
+                                                    }
+                                                });
+                                        });
+                                    }
+                                }
                             }
                             SourceKind::Image => {
                                 ui.horizontal(|ui| {
                                     ui.colored_label(TEXT, "Image Path:");
                                     ui.text_edit_singleline(&mut self.file_path);
                                 });
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(TEXT, "Scale Mode:");
+                                    egui::ComboBox::from_id_salt("img_scale")
+                                        .selected_text(&self.scale_mode)
+                                        .show_ui(ui, |ui| {
+                                            for mode in &["Fit", "Stretch", "Center"] {
+                                                if ui
+                                                    .selectable_label(
+                                                        self.scale_mode == *mode,
+                                                        *mode,
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.scale_mode = (*mode).to_string();
+                                                }
+                                            }
+                                        });
+                                });
+                                if !self.file_path.trim().is_empty()
+                                    && !std::path::Path::new(&self.file_path).exists()
+                                {
+                                    ui.colored_label(
+                                        AMBER_WARN,
+                                        "Notice: File does not exist on disk (test placeholder will be rendered)",
+                                    );
+                                }
                                 ui.colored_label(TEXT_MUTED, "Supported formats: PNG, JPEG, SVG");
                             }
                             SourceKind::MediaFile => {
@@ -447,6 +527,14 @@ impl SourceDialogState {
                                     ui.text_edit_singleline(&mut self.file_path);
                                 });
                                 ui.checkbox(&mut self.looping, "Loop Playback Continuously");
+                                if !self.file_path.trim().is_empty()
+                                    && !std::path::Path::new(&self.file_path).exists()
+                                {
+                                    ui.colored_label(
+                                        AMBER_WARN,
+                                        "Notice: Video file does not exist on disk (offline placeholder will be rendered)",
+                                    );
+                                }
                             }
                             SourceKind::Text => {
                                 ui.colored_label(TEXT, "Text Content:");
@@ -457,11 +545,91 @@ impl SourceDialogState {
                                             .text("Font Size"),
                                     );
                                 });
-                            }
-                            SourceKind::AudioInput | SourceKind::AudioOutput => {
+                                let mut color_u8 = [
+                                    (self.color_rgba[0] * 255.0) as u8,
+                                    (self.color_rgba[1] * 255.0) as u8,
+                                    (self.color_rgba[2] * 255.0) as u8,
+                                    (self.color_rgba[3] * 255.0) as u8,
+                                ];
                                 ui.horizontal(|ui| {
-                                    ui.colored_label(TEXT, "Device:");
-                                    ui.colored_label(TEXT_MUTED, "Default Windows Audio Endpoint");
+                                    ui.colored_label(TEXT, "Text Color:");
+                                    if ui
+                                        .color_edit_button_srgba_unmultiplied(&mut color_u8)
+                                        .changed()
+                                    {
+                                        self.color_rgba = [
+                                            color_u8[0] as f32 / 255.0,
+                                            color_u8[1] as f32 / 255.0,
+                                            color_u8[2] as f32 / 255.0,
+                                            color_u8[3] as f32 / 255.0,
+                                        ];
+                                    }
+                                });
+                            }
+                            SourceKind::AudioInput => {
+                                let (inputs, _) = zeno_audio::enumerate_audio_devices();
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(TEXT, "Input Device:");
+                                    let current = if self.audio_device.is_empty() {
+                                        inputs
+                                            .first()
+                                            .map(|d| d.name.clone())
+                                            .unwrap_or_else(|| "Default Microphone (WASAPI)".into())
+                                    } else {
+                                        self.audio_device.clone()
+                                    };
+
+                                    egui::ComboBox::from_id_salt("audio_in_picker")
+                                        .selected_text(current)
+                                        .show_ui(ui, |ui| {
+                                            for dev in &inputs {
+                                                if ui
+                                                    .selectable_label(
+                                                        self.audio_device == dev.name,
+                                                        &dev.name,
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.audio_device = dev.name.clone();
+                                                }
+                                            }
+                                        });
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add(
+                                        egui::Slider::new(&mut self.volume, 0.0..=1.0).text("Gain"),
+                                    );
+                                    ui.checkbox(&mut self.muted, "Mute");
+                                });
+                            }
+                            SourceKind::AudioOutput => {
+                                let (_, outputs) = zeno_audio::enumerate_audio_devices();
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(TEXT, "Loopback Device:");
+                                    let current = if self.audio_device.is_empty() {
+                                        outputs
+                                            .first()
+                                            .map(|d| d.name.clone())
+                                            .unwrap_or_else(|| "Default Output (WASAPI)".into())
+                                    } else {
+                                        self.audio_device.clone()
+                                    };
+
+                                    egui::ComboBox::from_id_salt("audio_out_picker")
+                                        .selected_text(current)
+                                        .show_ui(ui, |ui| {
+                                            for dev in &outputs {
+                                                if ui
+                                                    .selectable_label(
+                                                        self.audio_device == dev.name,
+                                                        &dev.name,
+                                                    )
+                                                    .clicked()
+                                                {
+                                                    self.audio_device = dev.name.clone();
+                                                }
+                                            }
+                                        });
                                 });
                                 ui.horizontal(|ui| {
                                     ui.add(
@@ -499,10 +667,25 @@ impl SourceDialogState {
                                 "Add Source"
                             };
                             if ui.button(confirm_label).clicked() {
-                                // Validation
+                                // Input Validation
                                 if self.name.trim().is_empty() {
                                     self.error_message = Some("Source name cannot be empty".into());
                                     return;
+                                }
+
+                                match kind {
+                                    SourceKind::Browser if self.url.trim().is_empty() => {
+                                        self.error_message = Some("URL cannot be empty".into());
+                                        return;
+                                    }
+                                    SourceKind::WindowCapture
+                                        if self.window_title.trim().is_empty() =>
+                                    {
+                                        self.error_message =
+                                            Some("Please select an application window".into());
+                                        return;
+                                    }
+                                    _ => {}
                                 }
 
                                 let target = match kind {
@@ -522,8 +705,13 @@ impl SourceDialogState {
                                     | SourceKind::MediaFile
                                     | SourceKind::ArxOverlay => self.file_path.clone(),
                                     SourceKind::Text => self.text_content.clone(),
-                                    SourceKind::AudioInput => "Microphone (WASAPI)".into(),
-                                    SourceKind::AudioOutput => "Desktop Loopback (WASAPI)".into(),
+                                    SourceKind::AudioInput | SourceKind::AudioOutput => {
+                                        if self.audio_device.is_empty() {
+                                            "Default Audio Endpoint".into()
+                                        } else {
+                                            self.audio_device.clone()
+                                        }
+                                    }
                                     SourceKind::Browser => self.url.clone(),
                                 };
 

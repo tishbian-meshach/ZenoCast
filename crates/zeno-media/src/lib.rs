@@ -3,31 +3,39 @@
 //! Live video and frame capture sources: Windows Graphics Capture, Media Foundation cameras,
 //! and physical monitor/window ingest pipelines.
 
+pub mod audio_source;
 pub mod browser_source;
 pub mod camera_source;
 pub mod color_source;
 pub mod device_manager;
 pub mod display_source;
 pub mod error;
+pub mod image_source;
 pub mod ndi;
 pub mod registry;
 pub mod source;
 pub mod spout;
+pub mod text_source;
 pub mod texture_buffer;
+pub mod video_source;
 pub mod window_source;
 
 // Re-exports
+pub use audio_source::AudioCaptureSource;
 pub use browser_source::BrowserSource;
 pub use camera_source::CameraCaptureSource;
 pub use color_source::ColorSource;
 pub use device_manager::{DeviceManager, HotplugEvent};
 pub use display_source::DisplayCaptureSource;
 pub use error::SourceError;
+pub use image_source::ImageSource;
 pub use ndi::NdiSource;
 pub use registry::SourceRegistry;
 pub use source::{Source, SourceKind, SourceProperties, VideoFrame};
 pub use spout::SpoutSource;
+pub use text_source::TextSource;
 pub use texture_buffer::DoubleBufferedTexture;
+pub use video_source::VideoSource;
 pub use window_source::WindowCaptureSource;
 
 // Platform re-exports

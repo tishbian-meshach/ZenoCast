@@ -116,6 +116,12 @@ impl BrowserSource {
         self.audio_muted = muted;
     }
 
+    /// Set explicit source ID.
+    pub fn with_id(mut self, id: SourceId) -> Self {
+        self.id = id;
+        self
+    }
+
     /// Returns `true` if audio from the page is muted.
     pub fn is_audio_muted(&self) -> bool {
         self.audio_muted
@@ -306,12 +312,20 @@ impl Source for BrowserSource {
         &self.name
     }
 
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
     fn kind(&self) -> SourceKind {
         SourceKind::Browser
     }
 
     fn is_active(&self) -> bool {
         self.active
+    }
+
+    fn is_healthy(&self) -> bool {
+        self.active && !self.url.is_empty()
     }
 
     fn dimensions(&self) -> (u32, u32) {
@@ -324,6 +338,32 @@ impl Source for BrowserSource {
             width: self.width,
             height: self.height,
             custom_css: self.custom_css.clone(),
+        }
+    }
+
+    fn update_properties(
+        &mut self,
+        properties: &crate::source::SourceProperties,
+        _device: &Device,
+        _queue: &Queue,
+    ) -> Result<(), SourceError> {
+        if let crate::source::SourceProperties::Browser {
+            url,
+            width,
+            height,
+            custom_css,
+        } = properties
+        {
+            self.url = url.clone();
+            self.width = *width;
+            self.height = *height;
+            self.custom_css = custom_css.clone();
+            self.needs_refresh = true;
+            Ok(())
+        } else {
+            Err(SourceError::InvalidProperties(
+                "Expected Browser properties".to_string(),
+            ))
         }
     }
 

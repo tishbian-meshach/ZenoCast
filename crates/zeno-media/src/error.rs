@@ -17,6 +17,10 @@ pub enum SourceError {
     #[error("Frame capture error: {0}")]
     CaptureFailed(String),
 
+    /// Invalid properties passed during runtime reconfiguration.
+    #[error("Invalid properties: {0}")]
+    InvalidProperties(String),
+
     /// Underlying Windows platform error.
     #[error("Platform API error: {0}")]
     PlatformError(String),

@@ -17,7 +17,8 @@ pub struct WindowCaptureSource {
     target_fps: f32,
     last_capture_time: f64,
     active: bool,
-    prev_dot_x: Option<u32>,
+    target_found: bool,
+    offline_rendered: bool,
     texture_buffer: DoubleBufferedTexture,
     raw_buffer: Vec<u8>,
 }
@@ -34,9 +35,28 @@ impl WindowCaptureSource {
             target_fps: 60.0,
             last_capture_time: -1.0,
             active: false,
-            prev_dot_x: None,
+            target_found: hwnd != 0,
+            offline_rendered: false,
             texture_buffer: DoubleBufferedTexture::new(),
             raw_buffer: Vec::new(),
+        }
+    }
+
+    /// Set explicit source ID.
+    pub fn with_id(mut self, id: SourceId) -> Self {
+        self.id = id;
+        self
+    }
+
+    /// Automatically find window by title from active top-level windows.
+    pub fn from_title(title: &str) -> Self {
+        let windows = zeno_platform::enumerate_windows();
+        if let Some(win) = windows.into_iter().find(|w| w.title == title) {
+            Self::new(win.hwnd, win.title)
+        } else {
+            let mut src = Self::new(0, title);
+            src.target_found = false;
+            src
         }
     }
 
@@ -80,12 +100,20 @@ impl Source for WindowCaptureSource {
         &self.name
     }
 
+    fn set_name(&mut self, name: String) {
+        self.name = name;
+    }
+
     fn kind(&self) -> SourceKind {
         SourceKind::WindowCapture
     }
 
     fn is_active(&self) -> bool {
         self.active
+    }
+
+    fn is_healthy(&self) -> bool {
+        self.active && self.target_found
     }
 
     fn dimensions(&self) -> (u32, u32) {
@@ -99,41 +127,51 @@ impl Source for WindowCaptureSource {
         }
     }
 
+    fn update_properties(
+        &mut self,
+        properties: &crate::source::SourceProperties,
+        _device: &Device,
+        _queue: &Queue,
+    ) -> Result<(), SourceError> {
+        if let crate::source::SourceProperties::Window {
+            window_title,
+            cursor_visible,
+        } = properties
+        {
+            self.capture_cursor = *cursor_visible;
+            if &self.name != window_title {
+                self.name = window_title.clone();
+                let windows = zeno_platform::enumerate_windows();
+                if let Some(win) = windows.into_iter().find(|w| &w.title == window_title) {
+                    self.hwnd = win.hwnd;
+                    self.target_found = true;
+                } else {
+                    self.hwnd = 0;
+                    self.target_found = false;
+                }
+            }
+            Ok(())
+        } else {
+            Err(SourceError::InvalidProperties(
+                "Expected Window properties".to_string(),
+            ))
+        }
+    }
+
     fn start(&mut self, _device: &Device, _queue: &Queue) -> Result<(), SourceError> {
         self.active = true;
         self.last_capture_time = -1.0;
-        self.prev_dot_x = None;
 
         // Pre-render synthetic fallback window once at startup
         let w = 1280u32;
         let h = 720u32;
-        let buf_size = (w * h * 4) as usize;
-        self.raw_buffer.resize(buf_size, 0);
-
-        for y in 0..h {
-            let row_offset = (y * w * 4) as usize;
-            let is_header = y < 32;
-            for x in 0..w {
-                let px = row_offset + (x * 4) as usize;
-                if is_header || x < 4 || x >= w - 4 || y >= h - 4 {
-                    self.raw_buffer[px] = 39; // Surface neutral #272B30
-                    self.raw_buffer[px + 1] = 43;
-                    self.raw_buffer[px + 2] = 48;
-                    self.raw_buffer[px + 3] = 255;
-                } else {
-                    self.raw_buffer[px] = 21; // Neutral surface #15171A
-                    self.raw_buffer[px + 1] = 23;
-                    self.raw_buffer[px + 2] = 26;
-                    self.raw_buffer[px + 3] = 255;
-                }
-            }
-        }
+        self.render_offline_placeholder(w, h);
+        self.offline_rendered = true;
         Ok(())
     }
 
     fn stop(&mut self) {
         self.active = false;
-        self.prev_dot_x = None;
     }
 
     fn get_frame(&mut self) -> Option<&VideoFrame> {
@@ -165,6 +203,8 @@ impl Source for WindowCaptureSource {
             && width > 0
             && height > 0
         {
+            self.target_found = true;
+            self.offline_rendered = false;
             self.texture_buffer.upload(
                 device,
                 queue,
@@ -175,46 +215,75 @@ impl Source for WindowCaptureSource {
             );
             self.last_capture_time = current_time;
         } else {
-            // Fast incremental update on synthetic fallback window
+            self.target_found = false;
+            // Clear broadcast placeholder: Window Closed / Target Offline
             let w = 1280u32;
             let h = 720u32;
-            let phase = ((current_time * 1.5) % 1.0) as f32;
-            let dot_x = (phase * (w - 40) as f32) as u32 + 20;
-
-            // Restore previous dot area
-            if let Some(prev_x) = self.prev_dot_x {
-                let start_x = prev_x.saturating_sub(10);
-                let end_x = (prev_x + 10).min(w.saturating_sub(1));
-                for y in 40..=50 {
-                    let row_offset = (y * w * 4) as usize;
-                    for x in start_x..=end_x {
-                        let px = row_offset + (x * 4) as usize;
-                        self.raw_buffer[px] = 21; // Neutral surface #15171A
-                        self.raw_buffer[px + 1] = 23;
-                        self.raw_buffer[px + 2] = 26;
-                        self.raw_buffer[px + 3] = 255;
-                    }
-                }
+            let buf_size = (w * h * 4) as usize;
+            if self.raw_buffer.len() < buf_size {
+                self.raw_buffer.resize(buf_size, 0);
+                self.offline_rendered = false;
             }
 
-            // Draw new active dot
-            let start_x = dot_x.saturating_sub(10);
-            let end_x = (dot_x + 10).min(w.saturating_sub(1));
-            for y in 40..=50 {
-                let row_offset = (y * w * 4) as usize;
-                for x in start_x..=end_x {
-                    let px = row_offset + (x * 4) as usize;
-                    self.raw_buffer[px] = 76; // Accent Blue #4C8DFF
-                    self.raw_buffer[px + 1] = 141;
-                    self.raw_buffer[px + 2] = 255;
-                    self.raw_buffer[px + 3] = 255;
-                }
+            if !self.offline_rendered {
+                self.render_offline_placeholder(w, h);
+                self.offline_rendered = true;
             }
-            self.prev_dot_x = Some(dot_x);
 
             self.texture_buffer
                 .upload(device, queue, w, h, &self.raw_buffer, current_time);
             self.last_capture_time = current_time;
         }
     }
+}
+
+impl WindowCaptureSource {
+    fn render_offline_placeholder(&mut self, w: u32, h: u32) {
+        let buf_size = (w * h * 4) as usize;
+        if self.raw_buffer.len() < buf_size {
+            self.raw_buffer.resize(buf_size, 0);
+        }
+
+        for y in 0..h {
+            let row_offset = (y * w * 4) as usize;
+            let is_header = y < 36;
+            let is_border = x_is_border(y, h);
+            let in_offline_banner = (320..=400).contains(&y);
+
+            for x in 0..w {
+                let px = row_offset + (x * 4) as usize;
+                if is_header || is_border || x < 4 || x >= w - 4 {
+                    self.raw_buffer[px] = 39; // Neutral surface #272B30
+                    self.raw_buffer[px + 1] = 43;
+                    self.raw_buffer[px + 2] = 48;
+                    self.raw_buffer[px + 3] = 255;
+                } else if in_offline_banner && (440..=840).contains(&x) {
+                    // Offline notice banner with warning highlight
+                    let is_banner_edge = y == 320 || y == 400 || x == 440 || x == 840;
+                    if is_banner_edge {
+                        self.raw_buffer[px] = 255; // Warning red/accent
+                        self.raw_buffer[px + 1] = 59;
+                        self.raw_buffer[px + 2] = 48;
+                        self.raw_buffer[px + 3] = 255;
+                    } else {
+                        self.raw_buffer[px] = 39; // #272B30
+                        self.raw_buffer[px + 1] = 43;
+                        self.raw_buffer[px + 2] = 48;
+                        self.raw_buffer[px + 3] = 255;
+                    }
+                } else {
+                    // Background neutral canvas #15171A
+                    self.raw_buffer[px] = 21;
+                    self.raw_buffer[px + 1] = 23;
+                    self.raw_buffer[px + 2] = 26;
+                    self.raw_buffer[px + 3] = 255;
+                }
+            }
+        }
+    }
+}
+
+#[inline]
+fn x_is_border(y: u32, h: u32) -> bool {
+    y == 36 || y >= h - 4
 }

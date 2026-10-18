@@ -611,3 +611,30 @@ This log records major architectural and implementation choices, defaults select
     - Preview and Program framebuffers are registered directly as native textures in egui (`register_native_texture`), and rendered via `ui.painter().image(...)` at 60 FPS in `StudioTabViewer`.
   - **Acceptance Validation**: Added `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview` in `tests/studio_shell_test.rs` validating source creation, backend registration, compositor scene binding, live GPU render pass, runtime property updates, and clean resource teardown.
 
+### 2026-10-18: Section 2.2 - Implement All 10 Broadcast Source Types (`feat(media): display, window, color, text, image, video, camera, audio and browser sources`)
+- **Broken / Symptom**: Only a stub Color source was implemented in Section 2.1. The remaining 9 broadcast source types (Display, Window, Text, Image, Video, Camera, Audio Input, Audio Output, Browser) either had missing backends, stub property editors, or unhandled device disconnects/unsupported scale modes/missing file panics.
+- **Root Cause**:
+  - `zeno-media` lacked concrete `Source` trait implementations for Text, Image, Video File, Audio Input, and Audio Output capture.
+  - Existing sources (`DisplayCaptureSource`, `WindowCaptureSource`, `CameraCaptureSource`, `BrowserSource`) lacked uniform `update_properties()`, `SourceProperties` serialization, `is_healthy()` health states, and fallback/re-bind behaviors on target close or disconnect.
+  - The UI source dialog lacked typed property forms for displays, windows, scale modes, font attributes, loop/playback controls, WASAPI devices, and URL/CSS injection.
+- **Fix**:
+  - **Display Capture (`crates/zeno-media/src/display_source.rs`)**: Added `with_monitor`, `with_id`, `from_index`, `monitor_index`, `update_properties`, `is_healthy`, cursor compositing toggle, and runtime monitor reconfiguration.
+  - **Window Capture (`crates/zeno-media/src/window_source.rs`)**: Added `with_id`, `from_title`, `update_properties`, `is_healthy`, and zero-overhead pre-rendered offline placeholder banner (`"WINDOW CLOSED / TARGET OFFLINE"`) with warning highlights when target window is closed or minimized.
+  - **Color Source (`crates/zeno-media/src/color_source.rs`)**: Flat solid RGBA fill, color picker, dynamic updates.
+  - **Text Source (`crates/zeno-media/src/text_source.rs`)**: Crisp bitmap font rasterization, font size, color, multiline text, runtime property update without leaks.
+  - **Image Source (`crates/zeno-media/src/image_source.rs`)**: PNG/JPEG loader, scale modes (Fit, Stretch, Center), clear placeholder if file missing, no crash.
+  - **Video File Source (`crates/zeno-media/src/video_source.rs`)**: FFmpeg subprocess decoder pipe, play/pause, seek, looping, duration and playhead tracking, offline placeholder if file missing.
+  - **Camera / Capture Card (`crates/zeno-media/src/camera_source.rs`)**: Media Foundation enumeration, format/resolution picker, unplugged detection rendering clear offline banner, `is_healthy` tracking, cached offline placeholder to eliminate CPU iteration spikes.
+  - **Audio Input Source (`crates/zeno-media/src/audio_source.rs`)**: WASAPI capture device picker via `zeno_audio::enumerate_audio_devices()`, gain slider, mute toggle, stereo VU meter texture output.
+  - **Audio Output Capture (`crates/zeno-media/src/audio_source.rs`)**: WASAPI desktop loopback capture, gain slider, mute toggle, stereo VU meter texture output.
+  - **Browser Source (`crates/zeno-media/src/browser_source.rs`)**: URL, width/height, custom CSS injection, refresh trigger, transparent overlay GPU texture.
+  - **UI Wiring (`crates/zeno-ui/src/app.rs` & `source_dialog.rs`)**:
+    - `ZenocastApp::create_and_add_source` instantiates all 10 sources, registers in `SourceRegistry`, adds to `SceneCompositor`, and adds to `Project`.
+    - `SourceDialogState` provides device pickers (displays, windows, cameras, audio inputs, audio outputs), formats, scale modes, live color pickers, and validates empty names/URLs/window titles inline.
+  - **Acceptance Validation**: Added `test_section_2_2_all_ten_source_types_and_resource_lifecycle` in `tests/studio_shell_test.rs`:
+    - Validated simultaneous GPU rendering of all 10 source types composited in `SceneCompositor`.
+    - Validated live runtime property updates across all 10 types without leaking or panic.
+    - Verified complete teardown of all 10 sources returning registry count to 0.
+    - Executed 20-cycle rapid add/remove stress loop asserting flat handle count and zero leaks.
+
+

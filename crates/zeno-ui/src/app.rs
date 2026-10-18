@@ -18,8 +18,9 @@ use zeno_compositor::{Scene, SceneCompositor, SceneItem, SceneItemSource};
 use zeno_core::{SceneId, SourceId};
 use zeno_license::{AntiTamperGuard, LicenseClient, LicenseState};
 use zeno_media::{
-    BrowserSource, CameraCaptureSource, ColorSource, DisplayCaptureSource, Source,
-    SourceProperties, SourceRegistry, WindowCaptureSource,
+    AudioCaptureSource, BrowserSource, CameraCaptureSource, ColorSource, DisplayCaptureSource,
+    ImageSource, Source, SourceProperties, SourceRegistry, TextSource, VideoSource,
+    WindowCaptureSource,
 };
 use zeno_output::service::OutputManager;
 
@@ -284,11 +285,11 @@ impl ZenocastApp {
                 height,
                 color_rgba,
                 capture_cursor,
-                file_path: _,
-                text_content: _,
-                font_size: _,
+                file_path,
+                text_content,
+                font_size,
                 url,
-                looping: _,
+                looping,
                 volume,
                 muted,
             } => {
@@ -304,9 +305,17 @@ impl ZenocastApp {
                         ColorSource::new(&name, color_rgba, width, height).with_id(source_id),
                     )),
                     SourceKind::DisplayCapture => {
-                        if let Ok(mut disp) = DisplayCaptureSource::primary() {
+                        let disp_idx = if let Some(stripped) = target.strip_prefix("Display ") {
+                            stripped.parse::<usize>().unwrap_or(0)
+                        } else {
+                            0
+                        };
+                        if let Ok(mut disp) = DisplayCaptureSource::from_index(disp_idx) {
                             disp.set_capture_cursor(capture_cursor);
-                            Some(Box::new(disp))
+                            Some(Box::new(disp.with_id(source_id)))
+                        } else if let Ok(mut disp) = DisplayCaptureSource::primary() {
+                            disp.set_capture_cursor(capture_cursor);
+                            Some(Box::new(disp.with_id(source_id)))
                         } else {
                             Some(Box::new(
                                 ColorSource::new(&name, [0.1, 0.3, 0.8, 1.0], width, height)
@@ -315,25 +324,47 @@ impl ZenocastApp {
                         }
                     }
                     SourceKind::WindowCapture => {
-                        let mut win = WindowCaptureSource::new(0, &name);
+                        let mut win = if target.is_empty() || target == "Select Window..." {
+                            WindowCaptureSource::default_or_fallback()
+                        } else {
+                            WindowCaptureSource::from_title(&target)
+                        };
                         win.set_capture_cursor(capture_cursor);
-                        Some(Box::new(win))
+                        Some(Box::new(win.with_id(source_id)))
                     }
                     SourceKind::CameraFeed => {
-                        let cams = zeno_media::DeviceManager::new().list_cameras();
-                        if let Some(cam) = cams
-                            .into_iter()
-                            .find(|c| c.name == target || c.id == target)
-                        {
-                            Some(Box::new(CameraCaptureSource::new(&cam, None)))
-                        } else {
-                            Some(Box::new(
-                                ColorSource::new(&name, [0.85, 0.35, 0.25, 1.0], width, height)
-                                    .with_id(source_id),
-                            ))
-                        }
+                        let cam = CameraCaptureSource::from_name_or_id(&target).with_id(source_id);
+                        Some(Box::new(cam))
                     }
-                    SourceKind::Browser => Some(Box::new(BrowserSource::new(&url, width, height))),
+                    SourceKind::Text => Some(Box::new(
+                        TextSource::new(&name, text_content, font_size, color_rgba, width, height)
+                            .with_id(source_id),
+                    )),
+                    SourceKind::Image => Some(Box::new(
+                        ImageSource::new(&name, file_path).with_id(source_id),
+                    )),
+                    SourceKind::MediaFile => {
+                        let mut vid = VideoSource::new(&name, file_path).with_id(source_id);
+                        vid.set_looping(looping);
+                        Some(Box::new(vid))
+                    }
+                    SourceKind::AudioInput => {
+                        let mut aud =
+                            AudioCaptureSource::new_input(&name, &target).with_id(source_id);
+                        aud.set_volume(volume);
+                        aud.set_muted(muted);
+                        Some(Box::new(aud))
+                    }
+                    SourceKind::AudioOutput => {
+                        let mut aud =
+                            AudioCaptureSource::new_output(&name, &target).with_id(source_id);
+                        aud.set_volume(volume);
+                        aud.set_muted(muted);
+                        Some(Box::new(aud))
+                    }
+                    SourceKind::Browser => Some(Box::new(
+                        BrowserSource::new(&url, width, height).with_id(source_id),
+                    )),
                     _ => Some(Box::new(
                         ColorSource::new(&name, color_rgba, width, height).with_id(source_id),
                     )),
