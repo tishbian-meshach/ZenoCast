@@ -9,13 +9,22 @@ use egui::{vec2, CentralPanel, Context, TopBottomPanel, Window};
 use egui_dock::{DockArea, DockState};
 use tracing::info;
 
+use crate::data_panel::{ui_esports_data_panel, DataPanelState};
 use crate::dock::{create_default_live_layout, StudioTab, StudioTabViewer};
+use crate::editor::{
+    ui_canvas, ui_layers_panel, ui_properties_panel, ui_timeline, OverlayEditor, TimelineMode,
+};
 use crate::project::{Autosaver, Project, SceneDefinition, SourceDefinition, SourceKind};
 use crate::source_dialog::{SourceDialogAction, SourceDialogState};
 use crate::theme::{apply_theme, AMBER_WARN, GREEN_OK, RED_LIVE, TEXT, TEXT_MUTED};
 use crate::wizard::FirstRunWizard;
-use zeno_compositor::{Scene, SceneCompositor, SceneItem, SceneItemSource};
+use zeno_compositor::{
+    Scene, SceneCompositor, SceneItem, SceneItemSource, SlideDirection, TransitionDefinition,
+    WipeDirection,
+};
+use zeno_control::ControlState;
 use zeno_core::{SceneId, SourceId};
+use zeno_data::DataStore;
 use zeno_license::{AntiTamperGuard, LicenseClient, LicenseState};
 use zeno_media::{
     AudioCaptureSource, BrowserSource, CameraCaptureSource, ColorSource, DisplayCaptureSource,
@@ -23,6 +32,17 @@ use zeno_media::{
     WindowCaptureSource,
 };
 use zeno_output::service::OutputManager;
+
+/// Studio operation modes selectable from the top Mode menu.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AppMode {
+    /// Standard live production multiview with scenes, sources, mixer, transitions, and streaming.
+    LiveStudio,
+    /// Motion-graphics overlay composition editor with timeline, layers, and bezier keyframes.
+    EditOverlay,
+    /// Rapid esports tournament data control panel for scores, teams, rosters, and quick switching.
+    DataControl,
+}
 
 /// Deterministic conversion from string identifier to SceneId.
 pub fn string_to_scene_id(s: &str) -> SceneId {
@@ -52,6 +72,8 @@ pub fn string_to_source_id(s: &str) -> SourceId {
 
 /// Main studio application state.
 pub struct ZenocastApp {
+    /// Active application layout / mode
+    pub app_mode: AppMode,
     /// Active project state
     pub project: Project,
     /// Project file path on disk if saved
@@ -100,6 +122,30 @@ pub struct ZenocastApp {
     pub wgpu_device: Option<Arc<wgpu::Device>>,
     /// Reference to WGPU queue
     pub wgpu_queue: Option<Arc<wgpu::Queue>>,
+    /// Motion graphics overlay editor state (Edit Overlay mode)
+    pub overlay_editor: OverlayEditor,
+    /// Timeline mode (DopeSheet vs CurveEditor)
+    pub timeline_mode: TimelineMode,
+    /// Esports fast data control state (Data Control mode)
+    pub data_panel_state: DataPanelState,
+    /// Shared live data store
+    pub data_store: Arc<DataStore>,
+    /// Shared control server state
+    pub control_state: Arc<ControlState>,
+    /// Master audio output volume multiplier [0.0..1.5]
+    pub master_volume: f32,
+    /// Master audio mute toggle
+    pub master_muted: bool,
+    /// Whether Open Project modal dialog is open
+    pub show_open_dialog: bool,
+    /// Whether Save As modal dialog is open
+    pub show_save_as_dialog: bool,
+    /// File path buffer for Open / Save As dialogs
+    pub file_dialog_path: String,
+    /// Active scene being renamed, if any
+    pub rename_scene_id: Option<String>,
+    /// Text buffer for scene renaming
+    pub rename_scene_buffer: String,
 }
 
 impl ZenocastApp {
@@ -245,6 +291,22 @@ impl ZenocastApp {
             program_texture_id,
             wgpu_device,
             wgpu_queue,
+            app_mode: AppMode::LiveStudio,
+            overlay_editor: OverlayEditor::default(),
+            timeline_mode: TimelineMode::DopeSheet,
+            data_panel_state: DataPanelState::default(),
+            data_store: Arc::new(DataStore::new()),
+            control_state: {
+                let s = Arc::new(DataStore::new());
+                Arc::new(ControlState::new(s))
+            },
+            master_volume: 1.0,
+            master_muted: false,
+            show_open_dialog: false,
+            show_save_as_dialog: false,
+            file_dialog_path: "project.arxproj".to_string(),
+            rename_scene_id: None,
+            rename_scene_buffer: String::new(),
         }
     }
 
@@ -263,14 +325,155 @@ impl ZenocastApp {
         );
     }
 
-    /// Handles Auto transition between Preview and Program.
+    /// Handles Auto transition between Preview and Program using active transition settings.
     pub fn execute_auto(&mut self) {
         let temp = self.project.active_scene_id.clone();
         self.project.active_scene_id = self.project.preview_scene_id.clone();
         self.project.preview_scene_id = temp;
         self.t_bar_progress = 0.0;
         if let Some(ref mut comp) = *self.compositor.write() {
-            comp.auto_transition(None);
+            let dur_sec = (self.transition_duration_ms as f64) / 1000.0;
+            let def = match self.active_transition_kind.as_str() {
+                "Cut" => TransitionDefinition::cut(),
+                "Fade" => TransitionDefinition::fade(dur_sec),
+                "Slide" => TransitionDefinition::slide(SlideDirection::Left, true, dur_sec),
+                "Wipe" => TransitionDefinition::wipe(WipeDirection::Horizontal, 0.1, dur_sec),
+                _ => TransitionDefinition::fade(dur_sec),
+            };
+            comp.auto_transition(Some(def));
+        }
+        info!(
+            "Executed Auto transition ({}ms {}): live='{:?}'",
+            self.transition_duration_ms, self.active_transition_kind, self.project.active_scene_id
+        );
+    }
+
+    /// Resets project to a fresh default state.
+    pub fn reset_to_new_project(&mut self) {
+        self.project = Project::default();
+        self.project_path = None;
+        self.selected_scene_id = self.project.active_scene_id.clone();
+        self.source_registry.write().clear();
+
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let canvas_w = comp.width() as f32;
+            let canvas_h = comp.height() as f32;
+            for scene_def in &self.project.scenes {
+                let sc_id = string_to_scene_id(&scene_def.id);
+                let mut scene = Scene::new(&scene_def.name);
+                scene.id = sc_id;
+                for src_def in &scene_def.sources {
+                    let src_id = string_to_source_id(&src_def.id);
+                    let item = SceneItem::new(&src_def.name, SceneItemSource::Source(src_id))
+                        .with_position(canvas_w / 2.0, canvas_h / 2.0)
+                        .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
+                    scene.add_item(item);
+                }
+                comp.add_scene(scene);
+            }
+            if let Some(ref prev) = self.project.preview_scene_id {
+                comp.set_preview(string_to_scene_id(prev));
+            }
+            if let Some(ref act) = self.project.active_scene_id {
+                comp.set_program(string_to_scene_id(act));
+            }
+        }
+        info!("Reset to new project");
+    }
+
+    /// Loads project from disk and synchronizes compositor and sources.
+    pub fn open_project_from_path(
+        &mut self,
+        path: PathBuf,
+    ) -> Result<(), crate::project::ProjectError> {
+        let loaded = Project::load_from_file(&path)?;
+        self.project = loaded;
+        self.project_path = Some(path.clone());
+        self.selected_scene_id = self.project.active_scene_id.clone();
+        self.source_registry.write().clear();
+
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let canvas_w = comp.width() as f32;
+            let canvas_h = comp.height() as f32;
+            for scene_def in &self.project.scenes {
+                let sc_id = string_to_scene_id(&scene_def.id);
+                let mut scene = Scene::new(&scene_def.name);
+                scene.id = sc_id;
+                for src_def in &scene_def.sources {
+                    let src_id = string_to_source_id(&src_def.id);
+                    let mut item = SceneItem::new(&src_def.name, SceneItemSource::Source(src_id))
+                        .with_position(canvas_w / 2.0, canvas_h / 2.0)
+                        .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
+                    item.visible = src_def.visible;
+                    scene.add_item(item);
+                }
+                comp.add_scene(scene);
+            }
+            if let Some(ref prev) = self.project.preview_scene_id {
+                comp.set_preview(string_to_scene_id(prev));
+            }
+            if let Some(ref act) = self.project.active_scene_id {
+                comp.set_program(string_to_scene_id(act));
+            }
+        }
+        info!("Opened project from '{}'", path.display());
+        Ok(())
+    }
+
+    /// Saves project to disk at specified path.
+    pub fn save_project_to_path(
+        &mut self,
+        path: PathBuf,
+    ) -> Result<(), crate::project::ProjectError> {
+        self.project.save_to_file(&path)?;
+        self.project_path = Some(path.clone());
+        info!("Saved project to '{}'", path.display());
+        Ok(())
+    }
+
+    /// Renames an existing scene in project and compositor.
+    pub fn rename_scene(&mut self, scene_id_str: &str, new_name: &str) {
+        if let Some(scene) = self
+            .project
+            .scenes
+            .iter_mut()
+            .find(|s| s.id == scene_id_str)
+        {
+            scene.name = new_name.to_string();
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let sc_id = string_to_scene_id(scene_id_str);
+            if let Some(scene) = comp.get_scene_mut(sc_id) {
+                scene.name = new_name.to_string();
+            }
+        }
+    }
+
+    /// Moves a scene up in the list order.
+    pub fn move_scene_up(&mut self, scene_id_str: &str) {
+        if let Some(idx) = self
+            .project
+            .scenes
+            .iter()
+            .position(|s| s.id == scene_id_str)
+        {
+            if idx > 0 {
+                self.project.scenes.swap(idx, idx - 1);
+            }
+        }
+    }
+
+    /// Moves a scene down in the list order.
+    pub fn move_scene_down(&mut self, scene_id_str: &str) {
+        if let Some(idx) = self
+            .project
+            .scenes
+            .iter()
+            .position(|s| s.id == scene_id_str)
+        {
+            if idx + 1 < self.project.scenes.len() {
+                self.project.scenes.swap(idx, idx + 1);
+            }
         }
     }
 
@@ -629,6 +832,9 @@ impl ZenocastApp {
     /// Removes a scene by ID from project and compositor.
     pub fn remove_scene_by_id(&mut self, scene_id_str: &str) {
         self.project.scenes.retain(|s| s.id != scene_id_str);
+        if let Some(ref mut comp) = *self.compositor.write() {
+            comp.remove_scene(string_to_scene_id(scene_id_str));
+        }
         if self.selected_scene_id.as_deref() == Some(scene_id_str) {
             self.selected_scene_id = self.project.scenes.first().map(|s| s.id.clone());
         }
@@ -767,38 +973,74 @@ impl App for ZenocastApp {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
                     if ui.button("New Project").clicked() {
-                        self.project = Project::default();
-                        self.project_path = None;
+                        self.reset_to_new_project();
+                        ui.close_menu();
+                    }
+                    if ui.button("Open Project...").clicked() {
+                        self.show_open_dialog = true;
+                        self.file_dialog_path = "project.arxproj".to_string();
                         ui.close_menu();
                     }
                     if ui.button("Save Project").clicked() {
                         if let Some(ref path) = self.project_path {
                             let _ = self.project.save_to_file(path);
                         } else {
-                            let path = PathBuf::from("project.arxproj");
-                            let _ = self.project.save_to_file(&path);
-                            self.project_path = Some(path);
+                            self.show_save_as_dialog = true;
+                            self.file_dialog_path = "project.arxproj".to_string();
                         }
                         ui.close_menu();
                     }
-                    if ui.button("Settings").clicked() {
+                    if ui.button("Save Project As...").clicked() {
+                        self.show_save_as_dialog = true;
+                        self.file_dialog_path = self
+                            .project_path
+                            .as_ref()
+                            .map(|p| p.to_string_lossy().to_string())
+                            .unwrap_or_else(|| "project.arxproj".to_string());
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Settings...").clicked() {
                         self.show_settings = true;
                         ui.close_menu();
                     }
+                    ui.separator();
                     if ui.button("Exit").clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                 });
 
                 ui.menu_button("Mode", |ui| {
-                    let _ = ui.selectable_label(true, "Live Studio");
-                    let _ = ui.selectable_label(false, "Edit Overlay");
-                    let _ = ui.selectable_label(false, "Data Control");
+                    if ui
+                        .selectable_label(self.app_mode == AppMode::LiveStudio, "Live Studio")
+                        .clicked()
+                    {
+                        self.app_mode = AppMode::LiveStudio;
+                        ui.close_menu();
+                    }
+                    if ui
+                        .selectable_label(self.app_mode == AppMode::EditOverlay, "Edit Overlay")
+                        .clicked()
+                    {
+                        self.app_mode = AppMode::EditOverlay;
+                        ui.close_menu();
+                    }
+                    if ui
+                        .selectable_label(self.app_mode == AppMode::DataControl, "Data Control")
+                        .clicked()
+                    {
+                        self.app_mode = AppMode::DataControl;
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button("Tools", |ui| {
                     if ui.button("Auto-Configuration Wizard...").clicked() {
                         self.wizard.is_open = true;
+                        ui.close_menu();
+                    }
+                    if ui.button("Settings...").clicked() {
+                        self.show_settings = true;
                         ui.close_menu();
                     }
                 });
@@ -842,43 +1084,115 @@ impl App for ZenocastApp {
         let mut trigger_toggle_source_lock: Option<String> = None;
         let mut trigger_add_scene = false;
         let mut trigger_remove_scene: Option<String> = None;
+        let mut trigger_rename_scene: Option<(String, String)> = None;
+        let mut trigger_move_scene_up: Option<String> = None;
+        let mut trigger_move_scene_down: Option<String> = None;
+        let mut trigger_audio_change = false;
 
-        let bitrate_kbps = self.project.settings.output.video_bitrate_kbps;
+        let stats = self.output_manager.stats();
+        let fps = if stats.encode_time_ms > 0.0 {
+            (1000.0 / stats.encode_time_ms).min(60.0)
+        } else {
+            60.0
+        };
+        let dropped_percent = stats.dropped_percent;
+        let bitrate_kbps = if self.is_streaming && stats.current_bitrate_kbps > 0.0 {
+            stats.current_bitrate_kbps as u32
+        } else {
+            self.project.settings.output.video_bitrate_kbps
+        };
         let stream_time = self.stream_duration_string();
 
-        // Central Dock Area
-        CentralPanel::default().show(ctx, |ui| {
-            let mut viewer = StudioTabViewer {
-                project: &mut self.project,
-                selected_scene_id: &mut self.selected_scene_id,
-                selected_source_id: &mut self.selected_source_id,
-                is_streaming: self.is_streaming,
-                is_recording: self.is_recording,
-                fps: 60.0,
-                dropped_percent: 0.0,
-                bitrate_kbps,
-                stream_time,
-                active_transition_kind: &mut self.active_transition_kind,
-                transition_duration_ms: &mut self.transition_duration_ms,
-                t_bar_progress: &mut self.t_bar_progress,
-                trigger_cut: &mut trigger_cut,
-                trigger_auto: &mut trigger_auto,
-                trigger_toggle_stream: &mut trigger_toggle_stream,
-                trigger_toggle_record: &mut trigger_toggle_record,
-                preview_texture_id: self.preview_texture_id,
-                program_texture_id: self.program_texture_id,
-                trigger_open_add_source: &mut trigger_open_add_source,
-                trigger_open_edit_source: &mut trigger_open_edit_source,
-                trigger_remove_source: &mut trigger_remove_source,
-                trigger_toggle_source_visibility: &mut trigger_toggle_source_visibility,
-                trigger_toggle_source_lock: &mut trigger_toggle_source_lock,
-                trigger_add_scene: &mut trigger_add_scene,
-                trigger_remove_scene: &mut trigger_remove_scene,
-            };
+        // Central Panel based on selected AppMode
+        CentralPanel::default().show(ctx, |ui| match self.app_mode {
+            AppMode::LiveStudio => {
+                let mut viewer = StudioTabViewer {
+                    project: &mut self.project,
+                    selected_scene_id: &mut self.selected_scene_id,
+                    selected_source_id: &mut self.selected_source_id,
+                    is_streaming: self.is_streaming,
+                    is_recording: self.is_recording,
+                    fps,
+                    dropped_percent,
+                    bitrate_kbps,
+                    stream_time,
+                    active_transition_kind: &mut self.active_transition_kind,
+                    transition_duration_ms: &mut self.transition_duration_ms,
+                    t_bar_progress: &mut self.t_bar_progress,
+                    master_volume: &mut self.master_volume,
+                    master_muted: &mut self.master_muted,
+                    rename_scene_id: &mut self.rename_scene_id,
+                    rename_scene_buffer: &mut self.rename_scene_buffer,
+                    trigger_rename_scene: &mut trigger_rename_scene,
+                    trigger_move_scene_up: &mut trigger_move_scene_up,
+                    trigger_move_scene_down: &mut trigger_move_scene_down,
+                    trigger_audio_change: &mut trigger_audio_change,
+                    trigger_cut: &mut trigger_cut,
+                    trigger_auto: &mut trigger_auto,
+                    trigger_toggle_stream: &mut trigger_toggle_stream,
+                    trigger_toggle_record: &mut trigger_toggle_record,
+                    preview_texture_id: self.preview_texture_id,
+                    program_texture_id: self.program_texture_id,
+                    trigger_open_add_source: &mut trigger_open_add_source,
+                    trigger_open_edit_source: &mut trigger_open_edit_source,
+                    trigger_remove_source: &mut trigger_remove_source,
+                    trigger_toggle_source_visibility: &mut trigger_toggle_source_visibility,
+                    trigger_toggle_source_lock: &mut trigger_toggle_source_lock,
+                    trigger_add_scene: &mut trigger_add_scene,
+                    trigger_remove_scene: &mut trigger_remove_scene,
+                };
 
-            DockArea::new(&mut self.dock_state)
-                .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                .show_inside(ui, &mut viewer);
+                DockArea::new(&mut self.dock_state)
+                    .style(egui_dock::Style::from_egui(ui.style().as_ref()))
+                    .show_inside(ui, &mut viewer);
+            }
+            AppMode::EditOverlay => {
+                ui.vertical(|ui| {
+                    let total_height = ui.available_height();
+                    let top_height = (total_height * 0.65).max(200.0);
+
+                    ui.allocate_ui_with_layout(
+                        vec2(ui.available_width(), top_height),
+                        egui::Layout::left_to_right(egui::Align::Min),
+                        |ui| {
+                            ui.allocate_ui(vec2(220.0, top_height), |ui| {
+                                egui::Frame::group(ui.style()).show(ui, |ui| {
+                                    ui_layers_panel(&mut self.overlay_editor, ui);
+                                });
+                            });
+                            ui.separator();
+
+                            let canvas_w = (ui.available_width() - 300.0).max(300.0);
+                            ui.allocate_ui(vec2(canvas_w, top_height), |ui| {
+                                egui::Frame::group(ui.style()).show(ui, |ui| {
+                                    ui_canvas(&mut self.overlay_editor, ui);
+                                });
+                            });
+                            ui.separator();
+
+                            ui.allocate_ui(vec2(ui.available_width(), top_height), |ui| {
+                                egui::Frame::group(ui.style()).show(ui, |ui| {
+                                    ui_properties_panel(&mut self.overlay_editor, ui);
+                                });
+                            });
+                        },
+                    );
+
+                    ui.separator();
+
+                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                        ui_timeline(&mut self.overlay_editor, &mut self.timeline_mode, ui);
+                    });
+                });
+            }
+            AppMode::DataControl => {
+                ui_esports_data_panel(
+                    &self.data_store,
+                    &self.control_state,
+                    &mut self.data_panel_state,
+                    ui,
+                );
+            }
         });
 
         // Handle trigger events
@@ -929,6 +1243,94 @@ impl App for ZenocastApp {
         }
         if let Some(ref rem_sc) = trigger_remove_scene {
             self.remove_scene_by_id(rem_sc);
+        }
+        if let Some((ref sc_id, ref new_name)) = trigger_rename_scene {
+            self.rename_scene(sc_id, new_name);
+        }
+        if let Some(ref sc_id) = trigger_move_scene_up {
+            self.move_scene_up(sc_id);
+        }
+        if let Some(ref sc_id) = trigger_move_scene_down {
+            self.move_scene_down(sc_id);
+        }
+        if trigger_audio_change {
+            if let Some(ref act_id) = self.project.active_scene_id {
+                if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == act_id) {
+                    let mut registry = self.source_registry.write();
+                    for src_def in &scene.sources {
+                        let sid = string_to_source_id(&src_def.id);
+                        if let Some(src) = registry.get_mut(sid) {
+                            let eff_vol = if self.master_muted {
+                                0.0
+                            } else {
+                                src_def.volume * self.master_volume
+                            };
+                            let eff_muted = src_def.muted || self.master_muted;
+                            let mut props = src.properties();
+                            match &mut props {
+                                SourceProperties::AudioInput { volume, muted, .. } => {
+                                    *volume = eff_vol;
+                                    *muted = eff_muted;
+                                }
+                                SourceProperties::AudioOutput { volume, muted, .. } => {
+                                    *volume = eff_vol;
+                                    *muted = eff_muted;
+                                }
+                                _ => {}
+                            }
+                            if let (Some(dev), Some(q)) = (&self.wgpu_device, &self.wgpu_queue) {
+                                let _ = src.update_properties(&props, dev, q);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Open Project Modal Dialog
+        if self.show_open_dialog {
+            Window::new("Open Project")
+                .collapsible(false)
+                .resizable(false)
+                .default_size(vec2(400.0, 160.0))
+                .show(ctx, |ui| {
+                    ui.label("Enter project file path (.arxproj):");
+                    ui.text_edit_singleline(&mut self.file_dialog_path);
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Open").clicked() {
+                            let path = PathBuf::from(&self.file_dialog_path);
+                            let _ = self.open_project_from_path(path);
+                            self.show_open_dialog = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.show_open_dialog = false;
+                        }
+                    });
+                });
+        }
+
+        // Save Project As Modal Dialog
+        if self.show_save_as_dialog {
+            Window::new("Save Project As")
+                .collapsible(false)
+                .resizable(false)
+                .default_size(vec2(400.0, 160.0))
+                .show(ctx, |ui| {
+                    ui.label("Enter destination file path (.arxproj):");
+                    ui.text_edit_singleline(&mut self.file_dialog_path);
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("Save").clicked() {
+                            let path = PathBuf::from(&self.file_dialog_path);
+                            let _ = self.save_project_to_path(path);
+                            self.show_save_as_dialog = false;
+                        }
+                        if ui.button("Cancel").clicked() {
+                            self.show_save_as_dialog = false;
+                        }
+                    });
+                });
         }
 
         // Render Source Modal Dialog if open
@@ -1068,5 +1470,20 @@ impl App for ZenocastApp {
 
         // Render First-Run Setup Wizard if open
         self.wizard.ui(ctx, &mut self.project.settings);
+    }
+
+    fn on_exit(&mut self) {
+        if self.is_streaming {
+            self.output_manager.stop_streaming();
+            self.is_streaming = false;
+        }
+        if self.is_recording {
+            let _ = self
+                .output_manager
+                .stop_recording(self.project.settings.output.remux_to_mp4);
+            self.is_recording = false;
+        }
+        self.source_registry.write().clear();
+        info!("Clean application exit completed");
     }
 }

@@ -637,4 +637,51 @@ This log records major architectural and implementation choices, defaults select
     - Verified complete teardown of all 10 sources returning registry count to 0.
     - Executed 20-cycle rapid add/remove stress loop asserting flat handle count and zero leaks.
 
+### 2026-10-18: Section 3 - General UI Interactivity Audit (`fix(ui): wire remaining controls to real application state`)
+- **Broken / Symptom**: "nothing works in the UI, I just see this screen, and can't even do anything" — UI controls across top menu, mode selector, scenes, audio mixer, transitions, monitors, T-Bar, and window chrome were either visual mockups or isolated local widget state that never propagated to the real engine, compositor, or output pipeline.
+- **Root Cause**:
+  - Top menu bar lacked real implementations for New Project, Open Project (`.arxproj`), Save Project, Save Project As, and Exit.
+  - Mode menu was a visual dropdown that didn't switch the central panel layout between Live Studio multiview, motion-graphics overlay editor, and esports data control.
+  - Scenes panel lacked functional Add Scene, Remove Scene (with protection on the last scene), Rename Scene, and Move Up/Down re-ordering that synchronized with both `Project` and `SceneCompositor`.
+  - Sources panel eye icon and lock icon were decorative and did not toggle `visible` on `SceneItem` in the compositor or `locked` on `SourceDefinition`.
+  - Audio Mixer sliders and mute toggles were decoupled from `SourceRegistry` and `AudioCaptureSource`. dB readouts did not compute real logarithmic values (`20.0 * log10(gain)`).
+  - Transitions panel was decoupled from the compositor's `TransitionDefinition` and duration parameters.
+  - Stream & Record panel did not reflect real live encoder telemetry (FPS, dropped frame ratio, current bitrate) from `output_manager.stats()`.
+  - T-Bar was a non-interactive mockup rather than a continuous scrub controller that completes transitions upon drag release >= 0.95.
+  - Window chrome lacked a clean exit sequence (`on_exit`) stopping streaming/recording and freeing source textures.
+- **Fix**:
+  - **Top Menu Bar & Mode Layout Switcher (`crates/zeno-ui/src/app.rs`)**:
+    - File menu: New Project (`reset_to_new_project`), Open Project (`open_project_from_path`), Save Project, Save Project As (`save_project_to_path`), Settings, Exit.
+    - Mode menu: switches `CentralPanel` dynamically between `AppMode::LiveStudio` (multiview dock), `AppMode::EditOverlay` (motion graphics editor: `ui_layers_panel`, `ui_canvas`, `ui_properties_panel`, `ui_timeline`), and `AppMode::DataControl` (esports data control: `ui_esports_data_panel`).
+    - Tools menu: Auto-Configuration Wizard (`FirstRunWizard`) and Settings.
+  - **Scenes Panel (`crates/zeno-ui/src/dock.rs`, `app.rs`)**:
+    - `+ Add Scene`: appends to `project.scenes` and registers `Scene` in `SceneCompositor`.
+    - `- Remove`: protected removal deleting from both `project` and compositor.
+    - `Rename`: inline text editor modifying `project.scenes` and `comp.get_scene_mut()`.
+    - `▲ Up` / `▼ Down`: reorders scenes in `project.scenes`.
+    - Single-click loads Preview bus; double-click switches Program bus.
+  - **Sources Panel (`crates/zeno-ui/src/dock.rs`, `app.rs`)**:
+    - Visibility icon (`👁`) flips `item.visible` on `SceneItem` in compositor.
+    - Lock icon (`🔒`) flips `src.locked` in project.
+    - Full add, remove, and properties editing wired to real engine sources.
+  - **Audio Mixer Panel (`crates/zeno-ui/src/dock.rs`, `app.rs`)**:
+    - Master volume slider (0.0..=1.5) and master mute toggle.
+    - Channel volume sliders and channel mute buttons.
+    - Decibel text readouts computed via `20.0 * log10(vol)` down to `-inf dB`.
+    - Live sync updates effective gain into `SourceRegistry` and `SourceProperties::AudioInput/Output`.
+  - **Transitions & T-Bar (`crates/zeno-ui/src/dock.rs`, `app.rs`)**:
+    - Active transition dropdown ("Cut", "Fade", "Slide", "Wipe", "Stinger") and duration slider (50..=2000 ms).
+    - AUTO button triggers `comp.auto_transition` with configured `TransitionDefinition`.
+    - CUT button immediately swaps Preview and Program scene IDs and framebuffers.
+    - T-BAR vertical slider enables manual scrubbing between buses; drag release >= 0.95 executes cut completion.
+  - **Stream & Record Telemetry (`crates/zeno-ui/src/dock.rs`, `app.rs`)**:
+    - Real-time encoder telemetry pulled from `output_manager.stats()`: status ("LIVE" vs "OFFLINE"), FPS, dropped frames percentage (warning color if > 0.1%), bitrate in kbps, and duration timer.
+  - **Clean Shutdown (`crates/zeno-ui/src/app.rs`)**:
+    - `eframe::App::on_exit()` cleanly stops streaming, finalizes recordings, and frees source registry handles without leaks.
+  - **Documentation & Audit**:
+    - Generated `docs/UI_AUDIT.md` cataloging every interactive control, target action, and test verification note.
+- **Acceptance Validation**:
+  - Added `test_section_3_ui_interactivity_audit_wiring` in `tests/studio_shell_test.rs` validating AppMode switching, File ops (New, Save, Open), Scenes panel (Add, Move Up/Down, Rename, Remove), Sources panel (Visibility, Lock), Audio Mixer (Volume, Mute, dB calc), Transitions (Cut, Auto, T-Bar scrub & completion), and Clean Shutdown (`on_exit`).
+
+
 

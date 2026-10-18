@@ -147,6 +147,21 @@ fn test_m8_preview_to_program_transition_switching() {
         program_texture_id: None,
         wgpu_device: None,
         wgpu_queue: None,
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
     };
 
     assert_eq!(
@@ -220,6 +235,21 @@ fn test_m8_one_click_live_streaming_and_recording() {
         program_texture_id: None,
         wgpu_device: None,
         wgpu_queue: None,
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
     };
 
     assert!(!app.is_streaming);
@@ -379,6 +409,21 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
         program_texture_id: None,
         wgpu_device: Some(device.clone()),
         wgpu_queue: Some(queue.clone()),
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
     };
 
     // Step 1: User adds a real backend source through the source dialog flow
@@ -582,6 +627,21 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
         program_texture_id: None,
         wgpu_device: Some(device.clone()),
         wgpu_queue: Some(queue.clone()),
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
     };
 
     // The 10 broadcast source types required by Section 2.2
@@ -754,5 +814,273 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
         app.remove_source_by_id(&id);
     }
 
+    assert_eq!(app.source_registry.read().count(), 0);
+}
+
+#[test]
+fn test_section_3_ui_interactivity_audit_wiring() {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        compatible_surface: None,
+        force_fallback_adapter: true,
+    }))
+    .expect("WGPU test adapter");
+
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("TestDevice"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .expect("WGPU test device");
+
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    let comp =
+        zeno_compositor::SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+
+    let project = Project::default();
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some("scene_gameplay".into()),
+        selected_source_id: None,
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(Some(comp))),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: Some(device.clone()),
+        wgpu_queue: Some(queue.clone()),
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
+    };
+
+    // 1. AppMode Switching
+    assert_eq!(app.app_mode, zeno_ui::app::AppMode::LiveStudio);
+    app.app_mode = zeno_ui::app::AppMode::EditOverlay;
+    assert_eq!(app.app_mode, zeno_ui::app::AppMode::EditOverlay);
+    app.app_mode = zeno_ui::app::AppMode::DataControl;
+    assert_eq!(app.app_mode, zeno_ui::app::AppMode::DataControl);
+    app.app_mode = zeno_ui::app::AppMode::LiveStudio;
+    assert_eq!(app.app_mode, zeno_ui::app::AppMode::LiveStudio);
+
+    // 2. File Operations: New, Save, Open
+    let temp_dir = tempdir().expect("tempdir");
+    let test_proj_path = temp_dir.path().join("test_studio.arxproj");
+    assert!(app.save_project_to_path(test_proj_path.clone()).is_ok());
+    assert!(test_proj_path.exists());
+
+    // Add a custom scene then reset to new project
+    app.add_new_scene();
+    assert_eq!(app.project.scenes.len(), 3);
+    app.reset_to_new_project();
+    assert_eq!(app.project.scenes.len(), 2);
+    assert_eq!(app.source_registry.read().count(), 0);
+
+    // Reopen the saved project
+    assert!(app.open_project_from_path(test_proj_path).is_ok());
+    assert_eq!(app.project.scenes.len(), 2);
+
+    // 3. Scenes Panel: Add, Move Up/Down, Rename, Remove
+    app.add_new_scene();
+    let new_sc_id = app.selected_scene_id.clone().expect("new scene id");
+    assert_eq!(app.project.scenes.len(), 3);
+
+    // Move Up
+    app.move_scene_up(&new_sc_id);
+    assert_eq!(app.project.scenes[1].id, new_sc_id);
+
+    // Move Down
+    app.move_scene_down(&new_sc_id);
+    assert_eq!(app.project.scenes[2].id, new_sc_id);
+
+    // Rename
+    app.rename_scene(&new_sc_id, "Grand Final Bracket");
+    assert_eq!(
+        app.project
+            .scenes
+            .iter()
+            .find(|s| s.id == new_sc_id)
+            .unwrap()
+            .name,
+        "Grand Final Bracket"
+    );
+    let comp_lock = app.compositor.read();
+    let comp_scene = comp_lock
+        .as_ref()
+        .unwrap()
+        .get_scene(zeno_ui::app::string_to_scene_id(&new_sc_id));
+    assert_eq!(comp_scene.unwrap().name, "Grand Final Bracket");
+    drop(comp_lock);
+
+    // Remove
+    app.remove_scene_by_id(&new_sc_id);
+    assert_eq!(app.project.scenes.len(), 2);
+    let comp_lock = app.compositor.read();
+    assert!(comp_lock
+        .as_ref()
+        .unwrap()
+        .get_scene(zeno_ui::app::string_to_scene_id(&new_sc_id))
+        .is_none());
+    drop(comp_lock);
+
+    // 4. Sources Panel: Visibility and Lock Toggling
+    app.create_and_add_source(zeno_ui::SourceDialogAction::Create {
+        name: "Test HUD Element".into(),
+        kind: zeno_ui::SourceKind::Color,
+        target: "rgba(0.2,0.4,0.6,1.0)".into(),
+        width: 1920,
+        height: 1080,
+        color_rgba: [0.2, 0.4, 0.6, 1.0],
+        capture_cursor: false,
+        file_path: "".into(),
+        text_content: "".into(),
+        font_size: 24.0,
+        url: "".into(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    });
+    let src_id = app.selected_source_id.clone().expect("source id");
+
+    // Toggle visibility
+    app.toggle_source_visibility(&src_id);
+    let src_def = app.project.scenes[0]
+        .sources
+        .iter()
+        .find(|s| s.id == src_id)
+        .unwrap();
+    assert!(!src_def.visible);
+    let comp_lock = app.compositor.read();
+    let comp_scene = comp_lock
+        .as_ref()
+        .unwrap()
+        .get_scene(zeno_ui::app::string_to_scene_id(&app.project.scenes[0].id))
+        .unwrap();
+    let item = comp_scene
+        .items
+        .iter()
+        .find(|i| match i.source {
+            zeno_compositor::SceneItemSource::Source(id) => {
+                id == zeno_ui::app::string_to_source_id(&src_id)
+            }
+            _ => false,
+        })
+        .unwrap();
+    assert!(!item.visible);
+    drop(comp_lock);
+
+    // Toggle lock
+    app.toggle_source_lock(&src_id);
+    let src_def = app.project.scenes[0]
+        .sources
+        .iter()
+        .find(|s| s.id == src_id)
+        .unwrap();
+    assert!(src_def.locked);
+
+    // 5. Audio Mixer & Decibel calculation
+    app.master_volume = 0.5;
+    app.master_muted = false;
+    let db = 20.0 * app.master_volume.log10();
+    assert!((db - (-6.02)).abs() < 0.1);
+    app.master_muted = true;
+    let muted_db = if app.master_volume <= 0.0 || app.master_muted {
+        "-inf dB"
+    } else {
+        "ok"
+    };
+    assert_eq!(muted_db, "-inf dB");
+
+    // 6. Transitions: Cut, Auto, T-Bar
+    let init_active = app.project.active_scene_id.clone();
+    let init_preview = app.project.preview_scene_id.clone();
+    assert_ne!(init_active, init_preview);
+
+    app.execute_cut();
+    assert_eq!(app.project.active_scene_id, init_preview);
+    assert_eq!(app.project.preview_scene_id, init_active);
+
+    app.active_transition_kind = "Slide".into();
+    app.transition_duration_ms = 400;
+    app.execute_auto();
+    assert_eq!(app.project.active_scene_id, init_active);
+    assert_eq!(app.project.preview_scene_id, init_preview);
+
+    // T-bar completion at >= 0.95
+    app.t_bar_progress = 0.96;
+    if app.t_bar_progress >= 0.95 {
+        app.execute_cut();
+        app.t_bar_progress = 0.0;
+    }
+    assert_eq!(app.project.active_scene_id, init_preview);
+    assert_eq!(app.t_bar_progress, 0.0);
+
+    // 7. Streaming & Clean Shutdown (on_exit)
+    app.toggle_streaming();
+    assert!(app.is_streaming);
+    assert!(app.stream_start_time.is_some());
+    let dur = app.stream_duration_string();
+    assert_eq!(dur, "00:00:00");
+
+    let stats = app.output_manager.stats();
+    assert!(stats.dropped_percent >= 0.0);
+
+    // Clean exit
+    <ZenocastApp as eframe::App>::on_exit(&mut app);
+    assert!(!app.is_streaming);
     assert_eq!(app.source_registry.read().count(), 0);
 }

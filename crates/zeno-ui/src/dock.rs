@@ -90,6 +90,14 @@ pub struct StudioTabViewer<'a> {
     pub trigger_toggle_record: &'a mut bool,
     pub preview_texture_id: Option<egui::TextureId>,
     pub program_texture_id: Option<egui::TextureId>,
+    pub master_volume: &'a mut f32,
+    pub master_muted: &'a mut bool,
+    pub rename_scene_id: &'a mut Option<String>,
+    pub rename_scene_buffer: &'a mut String,
+    pub trigger_rename_scene: &'a mut Option<(String, String)>,
+    pub trigger_move_scene_up: &'a mut Option<String>,
+    pub trigger_move_scene_down: &'a mut Option<String>,
+    pub trigger_audio_change: &'a mut bool,
     pub trigger_open_add_source: &'a mut bool,
     pub trigger_open_edit_source: &'a mut Option<String>,
     pub trigger_remove_source: &'a mut Option<String>,
@@ -183,7 +191,11 @@ impl<'a> StudioTabViewer<'a> {
                 let slider = egui::Slider::new(self.t_bar_progress, 0.0..=1.0)
                     .vertical()
                     .show_value(false);
-                ui.add_sized(vec2(40.0, 100.0), slider);
+                let resp = ui.add_sized(vec2(40.0, 100.0), slider);
+                if resp.drag_stopped() && *self.t_bar_progress >= 0.95 {
+                    *self.trigger_cut = true;
+                    *self.t_bar_progress = 0.0;
+                }
             });
 
             // Right: Program Monitor
@@ -245,12 +257,47 @@ impl<'a> StudioTabViewer<'a> {
                 *self.trigger_add_scene = true;
             }
 
-            if ui.button("- Remove").clicked() {
+            let can_remove = self.project.scenes.len() > 1 && self.selected_scene_id.is_some();
+            if ui
+                .add_enabled(can_remove, egui::Button::new("- Remove"))
+                .clicked()
+            {
                 if let Some(ref sel) = *self.selected_scene_id {
                     *self.trigger_remove_scene = Some(sel.clone());
                 }
             }
+
+            if let Some(ref sel) = *self.selected_scene_id {
+                if ui.button("Rename").clicked() {
+                    if let Some(sc) = self.project.scenes.iter().find(|s| &s.id == sel) {
+                        *self.rename_scene_id = Some(sel.clone());
+                        *self.rename_scene_buffer = sc.name.clone();
+                    }
+                }
+
+                if ui.button("▲ Up").clicked() {
+                    *self.trigger_move_scene_up = Some(sel.clone());
+                }
+                if ui.button("▼ Down").clicked() {
+                    *self.trigger_move_scene_down = Some(sel.clone());
+                }
+            }
         });
+
+        if let Some(sel_rename_id) = self.rename_scene_id.clone() {
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(self.rename_scene_buffer);
+                if ui.button("Save").clicked() {
+                    *self.trigger_rename_scene =
+                        Some((sel_rename_id.clone(), self.rename_scene_buffer.clone()));
+                    *self.rename_scene_id = None;
+                }
+                if ui.button("Cancel").clicked() {
+                    *self.rename_scene_id = None;
+                }
+            });
+        }
 
         ui.separator();
 
@@ -346,14 +393,27 @@ impl<'a> StudioTabViewer<'a> {
             // Master Track
             ui.vertical(|ui| {
                 ui.label("Master");
-                let mut vol = 1.0f32;
-                ui.add(
-                    egui::Slider::new(&mut vol, 0.0..=1.5)
+                let vol_resp = ui.add(
+                    egui::Slider::new(self.master_volume, 0.0..=1.5)
                         .vertical()
                         .show_value(false),
                 );
-                ui.label("0.0 dB");
-                let _ = ui.button("Mute");
+                if vol_resp.changed() {
+                    *self.trigger_audio_change = true;
+                }
+
+                let master_db_text = if *self.master_volume <= 0.0 || *self.master_muted {
+                    "-inf dB".to_string()
+                } else {
+                    format!("{:.1} dB", 20.0 * (*self.master_volume).log10())
+                };
+                ui.label(master_db_text);
+
+                let mute_btn = ui.selectable_label(*self.master_muted, "Mute");
+                if mute_btn.clicked() {
+                    *self.master_muted = !*self.master_muted;
+                    *self.trigger_audio_change = true;
+                }
             });
 
             ui.separator();
@@ -364,16 +424,26 @@ impl<'a> StudioTabViewer<'a> {
                     for src in &mut scene.sources {
                         ui.vertical(|ui| {
                             ui.label(&src.name);
-                            ui.add(
+                            let src_vol_resp = ui.add(
                                 egui::Slider::new(&mut src.volume, 0.0..=1.5)
                                     .vertical()
                                     .show_value(false),
                             );
-                            let db = 20.0 * src.volume.max(0.001).log10();
-                            ui.label(format!("{:.1} dB", db));
+                            if src_vol_resp.changed() {
+                                *self.trigger_audio_change = true;
+                            }
+
+                            let db_text = if src.volume <= 0.0 || src.muted {
+                                "-inf dB".to_string()
+                            } else {
+                                format!("{:.1} dB", 20.0 * src.volume.log10())
+                            };
+                            ui.label(db_text);
+
                             let mute_btn = ui.selectable_label(src.muted, "Mute");
                             if mute_btn.clicked() {
                                 src.muted = !src.muted;
+                                *self.trigger_audio_change = true;
                             }
                         });
                     }

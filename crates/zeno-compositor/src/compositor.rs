@@ -220,6 +220,11 @@ impl SceneCompositor {
         self.scenes.get_mut(&id)
     }
 
+    /// Removes a scene by ID from the compositor.
+    pub fn remove_scene(&mut self, id: SceneId) {
+        self.scenes.remove(&id);
+    }
+
     /// Registers a reusable transition definition.
     pub fn register_transition(&mut self, transition: TransitionDefinition) {
         self.transitions.insert(transition.id, transition);
