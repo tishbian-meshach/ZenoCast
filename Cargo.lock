@@ -4066,6 +4066,7 @@ version = "0.1.0"
 dependencies = [
  "eframe",
  "egui",
+ "tempfile",
  "tracing",
  "zeno-audio",
  "zeno-compositor",

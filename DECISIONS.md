@@ -581,3 +581,13 @@ This log records major architectural and implementation choices, defaults select
   - Administrative revocation blocking heartbeats and reactivations verified.
 - **Documentation**: Completed `docs/LICENSE_API.md`, `docs/FORMAT.md`, `docs/TEMPLATES.md`, and `docs/SHEETS.md` per Section 15 and 16.
 
+## Stabilization pass
+
+### 2026-10-18: Section 1 - Console window on launch (`fix(app): hide console window in release, keep diagnosable panics`)
+- **Broken / Symptom**: A terminal / console window was opening behind the main window whenever the app launched.
+- **Root Cause**: The `zenocast` binary target in `zeno-app` defaulted to the Windows console subsystem, allocating a console window even though Zenocast is a GUI desktop application.
+- **Fix**:
+  - Added `#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]` to `crates/zeno-app/src/main.rs`. In release mode, Windows does not allocate a console window, providing a clean standalone GUI experience.
+  - In debug mode, console allocation is preserved so developers can see real-time stdout/stderr tracing.
+  - Installed a persistent panic hook (`install_panic_hook()`) writing structured crash reports (timestamp, panic details, code location, and backtrace) to `%LOCALAPPDATA%/Zenocast/logs/panic.log` so silent release crashes never swallow diagnostic information.
+
