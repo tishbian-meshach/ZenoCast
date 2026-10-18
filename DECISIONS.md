@@ -683,5 +683,19 @@ This log records major architectural and implementation choices, defaults select
 - **Acceptance Validation**:
   - Added `test_section_3_ui_interactivity_audit_wiring` in `tests/studio_shell_test.rs` validating AppMode switching, File ops (New, Save, Open), Scenes panel (Add, Move Up/Down, Rename, Remove), Sources panel (Visibility, Lock), Audio Mixer (Volume, Mute, dB calc), Transitions (Cut, Auto, T-Bar scrub & completion), and Clean Shutdown (`on_exit`).
 
+### 2026-10-18: Section 4 - UI Wiring Regression Guard & Guardrails (`test(ui): add wiring integration tests and update guardrails`)
+- **Problem**: UI panels were historically built against mock/isolated widget state instead of the real app, compositor, and engine state, which let a visually complete but functionally disconnected app ship.
+- **Root Cause & Fix**:
+  - Implemented dedicated integration test tier in `tests/ui_wiring/`:
+    - `source_flows.rs`: Drives adding each of the 10 source types into `ZenocastApp`, verifies a real `Source` exists in `SourceRegistry`, asserts it produces a valid non-empty GPU frame view, and validates clean teardown.
+    - `scene_switching.rs`: Drives multi-scene setup (Scene Red vs Scene Blue), program bus rendering, instant CUT transition, and smooth AUTO transition completion in `SceneCompositor`.
+    - `recording_flow.rs`: Drives `toggle_recording()`, frame feeding, stop recording, and verifies a valid, non-empty `.mkv` container on disk.
+    - `streaming_flow.rs`: Binds an ephemeral local TCP/RTMP test server, verifies `toggle_streaming()` starts real network output, transmits handshake and stream data, verifies reception on the test server, and cleanly stops.
+- **Stabilization Guardrails & CI Enforcement**:
+  - **Checklist Step**: Before marking any future milestone's UI work done, confirm every new control was added to `docs/UI_AUDIT.md` with a real verification note (citing an automated integration test or exact manual test method proving engine state mutation), not just a visual check.
+  - **Rule 0.1 (UI State Wiring Addendum to v1.0 Spec Section 0)**: A control is not "done" until there is an automated integration test in `tests/ui_wiring/` or a manual verification note in `docs/UI_AUDIT.md` proving it changes real engine/app state (never mock or local widget state).
+- **Acceptance Validation**: All 4 tests in `tests/ui_wiring/` (`test_add_each_source_type_and_verify_real_frame_output`, `test_scene_switching_drives_real_engine_program_output`, `test_start_stop_local_recording_creates_valid_file_on_disk`, `test_streaming_against_local_test_server`) pass green in CI.
+
+
 
 

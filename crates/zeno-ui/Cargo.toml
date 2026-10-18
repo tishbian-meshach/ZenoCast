@@ -46,3 +46,7 @@ path = "../../tests/overlay_editor_test.rs"
 [[test]]
 name = "wizard_installer_test"
 path = "../../tests/wizard_installer_test.rs"
+
+[[test]]
+name = "ui_wiring_test"
+path = "../../tests/ui_wiring/mod.rs"
