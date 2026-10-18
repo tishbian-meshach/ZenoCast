@@ -140,6 +140,13 @@ fn test_m8_preview_to_program_transition_switching() {
         wizard: zeno_ui::FirstRunWizard::new(),
         license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
         license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(None)),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: None,
+        wgpu_queue: None,
     };
 
     assert_eq!(
@@ -206,6 +213,13 @@ fn test_m8_one_click_live_streaming_and_recording() {
         wizard: zeno_ui::FirstRunWizard::new(),
         license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
         license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(None)),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: None,
+        wgpu_queue: None,
     };
 
     assert!(!app.is_streaming);
@@ -297,4 +311,183 @@ fn test_m8_theme_token_compliance_and_zero_gradients() {
     assert_eq!(BORDER_WIDTH, 1.0);
     assert_eq!(CORNER_RADIUS, 4.0);
     assert_eq!(BUTTON_HEIGHT, 32.0);
+}
+
+#[test]
+fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
+    let gpu = pollster::block_on(zeno_engine::GpuContext::init_headless()).expect("Headless GPU");
+    let device = Arc::new(gpu.device);
+    let queue = Arc::new(gpu.queue);
+
+    let mut comp =
+        zeno_compositor::SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+
+    let sc_id = zeno_ui::app::string_to_scene_id("scene_gameplay");
+    let mut scene = zeno_compositor::Scene::new("Gameplay Scene");
+    scene.id = sc_id;
+    comp.add_scene(scene);
+    comp.set_program(sc_id);
+    comp.set_preview(sc_id);
+
+    let mut project = Project::default();
+    project.scenes.retain(|s| s.id == "scene_gameplay");
+    project.scenes[0].sources.clear();
+
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some("scene_gameplay".into()),
+        selected_source_id: None,
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(Some(comp))),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: Some(device.clone()),
+        wgpu_queue: Some(queue.clone()),
+    };
+
+    // Step 1: User adds a real backend source through the source dialog flow
+    app.create_and_add_source(zeno_ui::SourceDialogAction::Create {
+        name: "Test Color Banner".into(),
+        kind: SourceKind::Color,
+        target: "".into(),
+        width: 1920,
+        height: 1080,
+        color_rgba: [0.10, 0.40, 0.90, 1.0],
+        capture_cursor: false,
+        file_path: "".into(),
+        text_content: "".into(),
+        font_size: 24.0,
+        url: "".into(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    });
+
+    let created_id_str = app.selected_source_id.clone().expect("Source ID created");
+    let src_id = zeno_ui::app::string_to_source_id(&created_id_str);
+
+    // Assert: Backend SourceRegistry owns the live Source instance
+    assert_eq!(app.source_registry.read().count(), 1);
+    let src_ref = app.source_registry.read();
+    let src = src_ref.get(src_id).expect("Source in registry");
+    assert_eq!(src.name(), "Test Color Banner");
+    assert!(src.is_healthy());
+    drop(src_ref);
+
+    // Assert: Project scene definition holds the source row
+    assert_eq!(app.project.scenes[0].sources.len(), 1);
+    assert_eq!(app.project.scenes[0].sources[0].id, created_id_str);
+    assert_eq!(app.project.scenes[0].sources[0].name, "Test Color Banner");
+
+    // Assert: Compositor holds a SceneItem mapped to the source
+    let comp_lock = app.compositor.read();
+    let comp_ref = comp_lock.as_ref().unwrap();
+    let scene_ref = comp_ref.get_scene(sc_id).unwrap();
+    assert_eq!(scene_ref.items.len(), 1);
+    match &scene_ref.items[0].source {
+        zeno_compositor::SceneItemSource::Source(id) => assert_eq!(*id, src_id),
+        _ => panic!("Expected visual Source item"),
+    }
+    drop(comp_lock);
+
+    // Step 2: Live frame production & rendering to GPU monitor targets
+    let mut reg = app.source_registry.write();
+    reg.update_all(&device, &queue, 0.0);
+    let frame_views = reg.get_all_frame_views();
+    assert_eq!(frame_views.len(), 1);
+    assert!(frame_views.contains_key(&src_id));
+    drop(reg);
+
+    // Render composited frame into Preview and Program targets
+    let mut comp_lock = app.compositor.write();
+    let render_res = comp_lock
+        .as_mut()
+        .unwrap()
+        .render_frame(&frame_views, 1.0 / 60.0);
+    assert!(render_res.is_ok(), "Live GPU compositor render succeeded");
+    drop(comp_lock);
+
+    // Step 3: Live property editing updates backend state
+    app.create_and_add_source(zeno_ui::SourceDialogAction::Update {
+        id: created_id_str.clone(),
+        name: "Test Color Green".into(),
+        target: "".into(),
+        width: 1280,
+        height: 720,
+        color_rgba: [0.10, 0.90, 0.20, 1.0],
+        capture_cursor: false,
+        file_path: "".into(),
+        text_content: "".into(),
+        font_size: 24.0,
+        url: "".into(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    });
+
+    let src_ref = app.source_registry.read();
+    let updated_src = src_ref.get(src_id).unwrap();
+    assert_eq!(updated_src.name(), "Test Color Green");
+    match updated_src.properties() {
+        zeno_media::SourceProperties::Color {
+            color,
+            width,
+            height,
+        } => {
+            assert_eq!(color, [0.10, 0.90, 0.20, 1.0]);
+            assert_eq!(width, 1280);
+            assert_eq!(height, 720);
+        }
+        _ => panic!("Expected Color properties"),
+    }
+    drop(src_ref);
+
+    // Step 4: Removing source tears down handles without leakage
+    app.remove_source_by_id(&created_id_str);
+    assert_eq!(app.source_registry.read().count(), 0);
+    assert!(app.project.scenes[0].sources.is_empty());
+    let comp_lock = app.compositor.read();
+    assert!(comp_lock
+        .as_ref()
+        .unwrap()
+        .get_scene(sc_id)
+        .unwrap()
+        .items
+        .is_empty());
 }

@@ -13,6 +13,7 @@ pub mod overlay_control;
 pub mod performance_hud;
 pub mod project;
 pub mod settings;
+pub mod source_dialog;
 pub mod spreadsheet_panel;
 pub mod theme;
 pub mod wizard;
@@ -29,6 +30,7 @@ pub use project::{
     Autosaver, Project, ProjectError, SceneDefinition, SourceDefinition, SourceKind,
 };
 pub use settings::{AudioSettings, HotkeySettings, OutputSettings, StudioSettings, VideoSettings};
+pub use source_dialog::{SourceDialogAction, SourceDialogMode, SourceDialogState};
 pub use spreadsheet_panel::{ui_spreadsheet_links_panel, SpreadsheetPanelState};
 pub use theme::{
     apply_theme, color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS,

@@ -318,6 +318,15 @@ impl Source for BrowserSource {
         (self.width, self.height)
     }
 
+    fn properties(&self) -> crate::source::SourceProperties {
+        crate::source::SourceProperties::Browser {
+            url: self.url.clone(),
+            width: self.width,
+            height: self.height,
+            custom_css: self.custom_css.clone(),
+        }
+    }
+
     fn start(&mut self, device: &Device, queue: &Queue) -> Result<(), SourceError> {
         self.active = true;
         self.last_capture_time = 0.0;

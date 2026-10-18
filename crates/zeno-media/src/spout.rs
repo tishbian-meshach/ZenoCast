@@ -77,6 +77,13 @@ impl Source for SpoutSource {
         (self.width, self.height)
     }
 
+    fn properties(&self) -> crate::source::SourceProperties {
+        crate::source::SourceProperties::Custom {
+            kind: "Spout".into(),
+            data: self.sender_name.clone(),
+        }
+    }
+
     fn start(&mut self, _device: &wgpu::Device, _queue: &wgpu::Queue) -> Result<(), SourceError> {
         self.is_active = true;
         Ok(())

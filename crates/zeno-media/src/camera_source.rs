@@ -107,6 +107,14 @@ impl Source for CameraCaptureSource {
         (self.format.width, self.format.height)
     }
 
+    fn properties(&self) -> crate::source::SourceProperties {
+        crate::source::SourceProperties::Camera {
+            device_name: self.name.clone(),
+            format_index: 0,
+            resolution: (self.format.width, self.format.height),
+        }
+    }
+
     fn start(&mut self, _device: &Device, _queue: &Queue) -> Result<(), SourceError> {
         self.active = true;
         self.last_frame_time = -1.0;

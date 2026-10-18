@@ -4,7 +4,7 @@ use egui::{vec2, Align2, CornerRadius, FontId, Sense, Stroke, StrokeKind, Ui};
 use egui_dock::{DockState, NodeIndex, TabViewer};
 use serde::{Deserialize, Serialize};
 
-use crate::project::{Project, SceneDefinition, SourceDefinition, SourceKind};
+use crate::project::Project;
 use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_0,
     SURFACE_3, TEXT, TEXT_MUTED,
@@ -88,6 +88,15 @@ pub struct StudioTabViewer<'a> {
     pub trigger_auto: &'a mut bool,
     pub trigger_toggle_stream: &'a mut bool,
     pub trigger_toggle_record: &'a mut bool,
+    pub preview_texture_id: Option<egui::TextureId>,
+    pub program_texture_id: Option<egui::TextureId>,
+    pub trigger_open_add_source: &'a mut bool,
+    pub trigger_open_edit_source: &'a mut Option<String>,
+    pub trigger_remove_source: &'a mut Option<String>,
+    pub trigger_toggle_source_visibility: &'a mut Option<String>,
+    pub trigger_toggle_source_lock: &'a mut Option<String>,
+    pub trigger_add_scene: &'a mut bool,
+    pub trigger_remove_scene: &'a mut Option<String>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -127,19 +136,34 @@ impl<'a> StudioTabViewer<'a> {
 
                 let (rect, _response) =
                     ui.allocate_exact_size(vec2(monitor_width, monitor_height), Sense::hover());
-                ui.painter().rect(
+                if let Some(tex_id) = self.preview_texture_id {
+                    ui.painter().image(
+                        tex_id,
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
+                } else {
+                    ui.painter().rect(
+                        rect,
+                        CornerRadius::same(CORNER_RADIUS as u8),
+                        SURFACE_0,
+                        Stroke::NONE,
+                        StrokeKind::Inside,
+                    );
+                    ui.painter().text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        preview_name,
+                        FontId::proportional(16.0),
+                        TEXT_MUTED,
+                    );
+                }
+                ui.painter().rect_stroke(
                     rect,
                     CornerRadius::same(CORNER_RADIUS as u8),
-                    SURFACE_0,
                     Stroke::new(BORDER_WIDTH, AMBER_WARN),
                     StrokeKind::Inside,
-                );
-                ui.painter().text(
-                    rect.center(),
-                    Align2::CENTER_CENTER,
-                    preview_name,
-                    FontId::proportional(16.0),
-                    TEXT,
                 );
             });
 
@@ -181,19 +205,34 @@ impl<'a> StudioTabViewer<'a> {
                 } else {
                     ACCENT
                 };
-                ui.painter().rect(
+                if let Some(tex_id) = self.program_texture_id {
+                    ui.painter().image(
+                        tex_id,
+                        rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        egui::Color32::WHITE,
+                    );
+                } else {
+                    ui.painter().rect(
+                        rect,
+                        CornerRadius::same(CORNER_RADIUS as u8),
+                        SURFACE_0,
+                        Stroke::NONE,
+                        StrokeKind::Inside,
+                    );
+                    ui.painter().text(
+                        rect.center(),
+                        Align2::CENTER_CENTER,
+                        active_name,
+                        FontId::proportional(16.0),
+                        TEXT_MUTED,
+                    );
+                }
+                ui.painter().rect_stroke(
                     rect,
                     CornerRadius::same(CORNER_RADIUS as u8),
-                    SURFACE_0,
                     Stroke::new(BORDER_WIDTH, border_color),
                     StrokeKind::Inside,
-                );
-                ui.painter().text(
-                    rect.center(),
-                    Align2::CENTER_CENTER,
-                    active_name,
-                    FontId::proportional(16.0),
-                    TEXT,
                 );
             });
         });
@@ -203,20 +242,12 @@ impl<'a> StudioTabViewer<'a> {
     fn ui_scenes(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             if ui.button("+ Add Scene").clicked() {
-                let id = format!("scene_{}", self.project.scenes.len() + 1);
-                let name = format!("Scene {}", self.project.scenes.len() + 1);
-                self.project.scenes.push(SceneDefinition {
-                    id: id.clone(),
-                    name,
-                    sources: Vec::new(),
-                });
-                *self.selected_scene_id = Some(id);
+                *self.trigger_add_scene = true;
             }
 
             if ui.button("- Remove").clicked() {
                 if let Some(ref sel) = *self.selected_scene_id {
-                    self.project.scenes.retain(|s| &s.id != sel);
-                    *self.selected_scene_id = self.project.scenes.first().map(|s| s.id.clone());
+                    *self.trigger_remove_scene = Some(sel.clone());
                 }
             }
         });
@@ -262,109 +293,19 @@ impl<'a> StudioTabViewer<'a> {
         };
 
         ui.horizontal(|ui| {
-            egui::ComboBox::from_label("")
-                .selected_text("+ Add Source")
-                .show_ui(ui, |ui| {
-                    if ui.selectable_label(false, "Display Capture").clicked() {
-                        let id = format!("src_disp_{}", scene.sources.len() + 1);
-                        scene.sources.push(SourceDefinition {
-                            id: id.clone(),
-                            name: "Display Capture".into(),
-                            kind: SourceKind::DisplayCapture,
-                            target: "Primary Monitor".into(),
-                            visible: true,
-                            locked: false,
-                            volume: 1.0,
-                            muted: false,
-                            x: 0.0,
-                            y: 0.0,
-                            width: 1920.0,
-                            height: 1080.0,
-                        });
-                        *self.selected_source_id = Some(id);
-                    }
+            if ui.button("+ Add Source").clicked() {
+                *self.trigger_open_add_source = true;
+            }
 
-                    if ui.selectable_label(false, "Window Capture").clicked() {
-                        let id = format!("src_win_{}", scene.sources.len() + 1);
-                        scene.sources.push(SourceDefinition {
-                            id: id.clone(),
-                            name: "Window Capture".into(),
-                            kind: SourceKind::WindowCapture,
-                            target: "Application Window".into(),
-                            visible: true,
-                            locked: false,
-                            volume: 1.0,
-                            muted: false,
-                            x: 0.0,
-                            y: 0.0,
-                            width: 1280.0,
-                            height: 720.0,
-                        });
-                        *self.selected_source_id = Some(id);
-                    }
-
-                    if ui.selectable_label(false, "Camera Feed").clicked() {
-                        let id = format!("src_cam_{}", scene.sources.len() + 1);
-                        scene.sources.push(SourceDefinition {
-                            id: id.clone(),
-                            name: "Camera Feed".into(),
-                            kind: SourceKind::CameraFeed,
-                            target: "Media Foundation Device".into(),
-                            visible: true,
-                            locked: false,
-                            volume: 1.0,
-                            muted: false,
-                            x: 1280.0,
-                            y: 720.0,
-                            width: 640.0,
-                            height: 360.0,
-                        });
-                        *self.selected_source_id = Some(id);
-                    }
-
-                    if ui.selectable_label(false, "ARX Overlay (.arx)").clicked() {
-                        let id = format!("src_arx_{}", scene.sources.len() + 1);
-                        scene.sources.push(SourceDefinition {
-                            id: id.clone(),
-                            name: "Lower-Third Overlay".into(),
-                            kind: SourceKind::ArxOverlay,
-                            target: "templates/esports/lower_third.arx".into(),
-                            visible: true,
-                            locked: false,
-                            volume: 1.0,
-                            muted: false,
-                            x: 0.0,
-                            y: 0.0,
-                            width: 1920.0,
-                            height: 1080.0,
-                        });
-                        *self.selected_source_id = Some(id);
-                    }
-
-                    if ui.selectable_label(false, "Browser Source (Web)").clicked() {
-                        let id = format!("src_browser_{}", scene.sources.len() + 1);
-                        scene.sources.push(SourceDefinition {
-                            id: id.clone(),
-                            name: "Web Scoreboard".into(),
-                            kind: SourceKind::Browser,
-                            target: "https://zenocast.live/scoreboard".into(),
-                            visible: true,
-                            locked: false,
-                            volume: 1.0,
-                            muted: false,
-                            x: 0.0,
-                            y: 0.0,
-                            width: 1920.0,
-                            height: 1080.0,
-                        });
-                        *self.selected_source_id = Some(id);
-                    }
-                });
-
-            if ui.button("- Delete").clicked() {
+            if ui.button("- Remove").clicked() {
                 if let Some(ref sel_id) = *self.selected_source_id {
-                    scene.sources.retain(|s| &s.id != sel_id);
-                    *self.selected_source_id = scene.sources.first().map(|s| s.id.clone());
+                    *self.trigger_remove_source = Some(sel_id.clone());
+                }
+            }
+
+            if let Some(ref sel_id) = *self.selected_source_id {
+                if ui.button("Properties").clicked() {
+                    *self.trigger_open_edit_source = Some(sel_id.clone());
                 }
             }
         });
@@ -377,18 +318,22 @@ impl<'a> StudioTabViewer<'a> {
                     // Visibility toggle
                     let vis_icon = if src.visible { "👁" } else { "---" };
                     if ui.selectable_label(src.visible, vis_icon).clicked() {
-                        src.visible = !src.visible;
+                        *self.trigger_toggle_source_visibility = Some(src.id.clone());
                     }
 
                     // Lock toggle
                     let lock_icon = if src.locked { "🔒" } else { "🔓" };
                     if ui.selectable_label(src.locked, lock_icon).clicked() {
-                        src.locked = !src.locked;
+                        *self.trigger_toggle_source_lock = Some(src.id.clone());
                     }
 
                     let is_sel = self.selected_source_id.as_deref() == Some(&src.id);
-                    if ui.selectable_label(is_sel, &src.name).clicked() {
+                    let resp = ui.selectable_label(is_sel, &src.name);
+                    if resp.clicked() {
                         *self.selected_source_id = Some(src.id.clone());
+                    }
+                    if resp.double_clicked() {
+                        *self.trigger_open_edit_source = Some(src.id.clone());
                     }
                 });
             }

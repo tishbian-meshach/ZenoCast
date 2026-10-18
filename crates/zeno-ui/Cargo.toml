@@ -21,6 +21,7 @@ zeno-import = { path = "../zeno-import" }
 zeno-script = { path = "../zeno-script" }
 egui = { workspace = true }
 eframe = { workspace = true }
+wgpu = { workspace = true }
 egui_dock = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -32,6 +33,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+pollster = { workspace = true }
 
 [[test]]
 name = "studio_shell_test"

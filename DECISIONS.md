@@ -591,3 +591,23 @@ This log records major architectural and implementation choices, defaults select
   - In debug mode, console allocation is preserved so developers can see real-time stdout/stderr tracing.
   - Installed a persistent panic hook (`install_panic_hook()`) writing structured crash reports (timestamp, panic details, code location, and backtrace) to `%LOCALAPPDATA%/Zenocast/logs/panic.log` so silent release crashes never swallow diagnostic information.
 
+### 2026-10-18: Section 2.1 - Wire Source Creation to Real Backend and Live Preview (`feat(media,ui): wire source creation to a real backend and live preview`)
+- **Broken / Symptom**:
+  - "+ Add Source" in the UI only appended a row to the Sources list and a name in Scenes, but nothing downstream happened.
+  - No properties dialog existed to select source types or configure parameters (devices, colors, URLs, files).
+  - Preview and Program monitors showed static text labels (`scene_brb`, `scene_gameplay`) instead of composited live GPU frames.
+- **Root Cause**:
+  - The UI layer (`zeno-ui`) was decoupled from `zeno-media` and `zeno-compositor`. The Sources panel mutated an isolated `Vec<SourceItem>` display model, with no `SourceRegistry` or compositor registration backing it.
+  - Egui monitors had no WGPU `TextureId` bindings to the compositor's preview and program framebuffers.
+- **Fix**:
+  - **`Source` Trait & `SourceRegistry` (`zeno-media`)**: Extended the `Source` trait with `SourceProperties`, `is_healthy()`, `properties()`, `update_properties()`, and `set_name()`. Implemented `SourceRegistry` to own live `Source` instances by `SourceId`, auto-start sources on frame updates, and provide thread-safe texture views to the compositor.
+  - **Color Source Implementation (`zeno-media`)**: Implemented a standalone, hardware-accelerated `ColorSource` yielding solid RGBA textures.
+  - **Type Picker & Properties Modal (`zeno-ui/src/source_dialog.rs`)**: Implemented `SourceDialogState` modal supporting a Type Picker for all 10 broadcast source types and typed Properties editing with parameter validation.
+  - **Live UI & Engine Wiring (`zeno-ui/src/app.rs`, `dock.rs`)**:
+    - `ZenocastApp` owns `Arc<RwLock<SourceRegistry>>` and `Arc<RwLock<Option<SceneCompositor>>>`.
+    - "+ Add Source" opens the modal dialog, creates real backend `Source` objects, adds them to `SourceRegistry` and the active scene in `SceneCompositor`, and updates the project scene items.
+    - Double-clicking or clicking "Properties" reopens the modal pre-filled with live settings, and saving changes applies immediately to the live source backend.
+    - Removing a source calls `remove_source()` on `SourceRegistry`, cleanly releasing GPU textures and underlying device handles.
+    - Preview and Program framebuffers are registered directly as native textures in egui (`register_native_texture`), and rendered via `ui.painter().image(...)` at 60 FPS in `StudioTabViewer`.
+  - **Acceptance Validation**: Added `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview` in `tests/studio_shell_test.rs` validating source creation, backend registration, compositor scene binding, live GPU render pass, runtime property updates, and clean resource teardown.
+

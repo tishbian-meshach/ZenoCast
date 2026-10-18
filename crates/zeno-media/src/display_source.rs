@@ -84,6 +84,13 @@ impl Source for DisplayCaptureSource {
         (self.bounds.2, self.bounds.3)
     }
 
+    fn properties(&self) -> crate::source::SourceProperties {
+        crate::source::SourceProperties::Display {
+            monitor_index: 0,
+            cursor_visible: self.capture_cursor,
+        }
+    }
+
     fn start(&mut self, _device: &Device, _queue: &Queue) -> Result<(), SourceError> {
         self.active = true;
         self.last_capture_time = -1.0;

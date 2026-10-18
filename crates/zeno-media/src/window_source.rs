@@ -92,6 +92,13 @@ impl Source for WindowCaptureSource {
         self.texture_buffer.dimensions()
     }
 
+    fn properties(&self) -> crate::source::SourceProperties {
+        crate::source::SourceProperties::Window {
+            window_title: self.name.clone(),
+            cursor_visible: self.capture_cursor,
+        }
+    }
+
     fn start(&mut self, _device: &Device, _queue: &Queue) -> Result<(), SourceError> {
         self.active = true;
         self.last_capture_time = -1.0;

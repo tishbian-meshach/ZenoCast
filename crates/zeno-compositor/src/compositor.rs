@@ -178,6 +178,16 @@ impl SceneCompositor {
         self.bus.preview_scene
     }
 
+    /// Sets the active program scene ID.
+    pub fn set_program(&mut self, scene: SceneId) {
+        self.bus.program_scene = scene;
+    }
+
+    /// Sets the active preview scene ID.
+    pub fn set_preview(&mut self, scene: SceneId) {
+        self.bus.preview_scene = scene;
+    }
+
     /// Returns `true` if a scene transition is currently in progress.
     pub fn is_transition_active(&self) -> bool {
         self.active_transition.is_some()

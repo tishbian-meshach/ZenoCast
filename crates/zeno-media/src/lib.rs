@@ -5,10 +5,12 @@
 
 pub mod browser_source;
 pub mod camera_source;
+pub mod color_source;
 pub mod device_manager;
 pub mod display_source;
 pub mod error;
 pub mod ndi;
+pub mod registry;
 pub mod source;
 pub mod spout;
 pub mod texture_buffer;
@@ -17,11 +19,13 @@ pub mod window_source;
 // Re-exports
 pub use browser_source::BrowserSource;
 pub use camera_source::CameraCaptureSource;
+pub use color_source::ColorSource;
 pub use device_manager::{DeviceManager, HotplugEvent};
 pub use display_source::DisplayCaptureSource;
 pub use error::SourceError;
 pub use ndi::NdiSource;
-pub use source::{Source, SourceKind, VideoFrame};
+pub use registry::SourceRegistry;
+pub use source::{Source, SourceKind, SourceProperties, VideoFrame};
 pub use spout::SpoutSource;
 pub use texture_buffer::DoubleBufferedTexture;
 pub use window_source::WindowCaptureSource;
@@ -120,5 +124,51 @@ mod tests {
         assert_eq!(display.kind(), SourceKind::DisplayCapture);
         let (w, h) = display.dimensions();
         assert!(w > 0 && h > 0);
+    }
+
+    #[test]
+    fn test_color_source_and_registry() {
+        use pollster::FutureExt;
+        use zeno_engine::GpuContext;
+
+        let gpu = GpuContext::init_headless()
+            .block_on()
+            .expect("Headless GPU context initialization");
+
+        let mut registry = SourceRegistry::new();
+        assert!(registry.is_empty());
+
+        let mut color_source = ColorSource::new("Test Red", [1.0, 0.0, 0.0, 1.0], 1920, 1080);
+        assert_eq!(color_source.kind(), SourceKind::Color);
+        color_source.start(&gpu.device, &gpu.queue).unwrap();
+        assert!(color_source.is_active());
+        assert!(color_source.is_healthy());
+
+        let id = registry.register(Box::new(color_source));
+        assert_eq!(registry.count(), 1);
+        assert!(registry.contains(id));
+
+        let views = registry.get_all_frame_views();
+        assert_eq!(views.len(), 1);
+        assert!(views.contains_key(&id));
+
+        // Live properties update
+        let src = registry.get_mut(id).unwrap();
+        src.update_properties(
+            &SourceProperties::Color {
+                color: [0.0, 1.0, 0.0, 1.0],
+                width: 1280,
+                height: 720,
+            },
+            &gpu.device,
+            &gpu.queue,
+        )
+        .unwrap();
+        assert_eq!(src.dimensions(), (1280, 720));
+
+        let removed = registry.unregister(id);
+        assert!(removed.is_some());
+        assert!(!removed.unwrap().is_active());
+        assert!(registry.is_empty());
     }
 }

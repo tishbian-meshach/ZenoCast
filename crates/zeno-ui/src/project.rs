@@ -23,13 +23,17 @@ pub enum ProjectError {
 }
 
 /// Source type tag for UI reconstruction.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum SourceKind {
     DisplayCapture,
     WindowCapture,
     CameraFeed,
     MediaFile,
+    Image,
     Color,
+    Text,
+    AudioInput,
+    AudioOutput,
     ArxOverlay,
     Browser,
 }
