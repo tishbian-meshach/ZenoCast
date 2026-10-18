@@ -18,8 +18,8 @@ pub mod youtube;
 
 pub use color_convert::{ColorConverter, Nv12Buffer};
 pub use encoder::{
-    AudioEncoderSettings, EncoderKind, EncoderPreset, EncoderProbe, EncoderProfile, RateControl,
-    VideoEncoderSettings,
+    create_hidden_command, AudioEncoderSettings, EncoderKind, EncoderPreset, EncoderProbe,
+    EncoderProfile, RateControl, VideoEncoderSettings,
 };
 pub use error::{OutputError, OutputResult};
 pub use multi_stream::{MultiStreamManager, StreamDestination};

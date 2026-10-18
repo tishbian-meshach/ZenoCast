@@ -9,6 +9,20 @@ use tracing::info;
 use wgpu::{Device, Queue};
 use zeno_core::SourceId;
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+#[inline]
+fn create_hidden_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 /// Video file media playback source.
 pub struct VideoSource {
     id: SourceId,
@@ -112,7 +126,7 @@ impl VideoSource {
         let ffmpeg_candidates = ["ffmpeg", "C:\\ffmpeg\\bin\\ffmpeg.exe", "ffmpeg.exe"];
 
         for &bin in &ffmpeg_candidates {
-            if let Ok(child) = Command::new(bin)
+            if let Ok(child) = create_hidden_command(bin)
                 .args([
                     "-re",
                     "-stream_loop",

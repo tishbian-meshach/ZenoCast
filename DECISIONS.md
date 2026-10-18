@@ -696,6 +696,28 @@ This log records major architectural and implementation choices, defaults select
   - **Rule 0.1 (UI State Wiring Addendum to v1.0 Spec Section 0)**: A control is not "done" until there is an automated integration test in `tests/ui_wiring/` or a manual verification note in `docs/UI_AUDIT.md` proving it changes real engine/app state (never mock or local widget state).
 - **Acceptance Validation**: All 4 tests in `tests/ui_wiring/` (`test_add_each_source_type_and_verify_real_frame_output`, `test_scene_switching_drives_real_engine_program_output`, `test_start_stop_local_recording_creates_valid_file_on_disk`, `test_streaming_against_local_test_server`) pass green in CI.
 
+### 2026-10-18: Subprocess Console Suppression & Egui-Dock Startup Crash Fix (`fix(startup): suppress ffmpeg console popups and fix egui_dock assertion panic`)
+- **Problem**: When launching `zenocast.exe`, black `ffmpeg.exe` console windows flashed open and closed 5–7 times, followed by immediate application crash before any window appeared.
+- **Root Cause Analysis**:
+  1. **FFmpeg Console Popups**: On Windows GUI subsystems (`#windows_subsystem = "windows"`), invoking `std::process::Command::new` without `.creation_flags(0x0800_0000)` (`CREATE_NO_WINDOW`) causes Windows to allocate a visible console window for each child console application. `FirstRunWizard::new()` calls `HardwareInventory::scan()` and `EncoderRecommendation::benchmark_and_recommend()`, which in turn calls `EncoderProbe::probe_available_encoders()`, probing candidate hardware/software codecs (NVENC, AMF, QSV, x264, etc.) sequentially and spawning 5–7 visible console windows.
+  2. **Startup Assertion Panic**: In `egui_dock-0.16.0`, leaf tabs default to `show_leaf_close_all_buttons: true` and `show_leaf_collapse_buttons: true`. During initial layout calculation (or early sub-pixel frames), if a bottom dock leaf receives 48.0px or 24.0px, button reservations subtract 24px per button, leaving `available_width = 0.0`. `leaf.rs:1093` then panics on `assert_ne!(available_width, 0.0)`, logged in `%LOCALAPPDATA%\Zenocast\logs\panic.log`.
+- **Implementation Details**:
+  - **Subprocess Window Suppression (`create_hidden_command`)**:
+    - Created `create_hidden_command` helper in `zeno-output` and `zeno-media` setting `CREATE_NO_WINDOW` (`0x0800_0000`) on `#[cfg(windows)]`.
+    - Applied `create_hidden_command` across `encoder.rs` (`find_ffmpeg`, `probe_encoder`), `pipeline.rs` (`FfmpegPipeline::start`, `remux_mkv_to_mp4`), `replay.rs` (`ReplayBuffer::save_clip`), `youtube/client.rs` (`curl.exe`), and `video_source.rs` (`VideoSourceDecoder`).
+    - Added `OnceLock<Vec<EncoderKind>>` to cache `probe_available_encoders()`, avoiding repeated multi-process probing across startup or dialog lifecycles.
+  - **Egui-Dock Stability & Size Guarding**:
+    - Configured `DockArea::new(&mut self.dock_state)` with `.show_close_buttons(false)`, `.show_add_buttons(false)`, `.show_leaf_close_all_buttons(false)`, and `.show_leaf_collapse_buttons(false)`.
+    - Implemented `closeable(&mut self, _tab) -> false` and `allowed_in_windows(&self, _tab) -> false` on `StudioTabViewer`.
+    - Guarded dock area rendering to ensure `ui.available_width() >= 100.0 && ui.available_height() >= 100.0`.
+    - Exposed `ZenocastApp::update_ui(&mut self, ctx: &egui::Context)` to enable full headless multi-frame simulation without private `eframe::Frame` requirements.
+    - Added `tests/ui_wiring/app_render_flow.rs` testing initial frame 0 (sub-pixel/empty), frame 1 (960x600 min size), frame 2 (1440x900 default studio size), and mode switching without panic.
+- **Verification**:
+  - `cargo test --workspace` passed 100% across all crates.
+  - Built optimized release binary and installed to `%USERPROFILE%\.cargo\bin\zenocast.exe`.
+  - Executed process launch test: verified app starts cleanly, stays running in background, and `%LOCALAPPDATA%\Zenocast\logs\panic.log` remains non-existent.
+
+
 
 
 

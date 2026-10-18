@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::process::Command;
 
+use crate::encoder::create_hidden_command;
 use crate::error::{OutputError, OutputResult};
 
 /// Latency mode for YouTube broadcast stream ingestion.
@@ -147,7 +147,7 @@ impl YouTubeApiClient {
         let (status_code, response_body) = if let Some(ref mock) = self.mock_handler {
             mock(method, &url, body)?
         } else {
-            let mut cmd = Command::new("curl.exe");
+            let mut cmd = create_hidden_command("curl.exe");
             cmd.args(["-s", "-w", "\n%{http_code}", "-X", method, &url]);
             cmd.args(["-H", &format!("Authorization: Bearer {}", access_token)]);
             cmd.args(["-H", "Content-Type: application/json"]);

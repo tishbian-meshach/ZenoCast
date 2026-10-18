@@ -923,10 +923,9 @@ impl ZenocastApp {
             "00:00:00".into()
         }
     }
-}
 
-impl App for ZenocastApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+    /// Drives a complete UI frame update pass for the given egui context.
+    pub fn update_ui(&mut self, ctx: &Context) {
         // Render tick for live sources and compositor
         if let (Some(device), Some(queue)) = (&self.wgpu_device, &self.wgpu_queue) {
             let now_sec = std::time::SystemTime::now()
@@ -1142,9 +1141,15 @@ impl App for ZenocastApp {
                     trigger_remove_scene: &mut trigger_remove_scene,
                 };
 
-                DockArea::new(&mut self.dock_state)
-                    .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                    .show_inside(ui, &mut viewer);
+                if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
+                    DockArea::new(&mut self.dock_state)
+                        .show_close_buttons(false)
+                        .show_add_buttons(false)
+                        .show_leaf_close_all_buttons(false)
+                        .show_leaf_collapse_buttons(false)
+                        .style(egui_dock::Style::from_egui(ui.style().as_ref()))
+                        .show_inside(ui, &mut viewer);
+                }
             }
             AppMode::EditOverlay => {
                 ui.vertical(|ui| {
@@ -1470,6 +1475,12 @@ impl App for ZenocastApp {
 
         // Render First-Run Setup Wizard if open
         self.wizard.ui(ctx, &mut self.project.settings);
+    }
+}
+
+impl App for ZenocastApp {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        self.update_ui(ctx);
     }
 
     fn on_exit(&mut self) {

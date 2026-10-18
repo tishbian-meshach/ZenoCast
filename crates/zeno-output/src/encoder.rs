@@ -242,6 +242,24 @@ impl Default for AudioEncoderSettings {
     }
 }
 
+#[cfg(windows)]
+pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// Creates a `std::process::Command` configured with `CREATE_NO_WINDOW` on Windows
+/// to prevent console popups during background tool probes or encoding subprocesses.
+#[inline]
+pub fn create_hidden_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+static PROBED_ENCODERS: std::sync::OnceLock<Vec<EncoderKind>> = std::sync::OnceLock::new();
+
 /// System hardware encoder prober and auto-selector.
 pub struct EncoderProbe;
 
@@ -249,7 +267,7 @@ impl EncoderProbe {
     /// Locates the `ffmpeg` executable path on system PATH or fallback directory.
     pub fn find_ffmpeg() -> Option<String> {
         // First check standard PATH
-        if let Ok(output) = Command::new("ffmpeg").arg("-version").output() {
+        if let Ok(output) = create_hidden_command("ffmpeg").arg("-version").output() {
             if output.status.success() {
                 return Some("ffmpeg".to_string());
             }
@@ -267,7 +285,7 @@ impl EncoderProbe {
     /// Tests if a specific encoder works on the host machine by running a 1-frame probe.
     pub fn probe_encoder(ffmpeg_path: &str, kind: EncoderKind) -> bool {
         let codec = kind.ffmpeg_codec_name();
-        let status = Command::new(ffmpeg_path)
+        let status = create_hidden_command(ffmpeg_path)
             .args([
                 "-f",
                 "lavfi",
@@ -288,37 +306,42 @@ impl EncoderProbe {
     }
 
     /// Probes the system and returns all functional video encoders.
+    /// Results are cached for the lifetime of the process so probes run at most once.
     pub fn probe_available_encoders() -> Vec<EncoderKind> {
-        let Some(ffmpeg) = Self::find_ffmpeg() else {
-            return vec![EncoderKind::X264];
-        };
+        PROBED_ENCODERS
+            .get_or_init(|| {
+                let Some(ffmpeg) = Self::find_ffmpeg() else {
+                    return vec![EncoderKind::X264];
+                };
 
-        let candidates = [
-            EncoderKind::NvencH264,
-            EncoderKind::AmfH264,
-            EncoderKind::QsvH264,
-            EncoderKind::X264,
-            EncoderKind::NvencHevc,
-            EncoderKind::AmfHevc,
-            EncoderKind::QsvHevc,
-            EncoderKind::X265,
-            EncoderKind::NvencAv1,
-            EncoderKind::AmfAv1,
-            EncoderKind::QsvAv1,
-        ];
+                let candidates = [
+                    EncoderKind::NvencH264,
+                    EncoderKind::AmfH264,
+                    EncoderKind::QsvH264,
+                    EncoderKind::X264,
+                    EncoderKind::NvencHevc,
+                    EncoderKind::AmfHevc,
+                    EncoderKind::QsvHevc,
+                    EncoderKind::X265,
+                    EncoderKind::NvencAv1,
+                    EncoderKind::AmfAv1,
+                    EncoderKind::QsvAv1,
+                ];
 
-        let mut available = Vec::new();
-        for kind in candidates {
-            if Self::probe_encoder(&ffmpeg, kind) {
-                available.push(kind);
-            }
-        }
+                let mut available = Vec::new();
+                for kind in candidates {
+                    if Self::probe_encoder(&ffmpeg, kind) {
+                        available.push(kind);
+                    }
+                }
 
-        if available.is_empty() {
-            available.push(EncoderKind::X264);
-        }
+                if available.is_empty() {
+                    available.push(EncoderKind::X264);
+                }
 
-        available
+                available
+            })
+            .clone()
     }
 
     /// Auto-selects the optimal H.264 encoder: NVENC -> AMF -> QSV -> x264 fallback.

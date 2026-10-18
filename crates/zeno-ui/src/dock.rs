@@ -124,6 +124,14 @@ impl<'a> TabViewer for StudioTabViewer<'a> {
             StudioTab::StreamControls => self.ui_stream_controls(ui),
         }
     }
+
+    fn closeable(&mut self, _tab: &mut Self::Tab) -> bool {
+        false
+    }
+
+    fn allowed_in_windows(&self, _tab: &mut Self::Tab) -> bool {
+        false
+    }
 }
 
 impl<'a> StudioTabViewer<'a> {

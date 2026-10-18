@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -12,7 +12,9 @@ use std::time::Instant;
 use parking_lot::Mutex;
 use tracing::{error, info, warn};
 
-use crate::encoder::{AudioEncoderSettings, EncoderKind, EncoderProbe, VideoEncoderSettings};
+use crate::encoder::{
+    create_hidden_command, AudioEncoderSettings, EncoderKind, EncoderProbe, VideoEncoderSettings,
+};
 use crate::error::{OutputError, OutputResult};
 
 /// Active destination for the FFmpeg encoding and multiplexing pipeline.
@@ -67,7 +69,7 @@ impl FfmpegPipeline {
         );
 
         // Build FFmpeg command arguments
-        let mut cmd = Command::new(&ffmpeg_bin);
+        let mut cmd = create_hidden_command(&ffmpeg_bin);
         cmd.arg("-hide_banner")
             .arg("-loglevel")
             .arg("warning")
@@ -373,7 +375,7 @@ impl FfmpegPipeline {
             OutputError::FfmpegNotFound("FFmpeg binary required for remuxing".into())
         })?;
 
-        let status = Command::new(&ffmpeg_bin)
+        let status = create_hidden_command(&ffmpeg_bin)
             .args([
                 "-y",
                 "-i",

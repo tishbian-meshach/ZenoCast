@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tracing::info;
 
 use crate::color_convert::Nv12Buffer;
-use crate::encoder::EncoderProbe;
+use crate::encoder::{create_hidden_command, EncoderProbe};
 use crate::error::{OutputError, OutputResult};
 
 /// Single buffered broadcast video frame stored in the circular replay buffer.
@@ -272,7 +272,7 @@ impl ReplayBuffer {
                 }
 
                 // Mux with FFmpeg
-                let status = std::process::Command::new(&ffmpeg_bin)
+                let status = create_hidden_command(&ffmpeg_bin)
                     .args([
                         "-hide_banner",
                         "-loglevel",
