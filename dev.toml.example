@@ -1,0 +1,15 @@
+# Zenocast dev.toml — local developer overrides (git-ignored)
+#
+# Copy this file to the project root as "dev.toml" and edit.
+# All keys are optional.
+
+# Skip the license validation dialog in dev builds.
+# Set to "true" to bypass — license must never block local development.
+skip_license_check = "true"
+
+# Auto-open a project file on launch (absolute or relative to project root).
+# default_project = "templates/esports/scoreboard_bo3.arx"
+
+# Use mock/fake capture sources instead of real display/camera enumeration.
+# Useful when developing on a machine without capture hardware.
+mock_sources = "true"

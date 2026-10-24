@@ -7,3 +7,6 @@
 *.arx.tmp
 *.arxproj
 .*.arxproj
+dev.toml
+dev.log
+target/dev-logs/

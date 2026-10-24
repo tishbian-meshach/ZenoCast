@@ -260,7 +260,7 @@ impl ZenocastApp {
             wgpu_queue = Some(queue);
         }
 
-        Self {
+        let mut app = Self {
             project,
             project_path: None,
             dock_state,
@@ -307,7 +307,16 @@ impl ZenocastApp {
             file_dialog_path: "project.arxproj".to_string(),
             rename_scene_id: None,
             rename_scene_buffer: String::new(),
+        };
+
+        if let Ok(proj_path) = std::env::var("ZENOCAST_DEV_PROJECT") {
+            let path = PathBuf::from(proj_path);
+            if path.exists() {
+                let _ = app.open_project_from_path(path);
+            }
         }
+
+        app
     }
 
     /// Handles instant Cut transition between Preview and Program.

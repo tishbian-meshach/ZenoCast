@@ -89,31 +89,37 @@ fn test_app_renders_multiple_frames_without_panic() {
     let ctx = egui::Context::default();
 
     // Frame 0: uninitialized / tiny screen (0x0 or 50x50) - must not crash DockArea
-    let mut input_tiny = egui::RawInput::default();
-    input_tiny.screen_rect = Some(egui::Rect::from_min_size(
-        egui::Pos2::ZERO,
-        egui::vec2(50.0, 50.0),
-    ));
+    let input_tiny = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(50.0, 50.0),
+        )),
+        ..Default::default()
+    };
     let _ = ctx.run(input_tiny, |ctx| {
         app.update_ui(ctx);
     });
 
     // Frame 1: minimum inner size (960x600)
-    let mut input_min = egui::RawInput::default();
-    input_min.screen_rect = Some(egui::Rect::from_min_size(
-        egui::Pos2::ZERO,
-        egui::vec2(960.0, 600.0),
-    ));
+    let input_min = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(960.0, 600.0),
+        )),
+        ..Default::default()
+    };
     let _ = ctx.run(input_min, |ctx| {
         app.update_ui(ctx);
     });
 
     // Frame 2: standard broadcast studio size (1440x900)
-    let mut input_full = egui::RawInput::default();
-    input_full.screen_rect = Some(egui::Rect::from_min_size(
-        egui::Pos2::ZERO,
-        egui::vec2(1440.0, 900.0),
-    ));
+    let input_full = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1440.0, 900.0),
+        )),
+        ..Default::default()
+    };
     let _ = ctx.run(input_full, |ctx| {
         app.update_ui(ctx);
     });

@@ -717,6 +717,20 @@ This log records major architectural and implementation choices, defaults select
   - Built optimized release binary and installed to `%USERPROFILE%\.cargo\bin\zenocast.exe`.
   - Executed process launch test: verified app starts cleanly, stays running in background, and `%LOCALAPPDATA%\Zenocast\logs\panic.log` remains non-existent.
 
+---
+
+## UX pass
+
+### 2026-10-24: Section 1 - Fast Test Loop & Dev Watcher (`chore(dev): fast local run script, no install required`)
+- **Fast Test Loop**:
+  - Created `scripts/dev-run.ps1` for local debug/release execution directly from `target/` without package/installer overhead, piping tracing logs to console and rotating files under `target/dev-logs/`.
+  - Created `dev.toml.example` supporting local overrides: `skip_license_check`, `mock_sources`, `default_project`.
+  - Added documentation in `docs/DEV_RUN.md`.
+- **Hot-Reload Evaluation**:
+  - Dynamic code swapping/true hot-reloading is not natively supported by `egui`/`eframe` on native desktop platforms without dynamic library boundary separation (`dylib` / `cdylib` architecture).
+  - Implemented `scripts/dev-watch.ps1` with incremental change detection on `crates/**/*.rs` and `Cargo.toml`. When changes occur, it automatically terminates the previous process and launches the newly compiled build, achieving a sub-10-second iteration loop from file save to running window.
+
+
 
 
 
