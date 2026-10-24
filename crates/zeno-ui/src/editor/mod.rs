@@ -21,10 +21,12 @@ pub mod timeline;
 pub use assets::ui_assets_panel;
 pub use canvas::ui_canvas;
 pub use command::{
-    AddLayerCommand, AddOpacityKeyframeCommand, AddPositionKeyframeCommand, CommandHistory,
-    DeleteLayerCommand, EditorCommand, ModifyTextCommand, ReorderLayerCommand, SetTransformCommand,
+    AddLayerCommand, AddOpacityKeyframeCommand, AddPositionKeyframeCommand,
+    AddRotationKeyframeCommand, AddScaleKeyframeCommand, AnimProperty, CommandHistory,
+    DeleteKeyframeCommand, DeleteLayerCommand, EditorCommand, ModifyTextCommand,
+    MoveKeyframeCommand, ReorderLayerCommand, SetKeyframeEasingCommand, SetTransformCommand,
 };
 pub use layers_panel::ui_layers_panel;
 pub use properties_panel::ui_properties_panel;
-pub use state::{OverlayEditor, TimelineMarker};
+pub use state::{LeftTab, OverlayEditor, TimelineMarker};
 pub use timeline::{ui_timeline, TimelineMode};

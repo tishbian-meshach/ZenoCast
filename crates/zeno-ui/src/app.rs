@@ -12,7 +12,8 @@ use tracing::info;
 use crate::data_panel::{ui_esports_data_panel, DataPanelState};
 use crate::dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 use crate::editor::{
-    ui_canvas, ui_layers_panel, ui_properties_panel, ui_timeline, OverlayEditor, TimelineMode,
+    ui_assets_panel, ui_canvas, ui_layers_panel, ui_properties_panel, ui_timeline, LeftTab,
+    OverlayEditor, TimelineMode,
 };
 use crate::project::{Autosaver, Project, SceneDefinition, SourceDefinition, SourceKind};
 use crate::source_dialog::{SourceDialogAction, SourceDialogState};
@@ -1332,6 +1333,21 @@ impl ZenocastApp {
                 }
             }
             AppMode::EditOverlay => {
+                // Global keyboard shortcuts for Undo / Redo in overlay editor
+                let (undo_req, redo_req) = ui.input(|i| {
+                    let ctrl = i.modifiers.command || i.modifiers.ctrl;
+                    let shift = i.modifiers.shift;
+                    let z = i.key_pressed(egui::Key::Z);
+                    let y = i.key_pressed(egui::Key::Y);
+                    (ctrl && !shift && z, (ctrl && shift && z) || (ctrl && y))
+                });
+                if undo_req {
+                    self.overlay_editor.undo();
+                }
+                if redo_req {
+                    self.overlay_editor.redo();
+                }
+
                 ui.vertical(|ui| {
                     let total_height = ui.available_height();
                     let top_height = (total_height * 0.65).max(200.0);
@@ -1340,14 +1356,44 @@ impl ZenocastApp {
                         vec2(ui.available_width(), top_height),
                         egui::Layout::left_to_right(egui::Align::Min),
                         |ui| {
-                            ui.allocate_ui(vec2(220.0, top_height), |ui| {
+                            ui.allocate_ui(vec2(250.0, top_height), |ui| {
                                 egui::Frame::group(ui.style()).show(ui, |ui| {
-                                    ui_layers_panel(&mut self.overlay_editor, ui);
+                                    ui.horizontal(|ui| {
+                                        if ui
+                                            .selectable_label(
+                                                self.overlay_editor.active_left_tab
+                                                    == LeftTab::Layers,
+                                                "☰ Layers",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.overlay_editor.active_left_tab = LeftTab::Layers;
+                                        }
+                                        if ui
+                                            .selectable_label(
+                                                self.overlay_editor.active_left_tab
+                                                    == LeftTab::Assets,
+                                                "📁 Assets",
+                                            )
+                                            .clicked()
+                                        {
+                                            self.overlay_editor.active_left_tab = LeftTab::Assets;
+                                        }
+                                    });
+                                    ui.separator();
+                                    match self.overlay_editor.active_left_tab {
+                                        LeftTab::Layers => {
+                                            ui_layers_panel(&mut self.overlay_editor, ui);
+                                        }
+                                        LeftTab::Assets => {
+                                            ui_assets_panel(&mut self.overlay_editor, ui);
+                                        }
+                                    }
                                 });
                             });
                             ui.separator();
 
-                            let canvas_w = (ui.available_width() - 300.0).max(300.0);
+                            let canvas_w = (ui.available_width() - 320.0).max(300.0);
                             ui.allocate_ui(vec2(canvas_w, top_height), |ui| {
                                 egui::Frame::group(ui.style()).show(ui, |ui| {
                                     ui_canvas(&mut self.overlay_editor, ui);

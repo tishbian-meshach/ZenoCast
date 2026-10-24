@@ -779,3 +779,33 @@ This log records major architectural and implementation choices, defaults select
   - **Timeline Dope Sheet Alignment**: Timeline tracks iterate in reverse layer order so Track 0 in the timeline visually aligns with Row 0 in the Layers panel.
   - **Zero-State Messaging**: Added clean inline hints when lists are empty ("No sources yet — click + Add Source or drag media here" / "No layers yet — click + Text, + Shape, or import media").
 
+### 2026-10-24: Section 5 - Overlay Editor Usability & Completeness (`feat(editor): asset import, working layer properties, keyframe editing, undo/redo`)
+- **Left Sidebar Tabs & Global Shortcuts**:
+  - Partitioned the left sidebar in `AppMode::EditOverlay` into two switchable tabs: `[☰ Layers]` and `[📁 Assets]`.
+  - Added global `Ctrl+Z` (Undo) and `Ctrl+Y` / `Ctrl+Shift+Z` (Redo) keyboard shortcuts invoking `OverlayEditor::undo` and `redo`.
+- **Dedicated Assets Panel & Media Import**:
+  - Implemented `ui_assets_panel` with "+ Import Media…" opening native `rfd::FileDialog` with media filters for images (`png`, `jpg`, `jpeg`, `gif`, `webp`), videos (`mp4`, `mov`, `webm`), audio (`wav`, `mp3`, `ogg`, `flac`), fonts (`ttf`, `otf`), and all files.
+  - Drag-and-drop from Windows Explorer directly onto the Assets panel auto-imports files and adds them to `composition.assets` with real metadata, size formatting (KB/MB), and kind badges (`[IMG]`, `[VID]`, `[AUD]`, `[FONT]`).
+  - Added "+ Add as Layer" button and interactive `⠿` grip handle allowing drag-and-drop of assets onto the canvas.
+- **Canvas Drag-and-Drop & Rendering**:
+  - Supported dropping media files from Windows Explorer directly onto `canvas_rect`, automatically importing the asset and spawning a centered, aspect-capped image layer.
+  - Supported internal dragging from the Assets panel onto `canvas_rect`, displaying a highlighted canvas boundary indicator and dropping a new layer at canvas center.
+  - Implemented rendering for `ResolvedContent::Image` with a dark frame (`SURFACE_1`, `SURFACE_3` border) and centered `🖼 <filename>` badge.
+  - Updated `TransformGizmoItem` for Image layers to query native asset dimensions from `editor.asset_dimensions`.
+- **Properties Inspector Completeness**:
+  - **Transform**: Added keyframe stopwatch toggle buttons for Position, Scale, Rotation, and Opacity.
+  - **Text Properties**: Added font family, font size (8–300px), native color picker (`color_edit_button_srgba`), alignment buttons (Left/Center/Right), letter spacing (-10 to 100px), line height multiplier (0.5 to 4.0), and word wrap.
+  - **Shape Properties**: Added width, height, corner radius (0–200px, dynamically upgrading `Rectangle` to `RoundedRectangle`), Fill checkbox with native color picker, and Stroke checkbox with stroke width and color picker.
+  - **Camera Properties**: Added Field of View (10–120°), Position X/Y/Z, Target X/Y/Z, Near and Far clipping planes.
+  - **Particle Properties**: Added preset buttons (Confetti, Sparks, Smoke), emission rate, lifetime, launch speed, angular spread, start/end size, Start Color and End Color pickers, gravity vector, additive blending, and RNG seed.
+  - **Image Properties**: Added asset path, native pixel dimensions, file size, and "Reset Native Size" button.
+- **Interactive Timeline (Dope Sheet)**:
+  - Added color-coded keyframe diamonds for Position (`ACCENT`), Scale (`GREEN_OK`), Rotation (`AMBER_WARN`), and Opacity (`RED_LIVE`).
+  - Interactive keyframe selection with white outline highlight and `Delete` key deletion.
+  - Interactive keyframe dragging to retime timestamps (`move_keyframe`), with live playhead scrubbing and canvas preview.
+  - Right-click context menu on keyframe diamonds ("Delete Keyframe", "Easing: Linear", "Easing: Ease In", "Easing: Ease Out", "Easing: Ease In-Out") and on tracks ("Add Keyframe at Playhead").
+  - Draggable In/Loop/Out region boundary handles on the time ruler with tinted region bands (Intro/Loop/Out) synchronizing live with `composition.lifecycle` ranges and animation states.
+- **Undo / Redo & `.arx` Container Roundtrip**:
+  - Extended command pattern (`command.rs`) with `AddScaleKeyframeCommand`, `AddRotationKeyframeCommand`, `DeleteKeyframeCommand`, `MoveKeyframeCommand`, and `SetKeyframeEasingCommand`.
+  - Updated `save_to_arx` and `load_from_arx` in `OverlayEditor` to package and extract raw embedded asset bytes in `pkg.assets` and reconstruct native asset dimensions, passing roundtrip verification in `test_asset_import_keyframe_retiming_and_arx_roundtrip`.
+

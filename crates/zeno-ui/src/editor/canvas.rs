@@ -6,8 +6,8 @@ use zeno_engine::eval::{evaluate_at, ResolvedContent};
 
 use crate::editor::state::OverlayEditor;
 use crate::theme::{
-    color_to_egui, ACCENT, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, RED_LIVE, SURFACE_0, SURFACE_2,
-    SURFACE_3, TEXT, TEXT_MUTED,
+    color_to_egui, ACCENT, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, RED_LIVE, SURFACE_0, SURFACE_1,
+    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem};
 
@@ -72,6 +72,106 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
             StrokeKind::Inside,
         );
 
+        // Handle OS file drag-and-drop directly onto composition canvas
+        let dropped_files = ui.input(|i| {
+            if !i.raw.dropped_files.is_empty() {
+                if let Some(pos) = i.pointer.hover_pos() {
+                    if canvas_rect.contains(pos) {
+                        return i.raw.dropped_files.clone();
+                    }
+                }
+            }
+            Vec::new()
+        });
+
+        for file in dropped_files {
+            if let Some(ref path) = file.path {
+                if let Some(asset_id) = editor.import_asset(path) {
+                    let name = path
+                        .file_stem()
+                        .map(|s| s.to_string_lossy().to_string())
+                        .unwrap_or_else(|| "Image Layer".into());
+                    let (nw, nh) = editor
+                        .asset_dimensions
+                        .get(&asset_id)
+                        .copied()
+                        .unwrap_or((320, 180));
+                    let max_w = editor.composition.width as f32;
+                    let max_h = editor.composition.height as f32;
+                    let mut w = nw as f32;
+                    let mut h = nh as f32;
+                    if w > max_w || h > max_h {
+                        let s = (max_w / w).min(max_h / h);
+                        w *= s;
+                        h *= s;
+                    }
+                    editor.add_image_layer_from_asset(asset_id, &name, w, h);
+                }
+            }
+        }
+
+        // Handle internal drag-and-drop from Assets panel onto canvas
+        let dragging_asset = ui.memory(|mem| {
+            mem.data
+                .get_temp::<String>(egui::Id::new("dnd_dragging_asset_id"))
+        });
+
+        if let Some(ref asset_id_str) = dragging_asset {
+            if let Some(pos) = ui.ctx().pointer_latest_pos() {
+                if canvas_rect.contains(pos) {
+                    painter.rect_stroke(
+                        comp_rect,
+                        CornerRadius::ZERO,
+                        Stroke::new(2.0_f32, ACCENT),
+                        StrokeKind::Inside,
+                    );
+                    if !ui.input(|i| i.pointer.any_down()) {
+                        if let Ok(uid) = uuid::Uuid::parse_str(asset_id_str) {
+                            let asset_id = zeno_core::AssetId(uid);
+                            let asset_name = editor
+                                .composition
+                                .assets
+                                .iter()
+                                .find(|a| a.id == asset_id)
+                                .map(|a| {
+                                    std::path::Path::new(&a.path)
+                                        .file_name()
+                                        .map(|f| f.to_string_lossy().to_string())
+                                        .unwrap_or_else(|| "Image Layer".into())
+                                })
+                                .unwrap_or_else(|| "Image Layer".into());
+
+                            let (nw, nh) = editor
+                                .asset_dimensions
+                                .get(&asset_id)
+                                .copied()
+                                .unwrap_or((320, 180));
+                            let max_w = editor.composition.width as f32;
+                            let max_h = editor.composition.height as f32;
+                            let mut w = nw as f32;
+                            let mut h = nh as f32;
+                            if w > max_w || h > max_h {
+                                let s = (max_w / w).min(max_h / h);
+                                w *= s;
+                                h *= s;
+                            }
+                            editor.add_image_layer_from_asset(asset_id, &asset_name, w, h);
+                        }
+                        ui.memory_mut(|mem| {
+                            mem.data
+                                .remove::<String>(egui::Id::new("dnd_dragging_asset_id"))
+                        });
+                    }
+                }
+            }
+            if !ui.input(|i| i.pointer.any_down()) {
+                ui.memory_mut(|mem| {
+                    mem.data
+                        .remove::<String>(egui::Id::new("dnd_dragging_asset_id"))
+                });
+            }
+        }
+
         // Evaluate and Draw Layers at current playhead time
         let frame = evaluate_at(&editor.composition, editor.clock.time());
 
@@ -126,6 +226,53 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                         painter.circle_filled(p_pos, (p.size * 0.5 * editor.zoom).max(1.0), col);
                     }
                 }
+                ResolvedContent::Image { asset } => {
+                    let (nw, nh) = editor
+                        .asset_dimensions
+                        .get(asset)
+                        .copied()
+                        .unwrap_or((320, 180));
+                    let scale = editor
+                        .composition
+                        .layers
+                        .iter()
+                        .find(|l| l.id == layer.id)
+                        .map(|l| *l.transform.scale_percent.fallback_value())
+                        .unwrap_or(Vec3::splat(100.0));
+                    let img_w = (nw as f32 * (scale.x.abs() / 100.0) * editor.zoom).max(16.0);
+                    let img_h = (nh as f32 * (scale.y.abs() / 100.0) * editor.zoom).max(16.0);
+                    let img_rect = Rect::from_center_size(layer_pos, vec2(img_w, img_h));
+
+                    painter.rect(
+                        img_rect,
+                        CornerRadius::same(CORNER_RADIUS as u8),
+                        SURFACE_1,
+                        Stroke::new(BORDER_WIDTH, SURFACE_3),
+                        StrokeKind::Inside,
+                    );
+
+                    let filename = editor
+                        .composition
+                        .assets
+                        .iter()
+                        .find(|a| &a.id == asset)
+                        .map(|a| {
+                            std::path::Path::new(&a.path)
+                                .file_name()
+                                .map(|f| f.to_string_lossy().to_string())
+                                .unwrap_or_else(|| a.path.clone())
+                        })
+                        .unwrap_or_else(|| "Image".into());
+
+                    let badge_text = format!("🖼 {}", filename);
+                    painter.text(
+                        img_rect.center(),
+                        Align2::CENTER_CENTER,
+                        badge_text,
+                        FontId::proportional((13.0 * editor.zoom).clamp(10.0, 20.0)),
+                        TEXT,
+                    );
+                }
                 _ => {}
             }
         }
@@ -158,8 +305,14 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                     (w, h)
                 }
                 zeno_engine::LayerContent::Particles(..) => (200.0, 200.0),
-                zeno_engine::LayerContent::Image { .. }
-                | zeno_engine::LayerContent::Video { .. } => (320.0, 180.0),
+                zeno_engine::LayerContent::Image { asset } => {
+                    if let Some(&(w, h)) = editor.asset_dimensions.get(asset) {
+                        (w as f32, h as f32)
+                    } else {
+                        (320.0, 180.0)
+                    }
+                }
+                zeno_engine::LayerContent::Video { .. } => (320.0, 180.0),
                 _ => (160.0, 90.0),
             };
 
@@ -292,8 +445,14 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                                     (w, h)
                                 }
                                 zeno_engine::LayerContent::Particles(..) => (200.0, 200.0),
-                                zeno_engine::LayerContent::Image { .. }
-                                | zeno_engine::LayerContent::Video { .. } => (320.0, 180.0),
+                                zeno_engine::LayerContent::Image { asset } => {
+                                    if let Some(&(w, h)) = editor.asset_dimensions.get(asset) {
+                                        (w as f32, h as f32)
+                                    } else {
+                                        (320.0, 180.0)
+                                    }
+                                }
+                                zeno_engine::LayerContent::Video { .. } => (320.0, 180.0),
                                 _ => (160.0, 90.0),
                             };
 

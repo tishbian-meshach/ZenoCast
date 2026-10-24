@@ -245,3 +245,78 @@ fn test_layer_reordering_and_undo() {
     assert_eq!(editor.composition.layers[1].id, id_a);
     assert_eq!(editor.composition.layers[2].id, id_c);
 }
+
+#[test]
+fn test_asset_import_keyframe_retiming_and_arx_roundtrip() {
+    let mut editor = OverlayEditor::new(1920, 1080, 60.0, 10.0);
+    assert_eq!(editor.active_left_tab, zeno_ui::editor::LeftTab::Layers);
+
+    // Create a real PNG image asset
+    let temp = tempdir().unwrap();
+    let img_path = temp.path().join("sponsor_logo.png");
+    let img = image::RgbaImage::new(64, 32);
+    img.save(&img_path).unwrap();
+
+    // 1. Import media asset
+    let asset_id = editor
+        .import_asset(&img_path)
+        .expect("Asset import should succeed");
+    assert_eq!(editor.asset_dimensions.get(&asset_id), Some(&(64, 32)));
+    assert_eq!(editor.composition.assets.len(), 1);
+    assert!(editor.asset_bytes.contains_key("assets/sponsor_logo.png"));
+
+    // 2. Add Image Layer from asset
+    let img_layer_id = editor.add_image_layer_from_asset(asset_id, "Sponsor Logo", 64.0, 32.0);
+    assert_eq!(editor.composition.layers.len(), 1);
+    assert_eq!(editor.selected_layer_id, Some(img_layer_id));
+
+    // 3. Add Text Layer
+    let text_id = editor.add_text_layer("Header Text", "LIVE TOURNAMENT");
+    editor.selected_layer_id = Some(text_id);
+    assert_eq!(editor.composition.layers.len(), 2);
+
+    // 4. Add keyframes
+    editor.clock.seek(0.0);
+    assert!(editor.add_position_keyframe(Vec3::new(100.0, 200.0, 0.0), Easing::Linear));
+    editor.clock.seek(2.0);
+    assert!(editor.add_position_keyframe(Vec3::new(500.0, 200.0, 0.0), Easing::ease_in_out()));
+
+    // 5. Retime keyframe via move_keyframe
+    assert!(editor.move_keyframe(text_id, zeno_ui::editor::AnimProperty::Position, 2.0, 3.5));
+
+    // 6. Set keyframe easing
+    assert!(editor.set_keyframe_easing(
+        text_id,
+        zeno_ui::editor::AnimProperty::Position,
+        3.5,
+        Easing::ease_out()
+    ));
+
+    // 7. Verify Undo / Redo
+    assert!(editor.undo()); // undo easing
+    assert!(editor.undo()); // undo move
+    assert!(editor.redo()); // redo move
+    assert!(editor.redo()); // redo easing
+
+    // 8. Save to .arx package
+    let arx_path = temp.path().join("complete_overlay.arx");
+    editor
+        .save_arx(&arx_path)
+        .expect("Save to .arx should succeed");
+    assert!(arx_path.exists());
+
+    // 9. Reload from .arx package
+    let loaded = OverlayEditor::load_arx(&arx_path).expect("Load from .arx should succeed");
+    assert_eq!(loaded.composition.layers.len(), 2);
+    assert_eq!(loaded.composition.assets.len(), 1);
+    assert_eq!(loaded.asset_dimensions.get(&asset_id), Some(&(64, 32)));
+    assert!(loaded.asset_bytes.contains_key("assets/sponsor_logo.png"));
+
+    // Verify keyframes on loaded text layer
+    let text_layer = &loaded.composition.layers[1];
+    let kfs = text_layer.transform.position.as_keyframes();
+    assert_eq!(kfs.len(), 2);
+    assert_eq!(kfs[0].time_seconds, 0.0);
+    assert_eq!(kfs[1].time_seconds, 3.5);
+    assert_eq!(kfs[1].easing_to_next, Easing::ease_out());
+}

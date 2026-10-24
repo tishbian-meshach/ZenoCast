@@ -347,3 +347,451 @@ impl EditorCommand for ModifyTextCommand {
         "Modify Text"
     }
 }
+
+/// Identifies an animatable transform property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnimProperty {
+    Position,
+    Scale,
+    Rotation,
+    Opacity,
+}
+
+/// Command: Adds a scale keyframe to a layer.
+pub struct AddScaleKeyframeCommand {
+    layer_id: LayerId,
+    keyframe: Keyframe<Vec3>,
+}
+
+impl AddScaleKeyframeCommand {
+    pub fn new(layer_id: LayerId, keyframe: Keyframe<Vec3>) -> Self {
+        Self { layer_id, keyframe }
+    }
+}
+
+impl EditorCommand for AddScaleKeyframeCommand {
+    fn execute(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+            kfs.retain(|k| (k.time_seconds - self.keyframe.time_seconds).abs() > 1e-4);
+            kfs.push(self.keyframe.clone());
+            kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+            layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+        }
+    }
+
+    fn undo(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+            kfs.retain(|k| (k.time_seconds - self.keyframe.time_seconds).abs() > 1e-4);
+            layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Add Scale Keyframe"
+    }
+}
+
+/// Command: Adds a rotation keyframe to a layer.
+pub struct AddRotationKeyframeCommand {
+    layer_id: LayerId,
+    keyframe: Keyframe<Vec3>,
+}
+
+impl AddRotationKeyframeCommand {
+    pub fn new(layer_id: LayerId, keyframe: Keyframe<Vec3>) -> Self {
+        Self { layer_id, keyframe }
+    }
+}
+
+impl EditorCommand for AddRotationKeyframeCommand {
+    fn execute(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+            kfs.retain(|k| (k.time_seconds - self.keyframe.time_seconds).abs() > 1e-4);
+            kfs.push(self.keyframe.clone());
+            kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+            layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+        }
+    }
+
+    fn undo(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+            kfs.retain(|k| (k.time_seconds - self.keyframe.time_seconds).abs() > 1e-4);
+            layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Add Rotation Keyframe"
+    }
+}
+
+/// Command: Deletes a keyframe from any animatable transform property with undo support.
+pub struct DeleteKeyframeCommand {
+    layer_id: LayerId,
+    property: AnimProperty,
+    time: f64,
+    deleted_vec: Option<Keyframe<Vec3>>,
+    deleted_f32: Option<Keyframe<f32>>,
+}
+
+impl DeleteKeyframeCommand {
+    pub fn new(layer_id: LayerId, property: AnimProperty, time: f64) -> Self {
+        Self {
+            layer_id,
+            property,
+            time,
+            deleted_vec: None,
+            deleted_f32: None,
+        }
+    }
+}
+
+impl EditorCommand for DeleteKeyframeCommand {
+    fn execute(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            match self.property {
+                AnimProperty::Position => {
+                    let mut kfs = layer.transform.position.as_keyframes().to_vec();
+                    if let Some(pos) = kfs
+                        .iter()
+                        .position(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        self.deleted_vec = Some(kfs.remove(pos));
+                        layer.transform.position = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+                AnimProperty::Scale => {
+                    let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+                    if let Some(pos) = kfs
+                        .iter()
+                        .position(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        self.deleted_vec = Some(kfs.remove(pos));
+                        layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+                AnimProperty::Rotation => {
+                    let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+                    if let Some(pos) = kfs
+                        .iter()
+                        .position(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        self.deleted_vec = Some(kfs.remove(pos));
+                        layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+                AnimProperty::Opacity => {
+                    let mut kfs = layer.transform.opacity_percent.as_keyframes().to_vec();
+                    if let Some(pos) = kfs
+                        .iter()
+                        .position(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        self.deleted_f32 = Some(kfs.remove(pos));
+                        layer.transform.opacity_percent = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+            }
+        }
+    }
+
+    fn undo(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            match self.property {
+                AnimProperty::Position => {
+                    if let Some(kf) = self.deleted_vec.take() {
+                        let mut kfs = layer.transform.position.as_keyframes().to_vec();
+                        kfs.push(kf);
+                        kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                        layer.transform.position = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+                AnimProperty::Scale => {
+                    if let Some(kf) = self.deleted_vec.take() {
+                        let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+                        kfs.push(kf);
+                        kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                        layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+                AnimProperty::Rotation => {
+                    if let Some(kf) = self.deleted_vec.take() {
+                        let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+                        kfs.push(kf);
+                        kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                        layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+                AnimProperty::Opacity => {
+                    if let Some(kf) = self.deleted_f32.take() {
+                        let mut kfs = layer.transform.opacity_percent.as_keyframes().to_vec();
+                        kfs.push(kf);
+                        kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                        layer.transform.opacity_percent = zeno_core::Property::keyframes(kfs);
+                    }
+                }
+            }
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Delete Keyframe"
+    }
+}
+
+/// Command: Retimes an existing keyframe to a new time with undo support.
+pub struct MoveKeyframeCommand {
+    layer_id: LayerId,
+    property: AnimProperty,
+    old_time: f64,
+    new_time: f64,
+}
+
+impl MoveKeyframeCommand {
+    pub fn new(layer_id: LayerId, property: AnimProperty, old_time: f64, new_time: f64) -> Self {
+        Self {
+            layer_id,
+            property,
+            old_time,
+            new_time,
+        }
+    }
+}
+
+impl EditorCommand for MoveKeyframeCommand {
+    fn execute(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            match self.property {
+                AnimProperty::Position => {
+                    let mut kfs = layer.transform.position.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.old_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.new_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.position = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Scale => {
+                    let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.old_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.new_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Rotation => {
+                    let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.old_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.new_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Opacity => {
+                    let mut kfs = layer.transform.opacity_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.old_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.new_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.opacity_percent = zeno_core::Property::keyframes(kfs);
+                }
+            }
+        }
+    }
+
+    fn undo(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            match self.property {
+                AnimProperty::Position => {
+                    let mut kfs = layer.transform.position.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.new_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.old_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.position = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Scale => {
+                    let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.new_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.old_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Rotation => {
+                    let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.new_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.old_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Opacity => {
+                    let mut kfs = layer.transform.opacity_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.new_time).abs() < 1e-3)
+                    {
+                        kf.time_seconds = self.old_time;
+                    }
+                    kfs.sort_by(|a, b| a.time_seconds.partial_cmp(&b.time_seconds).unwrap());
+                    layer.transform.opacity_percent = zeno_core::Property::keyframes(kfs);
+                }
+            }
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Move Keyframe"
+    }
+}
+
+/// Command: Changes keyframe easing with undo support.
+pub struct SetKeyframeEasingCommand {
+    layer_id: LayerId,
+    property: AnimProperty,
+    time: f64,
+    old_easing: zeno_core::Easing,
+    new_easing: zeno_core::Easing,
+}
+
+impl SetKeyframeEasingCommand {
+    pub fn new(
+        layer_id: LayerId,
+        property: AnimProperty,
+        time: f64,
+        old_easing: zeno_core::Easing,
+        new_easing: zeno_core::Easing,
+    ) -> Self {
+        Self {
+            layer_id,
+            property,
+            time,
+            old_easing,
+            new_easing,
+        }
+    }
+}
+
+impl EditorCommand for SetKeyframeEasingCommand {
+    fn execute(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            match self.property {
+                AnimProperty::Position => {
+                    let mut kfs = layer.transform.position.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.new_easing;
+                    }
+                    layer.transform.position = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Scale => {
+                    let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.new_easing;
+                    }
+                    layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Rotation => {
+                    let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.new_easing;
+                    }
+                    layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Opacity => {
+                    let mut kfs = layer.transform.opacity_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.new_easing;
+                    }
+                    layer.transform.opacity_percent = zeno_core::Property::keyframes(kfs);
+                }
+            }
+        }
+    }
+
+    fn undo(&mut self, comp: &mut Composition) {
+        if let Some(layer) = comp.layers.iter_mut().find(|l| l.id == self.layer_id) {
+            match self.property {
+                AnimProperty::Position => {
+                    let mut kfs = layer.transform.position.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.old_easing;
+                    }
+                    layer.transform.position = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Scale => {
+                    let mut kfs = layer.transform.scale_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.old_easing;
+                    }
+                    layer.transform.scale_percent = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Rotation => {
+                    let mut kfs = layer.transform.rotation_degrees.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.old_easing;
+                    }
+                    layer.transform.rotation_degrees = zeno_core::Property::keyframes(kfs);
+                }
+                AnimProperty::Opacity => {
+                    let mut kfs = layer.transform.opacity_percent.as_keyframes().to_vec();
+                    if let Some(kf) = kfs
+                        .iter_mut()
+                        .find(|k| (k.time_seconds - self.time).abs() < 1e-3)
+                    {
+                        kf.easing_to_next = self.old_easing;
+                    }
+                    layer.transform.opacity_percent = zeno_core::Property::keyframes(kfs);
+                }
+            }
+        }
+    }
+
+    fn description(&self) -> &str {
+        "Change Keyframe Easing"
+    }
+}

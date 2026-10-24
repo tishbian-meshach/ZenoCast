@@ -1,12 +1,12 @@
 //! Properties inspector: Transform (Pos/Scale/Rot/Opacity) with keyframe stopwatch toggles,
-//! content-specific parameters (Text, Shape), and timing controls.
+//! content-specific parameters (Text, Shape, Camera, Particles, Image), and timing controls.
 
 use egui::{DragValue, Slider, Ui};
-use zeno_core::{Easing, Property, Vec3};
-use zeno_engine::{LayerContent, ShapeGeometry};
+use zeno_core::{Color, Easing, Property, Vec3};
+use zeno_engine::{Fill, LayerContent, ShapeGeometry, Stroke, TextAlignment};
 
 use crate::editor::state::OverlayEditor;
-use crate::theme::{GREEN_OK, RED_LIVE, TEXT_MUTED};
+use crate::theme::{color_to_egui, egui_to_color, GREEN_OK, RED_LIVE, TEXT_MUTED};
 
 /// Renders the properties inspector for the currently selected layer.
 pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
@@ -21,8 +21,33 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
         }
     };
 
+    let selected_asset_info = if let Some(l) = editor
+        .composition
+        .layers
+        .iter()
+        .find(|l| l.id == selected_id)
+    {
+        if let LayerContent::Image { asset } = l.content {
+            let asset_ref = editor
+                .composition
+                .assets
+                .iter()
+                .find(|a| a.id == asset)
+                .cloned();
+            let dims = editor.asset_dimensions.get(&asset).copied();
+            Some((asset, asset_ref, dims))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let mut add_pos_keyframe: Option<Vec3> = None;
+    let mut add_scale_keyframe: Option<Vec3> = None;
+    let mut add_rot_keyframe: Option<Vec3> = None;
     let mut add_op_keyframe: Option<f32> = None;
+    let mut trigger_reset_native_scale: Option<(f32, f32)> = None;
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         let layer_opt = editor
@@ -35,7 +60,12 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
             None => return,
         };
 
-        ui.heading(&layer.name);
+        ui.horizontal(|ui| {
+            ui.heading(&layer.name);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.checkbox(&mut layer.visible, "Visible");
+            });
+        });
         ui.separator();
 
         // 1. Transform Section
@@ -50,7 +80,11 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 } else {
                     "Stopwatch (o)"
                 };
-                if ui.button(stop_label).clicked() {
+                if ui
+                    .button(stop_label)
+                    .on_hover_text("Add position keyframe at playhead")
+                    .clicked()
+                {
                     add_pos_keyframe = Some(*layer.transform.position.fallback_value());
                 }
 
@@ -70,6 +104,20 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
             // Scale
             ui.horizontal(|ui| {
+                let is_anim = layer.transform.scale_percent.is_animated();
+                let stop_label = if is_anim {
+                    "Stopwatch (*)"
+                } else {
+                    "Stopwatch (o)"
+                };
+                if ui
+                    .button(stop_label)
+                    .on_hover_text("Add scale keyframe at playhead")
+                    .clicked()
+                {
+                    add_scale_keyframe = Some(*layer.transform.scale_percent.fallback_value());
+                }
+
                 ui.label("Scale X (%):");
                 let mut scale = *layer.transform.scale_percent.fallback_value();
                 let mut changed = ui
@@ -92,6 +140,20 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
             // Rotation
             ui.horizontal(|ui| {
+                let is_anim = layer.transform.rotation_degrees.is_animated();
+                let stop_label = if is_anim {
+                    "Stopwatch (*)"
+                } else {
+                    "Stopwatch (o)"
+                };
+                if ui
+                    .button(stop_label)
+                    .on_hover_text("Add rotation keyframe at playhead")
+                    .clicked()
+                {
+                    add_rot_keyframe = Some(*layer.transform.rotation_degrees.fallback_value());
+                }
+
                 let mut rot = *layer.transform.rotation_degrees.fallback_value();
                 let mut changed = false;
                 if layer.is_3d {
@@ -118,7 +180,11 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 } else {
                     "Stopwatch (o)"
                 };
-                if ui.button(stop_label).clicked() {
+                if ui
+                    .button(stop_label)
+                    .on_hover_text("Add opacity keyframe at playhead")
+                    .clicked()
+                {
                     add_op_keyframe = Some(*layer.transform.opacity_percent.fallback_value());
                 }
 
@@ -145,86 +211,229 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     });
 
                     ui.horizontal(|ui| {
+                        ui.label("Font Family:");
+                        ui.text_edit_singleline(&mut text_content.font_family);
+                    });
+
+                    ui.horizontal(|ui| {
                         ui.label("Font Size:");
                         let mut sz = *text_content.font_size.fallback_value();
                         if ui
-                            .add(DragValue::new(&mut sz).speed(1.0).range(8.0..=200.0))
+                            .add(DragValue::new(&mut sz).speed(1.0).range(8.0..=300.0))
                             .changed()
                         {
                             text_content.font_size = Property::constant(sz);
                         }
                     });
 
+                    // Color picker
                     ui.horizontal(|ui| {
-                        ui.label("Font Family:");
-                        ui.text_edit_singleline(&mut text_content.font_family);
+                        ui.label("Color:");
+                        let mut c32 = color_to_egui(*text_content.color.fallback_value());
+                        if ui.color_edit_button_srgba(&mut c32).changed() {
+                            text_content.color = Property::constant(egui_to_color(c32));
+                        }
                     });
+
+                    // Alignment
+                    ui.horizontal(|ui| {
+                        ui.label("Alignment:");
+                        if ui
+                            .selectable_label(text_content.alignment == TextAlignment::Left, "Left")
+                            .clicked()
+                        {
+                            text_content.alignment = TextAlignment::Left;
+                        }
+                        if ui
+                            .selectable_label(
+                                text_content.alignment == TextAlignment::Center,
+                                "Center",
+                            )
+                            .clicked()
+                        {
+                            text_content.alignment = TextAlignment::Center;
+                        }
+                        if ui
+                            .selectable_label(
+                                text_content.alignment == TextAlignment::Right,
+                                "Right",
+                            )
+                            .clicked()
+                        {
+                            text_content.alignment = TextAlignment::Right;
+                        }
+                    });
+
+                    // Letter and line spacing
+                    ui.horizontal(|ui| {
+                        ui.label("Letter Spacing (px):");
+                        let mut ls = *text_content.letter_spacing.fallback_value();
+                        if ui
+                            .add(DragValue::new(&mut ls).speed(0.5).range(-10.0..=100.0))
+                            .changed()
+                        {
+                            text_content.letter_spacing = Property::constant(ls);
+                        }
+                    });
+
+                    ui.horizontal(|ui| {
+                        ui.label("Line Height (mult):");
+                        let mut lh = *text_content.line_height_multiplier.fallback_value();
+                        if ui
+                            .add(DragValue::new(&mut lh).speed(0.05).range(0.5..=4.0))
+                            .changed()
+                        {
+                            text_content.line_height_multiplier = Property::constant(lh);
+                        }
+                    });
+
+                    ui.checkbox(&mut text_content.word_wrap, "Word Wrap");
                 });
             }
             LayerContent::Shape(shape_content) => {
-                ui.collapsing("Shape Properties", |ui| match &mut shape_content.geometry {
-                    ShapeGeometry::Rectangle { size } => {
-                        ui.horizontal(|ui| {
-                            let mut s = *size.fallback_value();
-                            ui.label("Width:");
-                            let c1 = ui
-                                .add(DragValue::new(&mut s.x).speed(1.0).range(1.0..=3840.0))
-                                .changed();
-                            ui.label("Height:");
-                            let c2 = ui
-                                .add(DragValue::new(&mut s.y).speed(1.0).range(1.0..=2160.0))
-                                .changed();
-                            if c1 || c2 {
-                                *size = Property::constant(s);
-                            }
-                        });
+                ui.collapsing("Shape Properties", |ui| {
+                    let mut switch_to_rounded: Option<(Property<zeno_core::Vec2>, f32)> = None;
+
+                    // Geometry dimensions and corner radius
+                    match &mut shape_content.geometry {
+                        ShapeGeometry::Rectangle { size } => {
+                            ui.horizontal(|ui| {
+                                let mut s = *size.fallback_value();
+                                ui.label("Width:");
+                                let c1 = ui
+                                    .add(DragValue::new(&mut s.x).speed(1.0).range(1.0..=3840.0))
+                                    .changed();
+                                ui.label("Height:");
+                                let c2 = ui
+                                    .add(DragValue::new(&mut s.y).speed(1.0).range(1.0..=2160.0))
+                                    .changed();
+                                if c1 || c2 {
+                                    *size = Property::constant(s);
+                                }
+                            });
+
+                            let mut cr = 0.0_f32;
+                            ui.horizontal(|ui| {
+                                ui.label("Corner Radius:");
+                                if ui
+                                    .add(DragValue::new(&mut cr).speed(0.5).range(0.0..=200.0))
+                                    .changed()
+                                    && cr > 0.0
+                                {
+                                    switch_to_rounded = Some((size.clone(), cr));
+                                }
+                            });
+                        }
+                        ShapeGeometry::RoundedRectangle {
+                            size,
+                            corner_radius,
+                        } => {
+                            ui.horizontal(|ui| {
+                                let mut s = *size.fallback_value();
+                                ui.label("Width:");
+                                let c1 = ui
+                                    .add(DragValue::new(&mut s.x).speed(1.0).range(1.0..=3840.0))
+                                    .changed();
+                                ui.label("Height:");
+                                let c2 = ui
+                                    .add(DragValue::new(&mut s.y).speed(1.0).range(1.0..=2160.0))
+                                    .changed();
+                                if c1 || c2 {
+                                    *size = Property::constant(s);
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                let mut cr = *corner_radius.fallback_value();
+                                ui.label("Corner Radius:");
+                                if ui
+                                    .add(DragValue::new(&mut cr).speed(0.5).range(0.0..=200.0))
+                                    .changed()
+                                {
+                                    *corner_radius = Property::constant(cr);
+                                }
+                            });
+                        }
+                        ShapeGeometry::Ellipse { radius } => {
+                            ui.horizontal(|ui| {
+                                let mut r = *radius.fallback_value();
+                                ui.label("Radius X:");
+                                let c1 = ui
+                                    .add(DragValue::new(&mut r.x).speed(1.0).range(1.0..=2000.0))
+                                    .changed();
+                                ui.label("Radius Y:");
+                                let c2 = ui
+                                    .add(DragValue::new(&mut r.y).speed(1.0).range(1.0..=2000.0))
+                                    .changed();
+                                if c1 || c2 {
+                                    *radius = Property::constant(r);
+                                }
+                            });
+                        }
+                        _ => {}
                     }
-                    ShapeGeometry::RoundedRectangle {
-                        size,
-                        corner_radius,
-                    } => {
-                        ui.horizontal(|ui| {
-                            let mut s = *size.fallback_value();
-                            ui.label("Width:");
-                            let c1 = ui
-                                .add(DragValue::new(&mut s.x).speed(1.0).range(1.0..=3840.0))
-                                .changed();
-                            ui.label("Height:");
-                            let c2 = ui
-                                .add(DragValue::new(&mut s.y).speed(1.0).range(1.0..=2160.0))
-                                .changed();
-                            if c1 || c2 {
-                                *size = Property::constant(s);
+
+                    if let Some((size, cr)) = switch_to_rounded {
+                        shape_content.geometry = ShapeGeometry::RoundedRectangle {
+                            size,
+                            corner_radius: Property::constant(cr),
+                        };
+                    }
+
+                    ui.separator();
+
+                    // Fill Color
+                    let has_fill = shape_content.fill.is_some();
+                    let mut enable_fill = has_fill;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enable_fill, "Fill").changed() {
+                            if enable_fill {
+                                shape_content.fill = Some(Fill::Solid(Property::constant(
+                                    Color::rgba(0.2, 0.4, 0.8, 1.0),
+                                )));
+                            } else {
+                                shape_content.fill = None;
                             }
-                        });
-                        ui.horizontal(|ui| {
-                            let mut cr = *corner_radius.fallback_value();
-                            ui.label("Corner Radius:");
+                        }
+
+                        if let Some(Fill::Solid(ref mut color_prop)) = shape_content.fill {
+                            let mut c32 = color_to_egui(*color_prop.fallback_value());
+                            if ui.color_edit_button_srgba(&mut c32).changed() {
+                                *color_prop = Property::constant(egui_to_color(c32));
+                            }
+                        }
+                    });
+
+                    // Stroke
+                    let has_stroke = shape_content.stroke.is_some();
+                    let mut enable_stroke = has_stroke;
+                    ui.horizontal(|ui| {
+                        if ui.checkbox(&mut enable_stroke, "Stroke").changed() {
+                            if enable_stroke {
+                                shape_content.stroke = Some(Stroke {
+                                    width: Property::constant(2.0),
+                                    color: Property::constant(Color::WHITE),
+                                });
+                            } else {
+                                shape_content.stroke = None;
+                            }
+                        }
+
+                        if let Some(ref mut stroke) = shape_content.stroke {
+                            let mut c32 = color_to_egui(*stroke.color.fallback_value());
+                            if ui.color_edit_button_srgba(&mut c32).changed() {
+                                stroke.color = Property::constant(egui_to_color(c32));
+                            }
+
+                            ui.label("Width:");
+                            let mut w = *stroke.width.fallback_value();
                             if ui
-                                .add(DragValue::new(&mut cr).speed(0.5).range(0.0..=200.0))
+                                .add(DragValue::new(&mut w).speed(0.5).range(0.5..=100.0))
                                 .changed()
                             {
-                                *corner_radius = Property::constant(cr);
+                                stroke.width = Property::constant(w);
                             }
-                        });
-                    }
-                    ShapeGeometry::Ellipse { radius } => {
-                        ui.horizontal(|ui| {
-                            let mut r = *radius.fallback_value();
-                            ui.label("Radius X:");
-                            let c1 = ui
-                                .add(DragValue::new(&mut r.x).speed(1.0).range(1.0..=2000.0))
-                                .changed();
-                            ui.label("Radius Y:");
-                            let c2 = ui
-                                .add(DragValue::new(&mut r.y).speed(1.0).range(1.0..=2000.0))
-                                .changed();
-                            if c1 || c2 {
-                                *radius = Property::constant(r);
-                            }
-                        });
-                    }
-                    _ => {}
+                        }
+                    });
                 });
             }
             LayerContent::Camera(cam) => {
@@ -352,6 +561,21 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                         }
                     });
 
+                    // Start Color and End Color pickers
+                    ui.horizontal(|ui| {
+                        ui.label("Start Color:");
+                        let mut sc32 = color_to_egui(*emitter.start_color.fallback_value());
+                        if ui.color_edit_button_srgba(&mut sc32).changed() {
+                            emitter.start_color = Property::constant(egui_to_color(sc32));
+                        }
+
+                        ui.label("End Color:");
+                        let mut ec32 = color_to_egui(*emitter.end_color.fallback_value());
+                        if ui.color_edit_button_srgba(&mut ec32).changed() {
+                            emitter.end_color = Property::constant(egui_to_color(ec32));
+                        }
+                    });
+
                     ui.horizontal(|ui| {
                         let mut grav = *emitter.gravity.fallback_value();
                         ui.label("Gravity X:");
@@ -369,6 +593,27 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                         ui.label("Seed:");
                         ui.add(DragValue::new(&mut emitter.seed));
                     });
+                });
+            }
+            LayerContent::Image { asset } => {
+                ui.collapsing("Image Asset", |ui| {
+                    if let Some((_, Some(ref a_ref), dims)) = selected_asset_info {
+                        ui.label(format!("Path: {}", a_ref.path));
+                        if let Some((w, h)) = dims {
+                            ui.label(format!("Native Dimensions: {}x{}", w, h));
+                            if ui.button("Reset Native Size").clicked() {
+                                trigger_reset_native_scale = Some((w as f32, h as f32));
+                            }
+                        }
+                        let sz = if a_ref.size_bytes >= 1024 * 1024 {
+                            format!("{:.2} MB", a_ref.size_bytes as f64 / (1024.0 * 1024.0))
+                        } else {
+                            format!("{:.1} KB", a_ref.size_bytes as f64 / 1024.0)
+                        };
+                        ui.label(format!("File Size: {}", sz));
+                    } else {
+                        ui.label(format!("Asset ID: {}", asset.0));
+                    }
                 });
             }
             _ => {}
@@ -466,7 +711,23 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
     if let Some(pos) = add_pos_keyframe {
         editor.add_position_keyframe(pos, Easing::ease());
     }
+    if let Some(scale) = add_scale_keyframe {
+        editor.add_scale_keyframe(scale, Easing::ease());
+    }
+    if let Some(rot) = add_rot_keyframe {
+        editor.add_rotation_keyframe(rot, Easing::ease());
+    }
     if let Some(op) = add_op_keyframe {
         editor.add_opacity_keyframe(op, Easing::ease());
+    }
+    if let Some((_w, _h)) = trigger_reset_native_scale {
+        if let Some(layer) = editor
+            .composition
+            .layers
+            .iter_mut()
+            .find(|l| l.id == selected_id)
+        {
+            layer.transform.scale_percent = Property::constant(Vec3::splat(100.0));
+        }
     }
 }

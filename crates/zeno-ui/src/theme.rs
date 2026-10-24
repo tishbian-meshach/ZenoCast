@@ -34,6 +34,11 @@ pub const CORNER_RADIUS: f32 = 4.0;
 pub const ROW_HEIGHT_LIST: f32 = 28.0;
 pub const BUTTON_HEIGHT: f32 = 32.0;
 
+// Shaded lifecycle timeline region tints
+pub const REGION_IN: Color32 = Color32::from_rgba_premultiplied(14, 42, 18, 60);
+pub const REGION_LOOP: Color32 = Color32::from_rgba_premultiplied(51, 35, 9, 60);
+pub const REGION_OUT: Color32 = Color32::from_rgba_premultiplied(47, 14, 14, 60);
+
 /// Converts a `zeno_core::Color` into an `egui::Color32`.
 pub fn color_to_egui(c: zeno_core::Color) -> Color32 {
     Color32::from_rgba_premultiplied(
@@ -42,6 +47,21 @@ pub fn color_to_egui(c: zeno_core::Color) -> Color32 {
         (c.b.clamp(0.0, 1.0) * 255.0) as u8,
         (c.a.clamp(0.0, 1.0) * 255.0) as u8,
     )
+}
+
+/// Converts an `egui::Color32` into a `zeno_core::Color`.
+pub fn egui_to_color(c: Color32) -> zeno_core::Color {
+    zeno_core::Color::rgba(
+        c.r() as f32 / 255.0,
+        c.g() as f32 / 255.0,
+        c.b() as f32 / 255.0,
+        c.a() as f32 / 255.0,
+    )
+}
+
+/// Creates an `egui::Color32` with altered alpha channel.
+pub fn with_alpha(c: Color32, a: u8) -> Color32 {
+    Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
 }
 
 /// Applies the Zenocast broadcast production theme to an egui Context.
