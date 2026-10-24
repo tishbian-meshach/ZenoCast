@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Build and run Zenocast locally for development — no install required.
+    Build and run Zenocast locally for development -- no install required.
 
 .DESCRIPTION
     Builds zeno-app (debug by default) and launches the binary from target/,
@@ -106,7 +106,7 @@ $buildElapsed = ((Get-Date) - $buildStart).TotalSeconds
 Write-Host "[dev-run] Build completed in $([math]::Round($buildElapsed, 1))s" -ForegroundColor Green
 
 # --- Resolve binary ---
-$exePath = Join-Path $ProjectRoot "target" $buildProfile "zenocast.exe"
+$exePath = "$ProjectRoot\target\$buildProfile\zenocast.exe"
 if (-not (Test-Path $exePath)) {
     Write-Host "[dev-run] ERROR: Binary not found at $exePath" -ForegroundColor Red
     exit 1

@@ -56,19 +56,18 @@ function Start-App {
     $buildStart = Get-Date
     Push-Location $ProjectRoot
     try {
-        & cargo @buildArgs 2>&1 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkGray }
+        & cargo @buildArgs
         if ($LASTEXITCODE -ne 0) {
             Write-Host "[dev-watch] Build FAILED. Waiting for next change..." -ForegroundColor Red
-            Pop-Location
             return $null
         }
     } finally {
         Pop-Location
     }
     $elapsed = [math]::Round(((Get-Date) - $buildStart).TotalSeconds, 1)
-    Write-Host "[dev-watch] Built in ${elapsed}s — launching..." -ForegroundColor Green
+    Write-Host "[dev-watch] Built in ${elapsed}s -- launching..." -ForegroundColor Green
 
-    $exePath = Join-Path $ProjectRoot "target" $buildProfile "zenocast.exe"
+    $exePath = "$ProjectRoot\target\$buildProfile\zenocast.exe"
     $p = Start-Process -FilePath $exePath -PassThru -NoNewWindow
     return $p
 }
@@ -78,7 +77,8 @@ try {
         $currentHash = Get-SourceHash
         if ($currentHash -ne $lastHash) {
             if ($lastHash -ne "") {
-                Write-Host "`n[dev-watch] Source change detected — rebuilding..." -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "[dev-watch] Source change detected -- rebuilding..." -ForegroundColor Yellow
             }
 
             # Kill previous instance
@@ -96,7 +96,8 @@ try {
     }
 } finally {
     if ($proc -and -not $proc.HasExited) {
-        Write-Host "`n[dev-watch] Shutting down Zenocast..." -ForegroundColor DarkGray
+        Write-Host ""
+        Write-Host "[dev-watch] Shutting down Zenocast..." -ForegroundColor DarkGray
         Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
     }
 }
