@@ -39,7 +39,6 @@ pub struct SceneCompositor {
     intermediate_b: Arc<Texture>,
     intermediate_view_b: Arc<TextureView>,
     transition_uniform_buf: Buffer,
-    item_uniform_buf: Buffer,
     ortho_projection: Mat4,
 }
 
@@ -90,20 +89,6 @@ impl SceneCompositor {
         }));
         let int_view_b = Arc::new(int_b.create_view(&TextureViewDescriptor::default()));
 
-        // Pre-allocated reusable uniform buffers for zero-allocation per-frame render passes
-        let dummy_item_uniforms = ItemUniforms {
-            mvp: Mat4::IDENTITY.to_cols_array_2d(),
-            crop_insets: [0.0; 4],
-            opacity: 1.0,
-            blend_mode: 0,
-            _padding: [0.0; 2],
-        };
-        let item_uniform_buf = device.create_buffer_init(&util::BufferInitDescriptor {
-            label: Some("ItemUniformBuffer"),
-            contents: bytemuck::bytes_of(&dummy_item_uniforms),
-            usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-        });
-
         let dummy_trans_uniforms = TransitionUniforms {
             progress: 0.0,
             kind: 0,
@@ -150,7 +135,6 @@ impl SceneCompositor {
             intermediate_b: int_b,
             intermediate_view_b: int_view_b,
             transition_uniform_buf,
-            item_uniform_buf,
             ortho_projection,
         }
     }
@@ -670,7 +654,7 @@ impl SceneCompositor {
                         view: &self.program_view,
                         resolve_target: None,
                         ops: Operations {
-                            load: LoadOp::Clear(wgpu::Color::BLACK),
+                            load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
                             store: StoreOp::Store,
                         },
                     })],
@@ -839,7 +823,7 @@ impl SceneCompositor {
                     view: &self.preview_view,
                     resolve_target: None,
                     ops: Operations {
-                        load: LoadOp::Clear(wgpu::Color::BLACK),
+                        load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
                         store: StoreOp::Store,
                     },
                 })],
@@ -943,11 +927,12 @@ impl SceneCompositor {
                                 _padding: [0.0; 2],
                             };
 
-                            self.queue.write_buffer(
-                                &self.item_uniform_buf,
-                                0,
-                                bytemuck::bytes_of(&uniforms),
-                            );
+                            let item_buf =
+                                self.device.create_buffer_init(&util::BufferInitDescriptor {
+                                    label: Some("ItemUniformBuffer"),
+                                    contents: bytemuck::bytes_of(&uniforms),
+                                    usage: BufferUsages::UNIFORM,
+                                });
 
                             let item_bind_group =
                                 self.device.create_bind_group(&BindGroupDescriptor {
@@ -956,7 +941,7 @@ impl SceneCompositor {
                                     entries: &[
                                         BindGroupEntry {
                                             binding: 0,
-                                            resource: self.item_uniform_buf.as_entire_binding(),
+                                            resource: item_buf.as_entire_binding(),
                                         },
                                         BindGroupEntry {
                                             binding: 1,

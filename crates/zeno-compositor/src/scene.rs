@@ -219,13 +219,13 @@ pub struct Scene {
 }
 
 impl Scene {
-    /// Creates a new scene with dark broadcast neutral background.
+    /// Creates a new scene with transparent broadcast background.
     pub fn new(name: impl Into<String>) -> Self {
         Self {
             id: SceneId::new(),
             name: name.into(),
             items: Vec::new(),
-            background: Color::rgb(0.055, 0.059, 0.067), // #0E0F11
+            background: Color::TRANSPARENT,
             overlay_timing: OverlayTiming::Overlap,
             default_transition: None,
         }

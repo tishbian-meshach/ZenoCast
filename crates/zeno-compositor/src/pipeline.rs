@@ -198,7 +198,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
             } else if (uv_b.x >= 0.0 && uv_b.x <= 1.0 && uv_b.y >= 0.0 && uv_b.y <= 1.0) {
                 return textureSample(tex_b, trans_sampler, uv_b);
             }
-            return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+            return vec4<f32>(0.0, 0.0, 0.0, 0.0);
         } else {
             // Cover
             var uv_b = uv;

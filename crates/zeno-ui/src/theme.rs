@@ -70,6 +70,44 @@ pub fn with_alpha(c: Color32, a: u8) -> Color32 {
     Color32::from_rgba_unmultiplied(c.r(), c.g(), c.b(), a)
 }
 
+/// Draws an industry-standard transparency checkerboard pattern inside `rect`.
+/// Alternates between `SURFACE_1` and `SURFACE_2` squares of `cell_size` pixels.
+pub fn paint_checkerboard(painter: &egui::Painter, rect: egui::Rect, cell_size: f32) {
+    let cell_size = if cell_size <= 0.0 { 16.0 } else { cell_size };
+    let clipped = painter.with_clip_rect(rect);
+
+    // Base background
+    clipped.rect_filled(rect, CornerRadius::same(CORNER_RADIUS as u8), SURFACE_1);
+
+    let min_x = rect.min.x;
+    let min_y = rect.min.y;
+    let max_x = rect.max.x;
+    let max_y = rect.max.y;
+
+    let cols = ((max_x - min_x) / cell_size).ceil() as usize;
+    let rows = ((max_y - min_y) / cell_size).ceil() as usize;
+
+    for row in 0..rows {
+        for col in 0..cols {
+            if (row + col) % 2 == 1 {
+                let cell_rect = egui::Rect::from_min_max(
+                    egui::pos2(
+                        (min_x + col as f32 * cell_size).min(max_x),
+                        (min_y + row as f32 * cell_size).min(max_y),
+                    ),
+                    egui::pos2(
+                        (min_x + (col + 1) as f32 * cell_size).min(max_x),
+                        (min_y + (row + 1) as f32 * cell_size).min(max_y),
+                    ),
+                );
+                if cell_rect.width() > 0.0 && cell_rect.height() > 0.0 {
+                    clipped.rect_filled(cell_rect, CornerRadius::ZERO, SURFACE_2);
+                }
+            }
+        }
+    }
+}
+
 /// Applies the Zenocast broadcast production theme to an egui Context.
 pub fn apply_theme(ctx: &egui::Context) {
     let mut visuals = Visuals::dark();

@@ -707,3 +707,210 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
         .render_frame(&frame_views, 1.0 / 60.0)
         .is_ok());
 }
+
+#[test]
+pub fn test_canvas_alpha_transparency_and_stacking() {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        compatible_surface: None,
+        force_fallback_adapter: true,
+    }))
+    .expect("WGPU test adapter");
+
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("TransparencyDevice"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .expect("WGPU test device");
+
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    let mut comp = SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+    let mut reg = zeno_media::SourceRegistry::new();
+
+    let red_id = SourceId::new();
+    let green_id = SourceId::new();
+
+    let mut red_source =
+        ColorSource::new("Red Left", [1.0, 0.0, 0.0, 1.0], 960, 1080).with_id(red_id);
+    let mut green_source =
+        ColorSource::new("Green Full", [0.0, 1.0, 0.0, 1.0], 1920, 1080).with_id(green_id);
+
+    red_source.start(&device, &queue).unwrap();
+    green_source.start(&device, &queue).unwrap();
+
+    reg.register(Box::new(red_source));
+    reg.register(Box::new(green_source));
+
+    // Part 1: Half-frame Color source over transparent background
+    let mut scene_half = Scene::new("Half Red");
+    // Positioned at left half (480, 540) with scale (0.5, 1.0)
+    let item_red = SceneItem::new("Red", SceneItemSource::Source(red_id))
+        .with_position(480.0, 540.0)
+        .with_scale(0.5, 1.0);
+    scene_half.add_item(item_red);
+    let scene_half_id = scene_half.id;
+
+    comp.add_scene(scene_half);
+    comp.set_program(scene_half_id);
+
+    let frame_views = reg.get_all_frame_views();
+    comp.render_frame(&frame_views, 1.0 / 60.0)
+        .expect("Render half frame");
+
+    // Read back program texture to verify left half is opaque red and right half is alpha = 0 (not grey)
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ReadbackBuffer1"),
+        size: 1920 * 1080 * 4,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("ReadbackEncoder1"),
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: comp.program_texture(),
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &output_buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(1920 * 4),
+                rows_per_image: Some(1080),
+            },
+        },
+        wgpu::Extent3d {
+            width: 1920,
+            height: 1080,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit(Some(encoder.finish()));
+
+    let slice = output_buffer.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |res| {
+        tx.send(res).unwrap();
+    });
+    device.poll(wgpu::Maintain::Wait);
+    rx.recv().unwrap().unwrap();
+
+    {
+        let data = slice.get_mapped_range();
+        // Left half (x: 480, y: 540): Red source covered
+        let left_idx = (540 * 1920 + 480) * 4;
+        assert!(data[left_idx] > 200, "Left half should be red");
+        assert_eq!(data[left_idx + 1], 0, "Left half should have zero green");
+        assert!(
+            data[left_idx + 3] > 200,
+            "Left half should have alpha > 200"
+        );
+
+        // Right half (x: 1440, y: 540): Uncovered transparent area
+        let right_idx = (540 * 1920 + 1440) * 4;
+        assert_eq!(
+            data[right_idx + 3],
+            0,
+            "Uncovered area must be transparent (alpha == 0), not opaque grey"
+        );
+    }
+    output_buffer.unmap();
+
+    // Part 2: Stacking two sources — Green Full under Red Half
+    let mut scene_stacked = Scene::new("Stacked");
+    let item_green_bg = SceneItem::new("Green BG", SceneItemSource::Source(green_id))
+        .with_position(960.0, 540.0)
+        .with_scale(1.0, 1.0);
+    let item_red_top = SceneItem::new("Red Top", SceneItemSource::Source(red_id))
+        .with_position(480.0, 540.0)
+        .with_scale(0.5, 1.0);
+    scene_stacked.add_item(item_green_bg);
+    scene_stacked.add_item(item_red_top);
+    let stacked_id = scene_stacked.id;
+
+    comp.add_scene(scene_stacked);
+    comp.set_program(stacked_id);
+
+    let frame_views2 = reg.get_all_frame_views();
+    comp.render_frame(&frame_views2, 1.0 / 60.0)
+        .expect("Render stacked frame");
+
+    let output_buffer2 = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ReadbackBuffer2"),
+        size: 1920 * 1080 * 4,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder2 = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("ReadbackEncoder2"),
+    });
+    encoder2.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: comp.program_texture(),
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &output_buffer2,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(1920 * 4),
+                rows_per_image: Some(1080),
+            },
+        },
+        wgpu::Extent3d {
+            width: 1920,
+            height: 1080,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit(Some(encoder2.finish()));
+
+    let slice2 = output_buffer2.slice(..);
+    let (tx2, rx2) = std::sync::mpsc::channel();
+    slice2.map_async(wgpu::MapMode::Read, move |res| {
+        tx2.send(res).unwrap();
+    });
+    device.poll(wgpu::Maintain::Wait);
+    rx2.recv().unwrap().unwrap();
+
+    {
+        let data2 = slice2.get_mapped_range();
+        // Left half (x: 480, y: 540): Red Top covers Green BG
+        let left_idx = (540 * 1920 + 480) * 4;
+        assert!(
+            data2[left_idx] > 200,
+            "Left half should show top Red source"
+        );
+        assert_eq!(
+            data2[left_idx + 1],
+            0,
+            "Left half should not show covered Green"
+        );
+
+        // Right half (x: 1440, y: 540): Uncovered by Red, lower Green BG shows through!
+        let right_idx = (540 * 1920 + 1440) * 4;
+        assert_eq!(data2[right_idx], 0, "Right half should have zero Red");
+        assert!(
+            data2[right_idx + 1] > 200,
+            "Right half should show lower Green layer"
+        );
+        assert!(
+            data2[right_idx + 3] > 200,
+            "Right half should have full alpha from Green layer"
+        );
+    }
+    output_buffer2.unmap();
+}

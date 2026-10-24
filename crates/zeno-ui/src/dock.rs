@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::project::Project;
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_0,
-    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_2,
+    SURFACE_3, TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
 
@@ -165,6 +165,7 @@ impl<'a> StudioTabViewer<'a> {
 
                 let (rect, _response) =
                     ui.allocate_exact_size(vec2(monitor_width, monitor_height), Sense::hover());
+                crate::theme::paint_checkerboard(ui.painter(), rect, 16.0);
                 if let Some(tex_id) = self.preview_texture_id {
                     ui.painter().image(
                         tex_id,
@@ -173,13 +174,6 @@ impl<'a> StudioTabViewer<'a> {
                         crate::theme::TINT_NONE,
                     );
                 } else {
-                    ui.painter().rect(
-                        rect,
-                        CornerRadius::same(CORNER_RADIUS as u8),
-                        SURFACE_0,
-                        Stroke::NONE,
-                        StrokeKind::Inside,
-                    );
                     ui.painter().text(
                         rect.center(),
                         Align2::CENTER_CENTER,
@@ -325,6 +319,7 @@ impl<'a> StudioTabViewer<'a> {
                 } else {
                     ACCENT
                 };
+                crate::theme::paint_checkerboard(ui.painter(), rect, 16.0);
                 if let Some(tex_id) = self.program_texture_id {
                     ui.painter().image(
                         tex_id,
@@ -333,13 +328,6 @@ impl<'a> StudioTabViewer<'a> {
                         crate::theme::TINT_NONE,
                     );
                 } else {
-                    ui.painter().rect(
-                        rect,
-                        CornerRadius::same(CORNER_RADIUS as u8),
-                        SURFACE_0,
-                        Stroke::NONE,
-                        StrokeKind::Inside,
-                    );
                     ui.painter().text(
                         rect.center(),
                         Align2::CENTER_CENTER,

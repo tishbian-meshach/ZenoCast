@@ -7,7 +7,7 @@ use zeno_engine::eval::{evaluate_at, ResolvedContent};
 use crate::editor::state::OverlayEditor;
 use crate::theme::{
     color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, RED_LIVE, SURFACE_0, SURFACE_1,
-    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
+    SURFACE_3, TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem};
 
@@ -77,10 +77,10 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
         let comp_center = canvas_rect.center() + vec2(editor.pan.x, editor.pan.y);
         let comp_rect = Rect::from_center_size(comp_center, vec2(comp_w, comp_h));
 
-        painter.rect(
+        crate::theme::paint_checkerboard(&painter, comp_rect, 16.0);
+        painter.rect_stroke(
             comp_rect,
             CornerRadius::ZERO,
-            SURFACE_2,
             Stroke::new(BORDER_WIDTH, TEXT_MUTED),
             StrokeKind::Inside,
         );
