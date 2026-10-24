@@ -809,3 +809,28 @@ This log records major architectural and implementation choices, defaults select
   - Extended command pattern (`command.rs`) with `AddScaleKeyframeCommand`, `AddRotationKeyframeCommand`, `DeleteKeyframeCommand`, `MoveKeyframeCommand`, and `SetKeyframeEasingCommand`.
   - Updated `save_to_arx` and `load_from_arx` in `OverlayEditor` to package and extract raw embedded asset bytes in `pkg.assets` and reconstruct native asset dimensions, passing roundtrip verification in `test_asset_import_keyframe_retiming_and_arx_roundtrip`.
 
+### 2026-10-24: Section 6 - General UX Consistency Pass (`fix(ui): consistency pass — scaling, empty states, modal keyboard nav`)
+- **Audio Mixer Horizontal Scrolling & Fixed Channel Width**:
+  - Wrapped `ui_audio_mixer` in `egui::ScrollArea::horizontal()`, enabling seamless horizontal panning across any number of audio tracks without vertical clipping or horizontal overflow.
+  - Pinned channel column width to `75.0px` (`CHANNEL_WIDTH = 75.0`), preventing horizontal squeezing and ugly vertical word-wrapping.
+  - Used `egui::Label::new(...).truncate()` and `.on_hover_text(...)` for channel names, ensuring labels truncate with a clean ellipsis (`...`) while retaining full discoverability via hover tooltip.
+- **Properties Button in Sources Toolbar**:
+  - Replaced conditional rendering of the "Properties" button with an `add_enabled(has_sel, egui::Button::new("⚙ Properties"))` toolbar button.
+  - Directly sets `trigger_open_edit_source = Some(src_id)`, identical to double-clicking a source row or using the right-click context menu, guaranteeing 100% discoverability for OBS users looking for a properties button.
+- **Modal Keyboard Navigation**:
+  - Added `Escape` and `Enter` keyboard handling across all dialogs:
+    - New Source TypePicker: `Escape` dismisses the modal.
+    - Source Properties Dialog: `Escape` dismisses, `Enter` confirms and saves properties (except when editing multiline text).
+    - Open Project: `Escape` cancels, `Enter` opens project if path is set.
+    - Save Project As: `Escape` cancels, `Enter` saves project if path is set.
+    - Studio Settings: `Escape` dismisses dialog.
+  - Preserved standard egui `Tab` key focus cycling across interactable controls.
+- **Zero-State / Empty-State Consistency Across All Panels**:
+  - Standardized inline muted hints across all studio and editor panels:
+    - Scenes Panel: `"No scenes yet — click + Add Scene"`
+    - Sources Panel: `"No sources yet — click + Add Source or drag media here"`
+    - Audio Mixer Panel: `"No audio sources in active scene"` (or `"No active scene selected"`)
+    - Layers Panel: `"No layers yet — click + Text, + Shape, or import media"`
+    - Assets Panel: `"No assets imported yet — click + Import Media or drag files here"`
+- **Audit Checklist Expansion**:
+  - Updated `docs/UI_AUDIT.md` to include all new features and controls introduced in Sections 1–6 (Sections 9 through 12 in the document), verified via workspace test suites.

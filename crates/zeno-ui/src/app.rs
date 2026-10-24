@@ -1529,6 +1529,11 @@ impl ZenocastApp {
 
         // Open Project Modal Dialog
         if self.show_open_dialog {
+            let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+            let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+            if esc {
+                self.show_open_dialog = false;
+            }
             Window::new("Open Project")
                 .collapsible(false)
                 .resizable(false)
@@ -1554,7 +1559,9 @@ impl ZenocastApp {
                     });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Open").clicked() {
+                        let open_clicked = ui.button("Open").clicked()
+                            || (enter && !self.file_dialog_path.trim().is_empty());
+                        if open_clicked {
                             let path = PathBuf::from(&self.file_dialog_path);
                             let _ = self.open_project_from_path(path);
                             self.show_open_dialog = false;
@@ -1568,6 +1575,11 @@ impl ZenocastApp {
 
         // Save Project As Modal Dialog
         if self.show_save_as_dialog {
+            let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+            let enter = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+            if esc {
+                self.show_save_as_dialog = false;
+            }
             Window::new("Save Project As")
                 .collapsible(false)
                 .resizable(false)
@@ -1593,7 +1605,9 @@ impl ZenocastApp {
                     });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("Save").clicked() {
+                        let save_clicked = ui.button("Save").clicked()
+                            || (enter && !self.file_dialog_path.trim().is_empty());
+                        if save_clicked {
                             let path = PathBuf::from(&self.file_dialog_path);
                             let _ = self.save_project_to_path(path);
                             self.show_save_as_dialog = false;
@@ -1612,6 +1626,10 @@ impl ZenocastApp {
 
         // Settings Dialog Window
         if self.show_settings {
+            let esc = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+            if esc {
+                self.show_settings = false;
+            }
             Window::new("Studio Settings")
                 .collapsible(false)
                 .resizable(false)

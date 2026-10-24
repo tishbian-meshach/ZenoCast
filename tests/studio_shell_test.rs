@@ -1321,3 +1321,113 @@ fn test_source_reordering_live_studio() {
         );
     }
 }
+
+#[test]
+fn test_section_6_consistency_pass_and_modal_navigation() {
+    let mut dialog = zeno_ui::SourceDialogState::default();
+    dialog.open_add();
+    assert_eq!(dialog.mode, zeno_ui::SourceDialogMode::TypePicker);
+
+    let egui_ctx = egui::Context::default();
+
+    // 1. Test Escape closes TypePicker modal
+    let input_esc = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        events: vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }],
+        ..Default::default()
+    };
+    let mut action = None;
+    let _ = egui_ctx.run(input_esc, |ctx| {
+        action = dialog.ui(ctx);
+    });
+    assert_eq!(action, None);
+    assert_eq!(dialog.mode, zeno_ui::SourceDialogMode::Closed);
+
+    // 2. Test open_edit & Escape closes Properties modal
+    dialog.open_edit(
+        "src_cam_0",
+        "Broadcast Camera",
+        zeno_ui::SourceKind::CameraFeed,
+        "Media Foundation Cam 0",
+        1920.0,
+        1080.0,
+        1.0,
+        false,
+    );
+    match dialog.mode {
+        zeno_ui::SourceDialogMode::Properties {
+            ref edit_source_id, ..
+        } => {
+            assert_eq!(edit_source_id.as_deref(), Some("src_cam_0"));
+        }
+        _ => panic!("Expected Properties mode"),
+    }
+
+    let input_esc2 = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        events: vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }],
+        ..Default::default()
+    };
+    let _ = egui_ctx.run(input_esc2, |ctx| {
+        action = dialog.ui(ctx);
+    });
+    assert_eq!(action, None);
+    assert_eq!(dialog.mode, zeno_ui::SourceDialogMode::Closed);
+
+    // 3. Test open_edit & Enter confirms Properties update
+    dialog.open_edit(
+        "src_color_0",
+        "Chroma Key Backdrop",
+        zeno_ui::SourceKind::Color,
+        "rgba(0.0,1.0,0.0,1.0)",
+        1920.0,
+        1080.0,
+        1.0,
+        false,
+    );
+    let input_enter = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        events: vec![egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::default(),
+        }],
+        ..Default::default()
+    };
+    let _ = egui_ctx.run(input_enter, |ctx| {
+        action = dialog.ui(ctx);
+    });
+    match action {
+        Some(zeno_ui::SourceDialogAction::Update {
+            ref id, ref name, ..
+        }) => {
+            assert_eq!(id, "src_color_0");
+            assert_eq!(name, "Chroma Key Backdrop");
+        }
+        _ => panic!("Expected Update action on Enter confirmation"),
+    }
+    assert_eq!(dialog.mode, zeno_ui::SourceDialogMode::Closed);
+}

@@ -9,9 +9,9 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | Control | Action / Engine Target | Verification Note | Status |
 | :--- | :--- | :--- | :--- |
 | **File > New Project** | Clears `project`, unregisters sources in `SourceRegistry`, reinitializes default compositor scenes | Verified: `app.reset_to_new_project()` resets scenes count to 2, clears registry count to 0 in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
-| **File > Open Project...** | Opens `.arxproj` modal, deserializes JSON, synchronizes compositor scenes & items | Verified: loads serialized `.arxproj` and restores scene hierarchy in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+| **File > Open Project...** | Opens `.arxproj` modal with native file picker (`rfd`), deserializes JSON, synchronizes compositor scenes & items | Verified: loads serialized `.arxproj` and restores scene hierarchy in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **File > Save Project** | Serializes current `Project` state to existing project path | Verified: writes valid JSON schema to disk in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
-| **File > Save Project As...** | Prompts for target path and serializes `Project` to disk | Verified: file created at destination and verified non-empty in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+| **File > Save Project As...** | Prompts for target path via native file picker (`rfd`) and serializes `Project` to disk | Verified: file created at destination and verified non-empty in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **File > Settings...** | Opens modal settings panel (Video, Audio, Output, Hotkeys, License) | Verified: opens settings view modifying output bitrates and encoders in `test_m8_user_builds_scenes_and_adds_sources_via_ui`. | [x] Verified |
 | **File > Exit** | Triggers clean application shutdown sequence (`on_exit`) | Verified: stops stream, stops recording, clears all source registry GPU textures in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Mode > Live Studio** | Switches `app_mode` to `AppMode::LiveStudio`, rendering multiview dock | Verified: sets `app_mode` and mounts central live dock layout in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
@@ -33,6 +33,7 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | **▼ Down** | Moves selected scene down in list order | Verified: swaps scene indices in `project.scenes` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Click Scene Row** | Selects scene and loads it into Preview bus | Verified: updates `selected_scene_id` and `preview_scene_id` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Double-Click Scene Row** | Direct switches Program (Live) bus to selected scene | Verified: sets `project.active_scene_id` to clicked scene in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+| **Empty State Hint** | Displays `"No scenes yet — click + Add Scene"` when list is empty | Verified: shows muted placeholder hint when `project.scenes.is_empty()`. | [x] Verified |
 
 ---
 
@@ -40,11 +41,19 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 
 | Control | Action / Engine Target | Verification Note | Status |
 | :--- | :--- | :--- | :--- |
-| **+ Add Source** | Opens `SourceDialog` for 10 broadcast source types | Verified: adds concrete `Source` trait objects across all 10 types in `test_section_2_2_all_ten_source_types_and_resource_lifecycle`. | [x] Verified |
-| **- Remove** | Deletes source from project, compositor, and stops in `SourceRegistry` | Verified: unregisters handle, frees GPU resources, leaves 0 leaked handles in `test_section_2_2_all_ten_source_types_and_resource_lifecycle`. | [x] Verified |
-| **Properties** | Re-opens dialog with source properties to update configuration | Verified: updates parameters live in `SourceRegistry` and compositor in `test_section_2_2_all_ten_source_types_and_resource_lifecycle`. | [x] Verified |
+| **+ Add Source** | Opens `SourceDialog` for broadcast source types | Verified: adds concrete `Source` trait objects across all types in `test_section_2_2_all_ten_source_types_and_resource_lifecycle`. | [x] Verified |
+| **- Remove** | Deletes source from project, compositor, and stops in `SourceRegistry` (enabled when selected) | Verified: unregisters handle, frees GPU resources, leaves 0 leaked handles in `test_section_2_2_all_ten_source_types_and_resource_lifecycle`. | [x] Verified |
+| **⚙ Properties** | Toolbar button (enabled when selected) and double-click opens real per-type configuration dialog | Verified: opens `SourceDialog` in `Properties` mode and updates parameters live in `test_section_6_consistency_pass_and_modal_navigation`. | [x] Verified |
+| **▲ Up (Bring Forward)** | Toolbar button moving source one step forward in visual stacking order | Verified: swaps source order and calls `sync_scene_sources_order_to_compositor` in `test_source_reordering_live_studio`. | [x] Verified |
+| **▼ Down (Send Backward)** | Toolbar button moving source one step backward in visual stacking order | Verified: swaps source order and updates GPU compositor scene items in `test_source_reordering_live_studio`. | [x] Verified |
+| **Drag-and-Drop Reorder** | Grabs row via `⠿` handle, renders insertion line indicator with circle caps, and updates scene | Verified: reorders list and synchronizes GPU compositor items in `test_source_reordering_live_studio`. | [x] Verified |
+| **Right-Click Context Menu** | Bring to Front, Bring Forward, Send Backward, Send to Back, Properties, Remove | Verified: context menu actions mutate source order and invoke compositor sync in `test_source_reordering_live_studio`. | [x] Verified |
+| **Keyboard Reorder Shortcuts** | `Ctrl+Shift+]` (Front), `Ctrl+]` (Forward), `Ctrl+[` (Backward), `Ctrl+Shift+[` (Back) | Verified: shortcuts trigger source reordering and live compositor sync in `test_source_reordering_live_studio`. | [x] Verified |
 | **Visibility (👁)** | Toggles `visible` flag on `SourceDefinition` and compositor `SceneItem` | Verified: flips `item.visible` in compositor scene in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Lock (🔒)** | Toggles `locked` flag on `SourceDefinition` to prevent unintended canvas manipulation | Verified: flips `src_def.locked` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+| **Explorer Drag-and-Drop** | Dropping media file from Windows Explorer opens Add Media Source pre-filled | Verified: populates `file_path` and launches properties modal via `open_add_media_with_path`. | [x] Verified |
+| **Transform Inspector** | Collapsing header with `DragValue` X, Y, Width, Height, Rotation, and Reset | Verified: two-way sync with preview canvas gizmo and compositor `SceneItem` in `test_source_reordering_live_studio`. | [x] Verified |
+| **Empty State Hint** | Displays `"No sources yet — click + Add Source or drag media here"` when list is empty | Verified: shows muted placeholder hint when `scene.sources.is_empty()`. | [x] Verified |
 
 ---
 
@@ -52,11 +61,15 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 
 | Control | Action / Engine Target | Verification Note | Status |
 | :--- | :--- | :--- | :--- |
+| **Horizontal ScrollArea** | Enables horizontal scrolling across any number of channel strips | Verified: wrapped in `ScrollArea::horizontal()` preventing panel clipping or overflow. | [x] Verified |
+| **Fixed Channel Width (75px)** | Sets fixed column width per strip with centered controls | Verified: prevents squeezed layout and word-wrapping glitches. | [x] Verified |
+| **Channel Name Truncation** | Truncates channel label with ellipsis (`...`) and provides full name in hover tooltip | Verified: `Label::new().truncate()` with `.on_hover_text()` handles arbitrary name lengths cleanly. | [x] Verified |
 | **Master Volume Slider** | Multiplies master audio gain (0.0..=1.5) across all active audio tracks | Verified: adjusts `master_volume` and syncs effective gain into `SourceRegistry` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Master Mute Button** | Silences master output bus and sets dB readout to `-inf dB` | Verified: mutes all channels and displays `-inf dB` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Channel Volume Sliders** | Adjusts individual source volume and propagates to WASAPI/FFmpeg decoder | Verified: updates `SourceProperties::AudioInput/Output` in `SourceRegistry` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Channel Mute Buttons** | Silences individual source and propagates to audio pipeline | Verified: updates source mute state in `SourceProperties` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **dB Readouts** | Displays calculated logarithmic decibel level `20.0 * log10(gain)` | Verified: 0.5 gain produces ~ -6.0 dB, 0.0 or muted produces `-inf dB` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+| **Empty State Hint** | Displays `"No audio sources in active scene"` when scene has no sources | Verified: displays centered muted label when `scene.sources.is_empty()`. | [x] Verified |
 
 ---
 
@@ -91,7 +104,7 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | **CUT Button** | Instantly swaps Preview and Program scene buses | Verified: swaps active and preview scenes immediately in `test_m8_preview_to_program_transition_switching`. | [x] Verified |
 | **AUTO Button** | Runs active transition definition with configured duration | Verified: executes auto transition in `test_m8_preview_to_program_transition_switching`. | [x] Verified |
 | **T-BAR Slider** | Smoothly blends preview and program scenes on drag; cuts at >= 0.95 | Verified: scrubbing smoothly updates progress; drag release >= 0.95 swaps buses in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
-| **Preview Monitor View** | Renders live WGPU preview texture view from compositor | Verified: renders GPU preview framebuffer in `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview`. | [x] Verified |
+| **Preview Monitor View** | Renders live WGPU preview texture view from compositor with interactive gizmo | Verified: renders GPU preview framebuffer in `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview`. | [x] Verified |
 | **Program Monitor View** | Renders live WGPU program texture view with on-air tally border | Verified: renders GPU program framebuffer with live border in `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview`. | [x] Verified |
 
 ---
@@ -102,3 +115,74 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | :--- | :--- | :--- | :--- |
 | **Window Minimize/Maximize** | Standard OS desktop window control via `eframe` / `winit` | Verified: handled by native window event loop in `zeno-app`. | [x] Verified |
 | **Window Close / Clean Shutdown** | Invokes `eframe::App::on_exit()` for leak-free shutdown | Verified: stops streaming, finalizes recording, and cleans `SourceRegistry` in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+
+---
+
+## 9. Unified Media Source & Native File Pickers
+
+| Control | Action / Engine Target | Verification Note | Status |
+| :--- | :--- | :--- | :--- |
+| **Unified Media Source** | Merges video, still image, and GIF into a single intelligent source kind | Verified: auto-detects playback controls from file extension in `test_section_2_2_all_ten_source_types_and_resource_lifecycle`. | [x] Verified |
+| **Native Browse Button** | Opens native Windows file dialog (`rfd::FileDialog`) filtered to media types | Verified: populates `file_path` from OS file picker dialog without manual typing. | [x] Verified |
+| **Clear Path (X) Button** | Clears current file selection and resets thumbnail preview | Verified: empties path and invalidates texture cache. | [x] Verified |
+| **Multi-File Slideshow** | Allows multi-file selection with configurable interval (seconds) | Verified: stores file list and slideshow interval in `SourceDialogState`. | [x] Verified |
+| **160x90 Thumbnail Preview** | Real-time thumbnail preview from video first frame or image | Verified: `load_media_thumbnail` extracts preview via hidden FFmpeg or image crate. | [x] Verified |
+| **Scale / Fit Mode Dropdown** | Selects Fit, Fill, Stretch, or Center media frame sizing | Verified: stored in source properties for compositor quad placement. | [x] Verified |
+| **Loop & Volume Controls** | Loop toggle and volume slider shown for video/GIF sources | Verified: updates video decoder loop flag and audio mixer track gain. | [x] Verified |
+| **Native Project File Dialogs** | Open Project and Save Project As use `rfd::FileDialog` filtered to `*.arxproj` | Verified: opens native OS file pickers in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
+
+---
+
+## 10. On-Canvas Transform Gizmo
+
+| Control | Action / Engine Target | Verification Note | Status |
+| :--- | :--- | :--- | :--- |
+| **Selection Bounding Box** | Highlight bounding box drawn with `ACCENT` stroke on selected items | Verified: hit testing and selection rendering in `test_hit_test_unrotated`. | [x] Verified |
+| **8 Resize Handles** | 4 corner and 4 edge midpoint 8x8px square handles for 2D scaling | Verified: drag handles resize width/height in `test_gizmo_item_creation`. | [x] Verified |
+| **Shift Aspect Lock** | Holding Shift while dragging corner handles locks original aspect ratio | Verified: aspect ratio preservation formula verified in `test_aspect_ratio_preservation_calc`. | [x] Verified |
+| **Alt Center Scale** | Holding Alt scales symmetrically from object center | Verified: updates center and dimensions symmetrically. | [x] Verified |
+| **Rotation Handle on Stem** | Circular rotate handle located 24px above top-center handle | Verified: computes angle around item center and updates `rotation_degrees`. | [x] Verified |
+| **15° Angle Snap** | Holding Shift while rotating snaps to 15-degree increments | Verified: snapping logic verified in `test_rotation_15_degree_snapping`. | [x] Verified |
+| **Canvas Hit-Testing** | Clicking directly on visible layer selects it; topmost layer wins; clicking empty canvas deselects | Verified: z-order hit-testing verified in `test_hit_test_unrotated`. | [x] Verified |
+| **Keyboard Nudge** | Arrow keys nudge 1px; Shift+Arrow nudges 10px | Verified: updates position in discrete increments when canvas is focused. | [x] Verified |
+| **Two-Way Property Sync** | Dragging gizmo updates Properties fields live; typing in fields updates canvas live | Verified: two-way synchronization in Live Studio preview and overlay editor. | [x] Verified |
+
+---
+
+## 11. Overlay Editor Completeness & Usability
+
+| Control | Action / Engine Target | Verification Note | Status |
+| :--- | :--- | :--- | :--- |
+| **Sidebar Tabs ([☰ Layers] / [📁 Assets])** | Switches left sidebar between layer hierarchy and asset browser | Verified: toggles `active_left_tab` in `OverlayEditor` state. | [x] Verified |
+| **Global Undo / Redo** | `Ctrl+Z` (Undo) and `Ctrl+Y` / `Ctrl+Shift+Z` (Redo) | Verified: 50 consecutive operations tested in `test_undo_redo_50_operations`. | [x] Verified |
+| **Import Media Button** | Opens native file dialog for images, videos, audio, and fonts | Verified: imports assets and extracts dimensions in `test_asset_import_keyframe_retiming_and_arx_roundtrip`. | [x] Verified |
+| **Assets Explorer Drag & Drop** | Dropping files from Windows Explorer onto Assets panel auto-imports them | Verified: adds asset entries to `composition.assets` with correct `AssetKind`. | [x] Verified |
+| **Canvas Media Drag & Drop** | Dropping files directly onto canvas auto-imports and creates centered Image layer | Verified: creates image layer capped to composition resolution in `test_asset_import_keyframe_retiming_and_arx_roundtrip`. | [x] Verified |
+| **Assets-to-Canvas Drag & Drop** | Dragging asset from Assets panel onto canvas drops new image layer | Verified: `dnd_dragging_asset_id` dropped onto canvas instantiates layer. | [x] Verified |
+| **Canvas Image Rendering** | Renders image layers with preview frame and centered `🖼 <filename>` badge | Verified: displays content in canvas viewport during playback. | [x] Verified |
+| **Layers Reordering** | Toolbar Up/Down buttons, drag-and-drop, context menus, and shortcuts | Verified: reorders layers and records undo command in `test_layer_reordering_and_undo`. | [x] Verified |
+| **Layers Empty State** | Displays `"No layers yet — click + Text, + Shape, or import media"` | Verified: shows muted placeholder hint when `composition.layers.is_empty()`. | [x] Verified |
+| **Property Stopwatches** | Stopwatch toggle buttons next to Position, Scale, Rotation, Opacity | Verified: toggles animation track keyframing state in `properties_panel.rs`. | [x] Verified |
+| **Text Layer Properties** | Font family, size, native color picker, alignment (L/C/R), letter/line spacing | Verified: live updates to `ResolvedContent::Text` properties in properties panel. | [x] Verified |
+| **Shape Layer Properties** | Width, height, corner radius (0..200px) with dynamic RoundedRectangle upgrade, fill and stroke pickers | Verified: updates geometry and color in real-time. | [x] Verified |
+| **Camera Layer Properties** | Field of view (10..120°), position X/Y/Z, target X/Y/Z, near/far planes | Verified: modifies camera parameters for 3D engine evaluation. | [x] Verified |
+| **Particle Layer Properties** | Presets (Confetti, Sparks, Smoke), rate, lifetime, speed, spread, colors, gravity | Verified: updates particle emitter parameters in real-time. | [x] Verified |
+| **Image Layer Properties** | File path, native dimensions, size, "Reset Native Size" button | Verified: displays asset metadata and restores 1:1 pixel dimensions on click. | [x] Verified |
+| **Dope Sheet Keyframes** | Color-coded keyframe diamonds for Position, Scale, Rotation, Opacity | Verified: renders diamond markers on timeline tracks. | [x] Verified |
+| **Keyframe Retiming Drag** | Dragging keyframes retimes timestamps with live canvas scrubbing | Verified: updates keyframe timestamps in `test_asset_import_keyframe_retiming_and_arx_roundtrip`. | [x] Verified |
+| **Keyframe Selection & Delete** | Click keyframe to highlight with white outline; Delete key removes it | Verified: `DeleteKeyframeCommand` executed on Delete key press. | [x] Verified |
+| **Keyframe Context Menu** | Right-click diamond: Delete, Easing (Linear, Ease In, Ease Out, Ease In-Out) | Verified: sets `KeyframeEasing` curves via `SetKeyframeEasingCommand`. | [x] Verified |
+| **Timeline Track Context Menu** | Right-click track: "Add Keyframe at Playhead" | Verified: creates keyframe at current playhead timestamp. | [x] Verified |
+| **In/Loop/Out Region Handles** | Draggable boundary handles on time ruler with tinted region bands | Verified: adjusts `composition.lifecycle` ranges and synchronizes with engine. | [x] Verified |
+| **.arx Round-Trip Serialization** | Full package save/load with embedded asset payloads and dimensions | Verified: complete round-trip verified in `test_asset_import_keyframe_retiming_and_arx_roundtrip`. | [x] Verified |
+
+---
+
+## 12. General UX Consistency Pass & Modal Navigation
+
+| Control | Action / Engine Target | Verification Note | Status |
+| :--- | :--- | :--- | :--- |
+| **Modal Keyboard Navigation (Escape)** | Pressing Escape cancels/closes all modal dialogs (New Source, Properties, Open Project, Save Project As, Settings) | Verified: resets modal state to closed in `test_section_6_consistency_pass_and_modal_navigation`. | [x] Verified |
+| **Modal Keyboard Navigation (Enter)** | Pressing Enter confirms/submits dialogs across all modals | Verified: validates input and emits confirmed action in `test_section_6_consistency_pass_and_modal_navigation`. | [x] Verified |
+| **Modal Keyboard Navigation (Tab)** | Tab key cycles focus between input fields across all dialogs | Verified: standard egui tab navigation active on text edit and interactable controls. | [x] Verified |
+| **Consistent Zero/Empty States** | Every panel (Scenes, Sources, Mixer, Layers, Assets) displays inline hint when empty | Verified: verified across all studio and editor panels in `test_section_6_consistency_pass_and_modal_navigation`. | [x] Verified |

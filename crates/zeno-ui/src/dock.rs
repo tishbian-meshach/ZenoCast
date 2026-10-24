@@ -424,26 +424,33 @@ impl<'a> StudioTabViewer<'a> {
         ui.separator();
 
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for scene in &self.project.scenes {
-                let is_selected = self.selected_scene_id.as_deref() == Some(&scene.id);
-                let is_active = self.project.active_scene_id.as_deref() == Some(&scene.id);
-                let is_preview = self.project.preview_scene_id.as_deref() == Some(&scene.id);
+            if self.project.scenes.is_empty() {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(24.0);
+                    ui.colored_label(TEXT_MUTED, "No scenes yet — click + Add Scene");
+                });
+            } else {
+                for scene in &self.project.scenes {
+                    let is_selected = self.selected_scene_id.as_deref() == Some(&scene.id);
+                    let is_active = self.project.active_scene_id.as_deref() == Some(&scene.id);
+                    let is_preview = self.project.preview_scene_id.as_deref() == Some(&scene.id);
 
-                let label_text = format!(
-                    "{} ({}){}{}",
-                    scene.name,
-                    scene.sources.len(),
-                    if is_active { " [LIVE]" } else { "" },
-                    if is_preview { " [PRV]" } else { "" }
-                );
+                    let label_text = format!(
+                        "{} ({}){}{}",
+                        scene.name,
+                        scene.sources.len(),
+                        if is_active { " [LIVE]" } else { "" },
+                        if is_preview { " [PRV]" } else { "" }
+                    );
 
-                let response = ui.selectable_label(is_selected, label_text);
-                if response.clicked() {
-                    *self.selected_scene_id = Some(scene.id.clone());
-                    self.project.preview_scene_id = Some(scene.id.clone());
-                }
-                if response.double_clicked() {
-                    self.project.active_scene_id = Some(scene.id.clone());
+                    let response = ui.selectable_label(is_selected, label_text);
+                    if response.clicked() {
+                        *self.selected_scene_id = Some(scene.id.clone());
+                        self.project.preview_scene_id = Some(scene.id.clone());
+                    }
+                    if response.double_clicked() {
+                        self.project.active_scene_id = Some(scene.id.clone());
+                    }
                 }
             }
         });
@@ -472,14 +479,22 @@ impl<'a> StudioTabViewer<'a> {
                 *self.trigger_open_add_source = true;
             }
 
-            if ui.button("- Remove").clicked() {
+            let has_sel = self.selected_source_id.is_some();
+            if ui
+                .add_enabled(has_sel, egui::Button::new("- Remove"))
+                .clicked()
+            {
                 if let Some(ref sel_id) = *self.selected_source_id {
                     *self.trigger_remove_source = Some(sel_id.clone());
                 }
             }
 
-            if let Some(ref sel_id) = *self.selected_source_id {
-                if ui.button("Properties").clicked() {
+            if ui
+                .add_enabled(has_sel, egui::Button::new("⚙ Properties"))
+                .on_hover_text("Configure source properties")
+                .clicked()
+            {
+                if let Some(ref sel_id) = *self.selected_source_id {
                     *self.trigger_open_edit_source = Some(sel_id.clone());
                 }
             }
@@ -872,66 +887,104 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders 6-track audio mixer sliders, mute buttons, and live meters.
     fn ui_audio_mixer(&mut self, ui: &mut Ui) {
-        ui.horizontal(|ui| {
-            // Master Track
-            ui.vertical(|ui| {
-                ui.label("Master");
-                let vol_resp = ui.add(
-                    egui::Slider::new(self.master_volume, 0.0..=1.5)
-                        .vertical()
-                        .show_value(false),
+        const CHANNEL_WIDTH: f32 = 75.0;
+
+        egui::ScrollArea::horizontal().show(ui, |ui| {
+            ui.horizontal(|ui| {
+                // Master Track
+                ui.allocate_ui_with_layout(
+                    vec2(CHANNEL_WIDTH, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Center),
+                    |ui| {
+                        let name_label =
+                            egui::Label::new(egui::RichText::new("Master").strong()).truncate();
+                        ui.add(name_label).on_hover_text("Master Output");
+                        ui.add_space(4.0);
+
+                        let vol_resp = ui.add(
+                            egui::Slider::new(self.master_volume, 0.0..=1.5)
+                                .vertical()
+                                .show_value(false),
+                        );
+                        if vol_resp.changed() {
+                            *self.trigger_audio_change = true;
+                        }
+
+                        let master_db_text = if *self.master_volume <= 0.0 || *self.master_muted {
+                            "-inf dB".to_string()
+                        } else {
+                            format!("{:.1} dB", 20.0 * (*self.master_volume).log10())
+                        };
+                        ui.label(master_db_text);
+
+                        let mute_btn = ui.selectable_label(*self.master_muted, "Mute");
+                        if mute_btn.clicked() {
+                            *self.master_muted = !*self.master_muted;
+                            *self.trigger_audio_change = true;
+                        }
+                    },
                 );
-                if vol_resp.changed() {
-                    *self.trigger_audio_change = true;
-                }
 
-                let master_db_text = if *self.master_volume <= 0.0 || *self.master_muted {
-                    "-inf dB".to_string()
+                ui.separator();
+
+                // Source Tracks
+                let active_scene = self
+                    .project
+                    .active_scene_id
+                    .as_ref()
+                    .and_then(|id| self.project.scenes.iter_mut().find(|s| &s.id == id));
+
+                if let Some(scene) = active_scene {
+                    if scene.sources.is_empty() {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(24.0);
+                            ui.colored_label(TEXT_MUTED, "No audio sources in active scene");
+                        });
+                    } else {
+                        for src in &mut scene.sources {
+                            ui.allocate_ui_with_layout(
+                                vec2(CHANNEL_WIDTH, ui.available_height()),
+                                egui::Layout::top_down(egui::Align::Center),
+                                |ui| {
+                                    let name_label =
+                                        egui::Label::new(egui::RichText::new(&src.name).strong())
+                                            .truncate();
+                                    ui.add(name_label).on_hover_text(&src.name);
+                                    ui.add_space(4.0);
+
+                                    let src_vol_resp = ui.add(
+                                        egui::Slider::new(&mut src.volume, 0.0..=1.5)
+                                            .vertical()
+                                            .show_value(false),
+                                    );
+                                    if src_vol_resp.changed() {
+                                        *self.trigger_audio_change = true;
+                                    }
+
+                                    let db_text = if src.volume <= 0.0 || src.muted {
+                                        "-inf dB".to_string()
+                                    } else {
+                                        format!("{:.1} dB", 20.0 * src.volume.log10())
+                                    };
+                                    ui.label(db_text);
+
+                                    let mute_btn = ui.selectable_label(src.muted, "Mute");
+                                    if mute_btn.clicked() {
+                                        src.muted = !src.muted;
+                                        *self.trigger_audio_change = true;
+                                    }
+                                },
+                            );
+                            ui.separator();
+                        }
+                    }
                 } else {
-                    format!("{:.1} dB", 20.0 * (*self.master_volume).log10())
-                };
-                ui.label(master_db_text);
-
-                let mute_btn = ui.selectable_label(*self.master_muted, "Mute");
-                if mute_btn.clicked() {
-                    *self.master_muted = !*self.master_muted;
-                    *self.trigger_audio_change = true;
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(24.0);
+                        ui.colored_label(TEXT_MUTED, "No active scene selected");
+                    });
                 }
             });
-
-            ui.separator();
-
-            // Source Tracks
-            if let Some(active_id) = self.project.active_scene_id.as_ref() {
-                if let Some(scene) = self.project.scenes.iter_mut().find(|s| &s.id == active_id) {
-                    for src in &mut scene.sources {
-                        ui.vertical(|ui| {
-                            ui.label(&src.name);
-                            let src_vol_resp = ui.add(
-                                egui::Slider::new(&mut src.volume, 0.0..=1.5)
-                                    .vertical()
-                                    .show_value(false),
-                            );
-                            if src_vol_resp.changed() {
-                                *self.trigger_audio_change = true;
-                            }
-
-                            let db_text = if src.volume <= 0.0 || src.muted {
-                                "-inf dB".to_string()
-                            } else {
-                                format!("{:.1} dB", 20.0 * src.volume.log10())
-                            };
-                            ui.label(db_text);
-
-                            let mute_btn = ui.selectable_label(src.muted, "Mute");
-                            if mute_btn.clicked() {
-                                src.muted = !src.muted;
-                                *self.trigger_audio_change = true;
-                            }
-                        });
-                    }
-                }
-            }
         });
     }
 

@@ -384,6 +384,11 @@ impl SourceDialogState {
         match self.mode.clone() {
             SourceDialogMode::Closed => {}
             SourceDialogMode::TypePicker => {
+                let escape_pressed = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+                if escape_pressed {
+                    self.close();
+                }
+
                 Window::new("Add Source - Select Type")
                     .collapsible(false)
                     .resizable(false)
