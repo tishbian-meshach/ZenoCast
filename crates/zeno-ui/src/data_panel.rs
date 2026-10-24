@@ -157,6 +157,7 @@ pub fn ui_esports_data_panel(
                                 Button::new(RichText::new("-").size(20.0).color(TEXT))
                                     .fill(SURFACE_3),
                             )
+                            .on_hover_text("Decrement Score")
                             .clicked()
                         {
                             let new_score = (cur_score_1 - 1).max(0);
@@ -171,6 +172,7 @@ pub fn ui_esports_data_panel(
                                 )
                                 .fill(ACCENT),
                             )
+                            .on_hover_text("Increment Score")
                             .clicked()
                         {
                             let new_score = cur_score_1 + 1;
@@ -222,6 +224,7 @@ pub fn ui_esports_data_panel(
                                 Button::new(RichText::new("-").size(20.0).color(TEXT))
                                     .fill(SURFACE_3),
                             )
+                            .on_hover_text("Decrement Score")
                             .clicked()
                         {
                             let new_score = (cur_score_2 - 1).max(0);
@@ -236,6 +239,7 @@ pub fn ui_esports_data_panel(
                                 )
                                 .fill(ACCENT),
                             )
+                            .on_hover_text("Increment Score")
                             .clicked()
                         {
                             let new_score = cur_score_2 + 1;

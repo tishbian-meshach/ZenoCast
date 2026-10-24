@@ -4,6 +4,7 @@ use egui::{vec2, Align2, CornerRadius, FontId, Sense, Stroke, StrokeKind, Ui};
 use egui_dock::{DockState, NodeIndex, TabViewer};
 use serde::{Deserialize, Serialize};
 
+use crate::icon::{icon_button, icon_button_enabled, icon_toggle_button, IconKind};
 use crate::project::Project;
 use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_2,
@@ -349,32 +350,42 @@ impl<'a> StudioTabViewer<'a> {
     /// Renders Scenes list with Add, Duplicate, Remove, and Switch operations.
     fn ui_scenes(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            if ui.button("+ Add Scene").clicked() {
+            if icon_button(ui, IconKind::Plus, "Add Scene").clicked() {
                 *self.trigger_add_scene = true;
             }
 
             let can_remove = self.project.scenes.len() > 1 && self.selected_scene_id.is_some();
-            if ui
-                .add_enabled(can_remove, egui::Button::new("- Remove"))
-                .clicked()
-            {
+            if icon_button_enabled(ui, can_remove, IconKind::Trash, "Remove Scene").clicked() {
                 if let Some(ref sel) = *self.selected_scene_id {
                     *self.trigger_remove_scene = Some(sel.clone());
                 }
             }
 
-            if let Some(ref sel) = *self.selected_scene_id {
-                if ui.button("Rename").clicked() {
+            let has_sel = self.selected_scene_id.is_some();
+            if icon_button_enabled(ui, has_sel, IconKind::Pencil, "Rename Scene").clicked() {
+                if let Some(ref sel) = *self.selected_scene_id {
                     if let Some(sc) = self.project.scenes.iter().find(|s| &s.id == sel) {
                         *self.rename_scene_id = Some(sel.clone());
                         *self.rename_scene_buffer = sc.name.clone();
                     }
                 }
+            }
 
-                if ui.button("Up").clicked() {
+            let sel_idx = self
+                .selected_scene_id
+                .as_ref()
+                .and_then(|sel| self.project.scenes.iter().position(|s| &s.id == sel));
+            let can_up = sel_idx.is_some_and(|i| i > 0);
+            let can_down = sel_idx.is_some_and(|i| i + 1 < self.project.scenes.len());
+
+            if icon_button_enabled(ui, can_up, IconKind::ChevronUp, "Move Scene Up").clicked() {
+                if let Some(ref sel) = *self.selected_scene_id {
                     *self.trigger_move_scene_up = Some(sel.clone());
                 }
-                if ui.button("Down").clicked() {
+            }
+            if icon_button_enabled(ui, can_down, IconKind::ChevronDown, "Move Scene Down").clicked()
+            {
+                if let Some(ref sel) = *self.selected_scene_id {
                     *self.trigger_move_scene_down = Some(sel.clone());
                 }
             }
@@ -457,24 +468,24 @@ impl<'a> StudioTabViewer<'a> {
             .and_then(|id| sources.iter().position(|s| &s.id == id));
 
         ui.horizontal(|ui| {
-            if ui.button("+ Add Source").clicked() {
+            if icon_button(ui, IconKind::Plus, "Add Source").clicked() {
                 *self.trigger_open_add_source = true;
             }
 
             let has_sel = self.selected_source_id.is_some();
-            if ui
-                .add_enabled(has_sel, egui::Button::new("- Remove"))
-                .clicked()
-            {
+            if icon_button_enabled(ui, has_sel, IconKind::Trash, "Remove Source").clicked() {
                 if let Some(ref sel_id) = *self.selected_source_id {
                     *self.trigger_remove_source = Some(sel_id.clone());
                 }
             }
 
-            if ui
-                .add_enabled(has_sel, egui::Button::new("Properties"))
-                .on_hover_text("Configure source properties")
-                .clicked()
+            if icon_button_enabled(
+                ui,
+                has_sel,
+                IconKind::Sliders,
+                "Configure source properties",
+            )
+            .clicked()
             {
                 if let Some(ref sel_id) = *self.selected_source_id {
                     *self.trigger_open_edit_source = Some(sel_id.clone());
@@ -486,10 +497,13 @@ impl<'a> StudioTabViewer<'a> {
             let can_bring_forward = sel_idx.is_some_and(|i| i + 1 < num_sources);
             let can_send_backward = sel_idx.is_some_and(|i| i > 0);
 
-            if ui
-                .add_enabled(can_bring_forward, egui::Button::new("Up"))
-                .on_hover_text("Bring Forward (Ctrl+])")
-                .clicked()
+            if icon_button_enabled(
+                ui,
+                can_bring_forward,
+                IconKind::ChevronUp,
+                "Bring Forward (Ctrl+])",
+            )
+            .clicked()
             {
                 if let Some(i) = sel_idx {
                     sources.swap(i, i + 1);
@@ -497,10 +511,13 @@ impl<'a> StudioTabViewer<'a> {
                 }
             }
 
-            if ui
-                .add_enabled(can_send_backward, egui::Button::new("Down"))
-                .on_hover_text("Send Backward (Ctrl+[)")
-                .clicked()
+            if icon_button_enabled(
+                ui,
+                can_send_backward,
+                IconKind::ChevronDown,
+                "Send Backward (Ctrl+[)",
+            )
+            .clicked()
             {
                 if let Some(i) = sel_idx {
                     sources.swap(i, i - 1);
@@ -608,14 +625,36 @@ impl<'a> StudioTabViewer<'a> {
                         }
 
                         // Visibility toggle
-                        let vis_icon = if src_visible { "Show" } else { "Hide" };
-                        if ui.selectable_label(src_visible, vis_icon).clicked() {
+                        if icon_toggle_button(
+                            ui,
+                            src_visible,
+                            IconKind::Eye,
+                            IconKind::EyeOff,
+                            if src_visible {
+                                "Hide Source"
+                            } else {
+                                "Show Source"
+                            },
+                        )
+                        .clicked()
+                        {
                             *self.trigger_toggle_source_visibility = Some(src_id.clone());
                         }
 
                         // Lock toggle
-                        let lock_icon = if src_locked { "Lock" } else { "Unlock" };
-                        if ui.selectable_label(src_locked, lock_icon).clicked() {
+                        if icon_toggle_button(
+                            ui,
+                            src_locked,
+                            IconKind::Lock,
+                            IconKind::Unlock,
+                            if src_locked {
+                                "Unlock Source"
+                            } else {
+                                "Lock Source"
+                            },
+                        )
+                        .clicked()
+                        {
                             *self.trigger_toggle_source_lock = Some(src_id.clone());
                         }
 
@@ -846,7 +885,8 @@ impl<'a> StudioTabViewer<'a> {
                         changed |= ui
                             .add(egui::DragValue::new(&mut src.rotation).speed(0.5))
                             .changed();
-                        if ui.button("Reset").clicked() {
+                        if icon_button(ui, IconKind::RotateCcw, "Reset Rotation to 0 deg").clicked()
+                        {
                             src.rotation = 0.0;
                             changed = true;
                         }

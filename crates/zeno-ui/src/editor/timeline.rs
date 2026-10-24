@@ -9,6 +9,7 @@ use zeno_core::{Easing, Keyframe, LayerId, Lifecycle, Property, TimeRange, Vec3}
 
 use crate::editor::command::AnimProperty;
 use crate::editor::state::{OverlayEditor, SelectedKeyframe, TimelineMarker};
+use crate::icon::{icon_button, IconKind};
 use crate::theme::{
     ACCENT, AMBER_WARN, CORNER_RADIUS, RED_LIVE, REGION_IN, REGION_LOOP, REGION_OUT,
     ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
@@ -46,8 +47,21 @@ pub fn ui_timeline(editor: &mut OverlayEditor, mode: &mut TimelineMode, ui: &mut
         // Controls Toolbar: Play/Pause, Stop, Timecode, Add Marker, Mode Switch
         ui.horizontal(|ui| {
             let is_playing = editor.clock.is_playing();
-            let play_label = if is_playing { "Pause [||]" } else { "Play [>]" };
-            if ui.button(play_label).clicked() {
+            if icon_button(
+                ui,
+                if is_playing {
+                    IconKind::Pause
+                } else {
+                    IconKind::Play
+                },
+                if is_playing {
+                    "Pause (Space)"
+                } else {
+                    "Play (Space)"
+                },
+            )
+            .clicked()
+            {
                 if is_playing {
                     editor.clock.pause();
                 } else {
@@ -55,7 +69,7 @@ pub fn ui_timeline(editor: &mut OverlayEditor, mode: &mut TimelineMode, ui: &mut
                 }
             }
 
-            if ui.button("Stop [[]]").clicked() {
+            if icon_button(ui, IconKind::Square, "Stop Playback").clicked() {
                 editor.clock.stop();
             }
 
@@ -80,7 +94,7 @@ pub fn ui_timeline(editor: &mut OverlayEditor, mode: &mut TimelineMode, ui: &mut
 
             ui.separator();
 
-            if ui.button("+ Marker").clicked() {
+            if icon_button(ui, IconKind::Plus, "Add Marker").clicked() {
                 editor.markers.push(TimelineMarker {
                     time_seconds: cur_time,
                     name: format!("Marker {}", editor.markers.len() + 1),

@@ -5,6 +5,7 @@ use zeno_core::Vec3;
 use zeno_engine::eval::{evaluate_at, ResolvedContent};
 
 use crate::editor::state::OverlayEditor;
+use crate::icon::{icon_button, IconKind};
 use crate::theme::{
     color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, RED_LIVE, SURFACE_0, SURFACE_1,
     SURFACE_3, TEXT, TEXT_MUTED,
@@ -22,14 +23,14 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
             ));
             ui.separator();
 
-            if ui.button(" Zoom - ").clicked() {
+            if icon_button(ui, IconKind::Minus, "Zoom Out (-10%)").clicked() {
                 editor.zoom = (editor.zoom - 0.1).max(0.2);
             }
             ui.label(format!("{:.0}%", editor.zoom * 100.0));
-            if ui.button(" Zoom + ").clicked() {
+            if icon_button(ui, IconKind::Plus, "Zoom In (+10%)").clicked() {
                 editor.zoom = (editor.zoom + 0.1).min(3.0);
             }
-            if ui.button(" Reset ").clicked() {
+            if icon_button(ui, IconKind::RotateCcw, "Reset Viewport (100%, Origin)").clicked() {
                 editor.zoom = 1.0;
                 editor.pan = zeno_core::Vec2::ZERO;
             }

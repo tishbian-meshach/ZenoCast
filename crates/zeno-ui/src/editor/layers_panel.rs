@@ -4,6 +4,7 @@ use egui::{Button, CornerRadius, Sense, Stroke, Ui};
 use zeno_core::{Color, LayerId, Vec2};
 
 use crate::editor::state::OverlayEditor;
+use crate::icon::{icon_button, icon_button_enabled, icon_toggle_button, IconKind};
 use crate::theme::{ACCENT, GRID_UNIT, SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -24,12 +25,12 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
         // Toolbar: Add Layer, Delete Layer, Up, Down
         ui.horizontal_wrapped(|ui| {
-            if ui.button("+ Text").clicked() {
+            if icon_button(ui, IconKind::Type, "Add Text Layer").clicked() {
                 let name = format!("Text Layer {}", layer_count + 1);
                 editor.add_text_layer(&name, "New Text");
             }
 
-            if ui.button("+ Shape").clicked() {
+            if icon_button(ui, IconKind::Square, "Add Shape Layer").clicked() {
                 let name = format!("Shape Layer {}", layer_count + 1);
                 editor.add_shape_layer(
                     &name,
@@ -38,18 +39,20 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 );
             }
 
-            if ui.button("+ Camera").clicked() {
+            if icon_button(ui, IconKind::Camera, "Add 3D Camera").clicked() {
                 let name = format!("Camera {}", layer_count + 1);
                 editor.add_camera_layer(&name);
             }
 
-            if ui.button("+ Particles").clicked() {
+            if icon_button(ui, IconKind::Sparkles, "Add Particle Emitter").clicked() {
                 let name = format!("Particles {}", layer_count + 1);
                 editor.add_particle_layer(&name, zeno_engine::ParticleEmitter::sparks());
             }
 
             let can_delete = editor.selected_layer_id.is_some();
-            if ui.add_enabled(can_delete, Button::new("Delete")).clicked() {
+            if icon_button_enabled(ui, can_delete, IconKind::Trash, "Delete Selected Layer")
+                .clicked()
+            {
                 editor.delete_selected_layer();
             }
 
@@ -58,20 +61,26 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
             let can_bring_forward = sel_idx.is_some_and(|i| i + 1 < layer_count);
             let can_send_backward = sel_idx.is_some_and(|i| i > 0);
 
-            if ui
-                .add_enabled(can_bring_forward, Button::new("Up"))
-                .on_hover_text("Bring Forward (Ctrl+])")
-                .clicked()
+            if icon_button_enabled(
+                ui,
+                can_bring_forward,
+                IconKind::ChevronUp,
+                "Bring Forward (Ctrl+])",
+            )
+            .clicked()
             {
                 if let Some(i) = sel_idx {
                     editor.reorder_layer(i, i + 1);
                 }
             }
 
-            if ui
-                .add_enabled(can_send_backward, Button::new("Down"))
-                .on_hover_text("Send Backward (Ctrl+[)")
-                .clicked()
+            if icon_button_enabled(
+                ui,
+                can_send_backward,
+                IconKind::ChevronDown,
+                "Send Backward (Ctrl+[)",
+            )
+            .clicked()
             {
                 if let Some(i) = sel_idx {
                     editor.reorder_layer(i, i - 1);
@@ -161,8 +170,19 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                         }
 
                         // Eye visibility toggle
-                        let eye_label = if layer_visible { "Show" } else { "Hide" };
-                        if ui.selectable_label(layer_visible, eye_label).clicked() {
+                        if icon_toggle_button(
+                            ui,
+                            layer_visible,
+                            IconKind::Eye,
+                            IconKind::EyeOff,
+                            if layer_visible {
+                                "Hide Layer"
+                            } else {
+                                "Show Layer"
+                            },
+                        )
+                        .clicked()
+                        {
                             editor.composition.layers[l_idx].visible = !layer_visible;
                         }
 
