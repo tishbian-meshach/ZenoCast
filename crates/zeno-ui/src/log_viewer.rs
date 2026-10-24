@@ -9,8 +9,8 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, GRID_UNIT, RED_LIVE, SURFACE_0,
-    SURFACE_3, TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_0, SURFACE_3,
+    TEXT, TEXT_MUTED,
 };
 
 /// Severity level for broadcast event log entries.
@@ -145,7 +145,7 @@ impl LogViewerPanel {
                 if ui
                     .selectable_label(
                         self.filter_severity == Some(LogSeverity::Info),
-                        egui::RichText::new("INFO").color(GREEN_OK),
+                        egui::RichText::new("INFO").color(TEXT_MUTED),
                     )
                     .clicked()
                 {
@@ -243,7 +243,7 @@ impl LogViewerPanel {
 
                                         // Badge
                                         let (badge_color, label) = match entry.severity {
-                                            LogSeverity::Info => (GREEN_OK, "[INFO]"),
+                                            LogSeverity::Info => (TEXT_MUTED, "[INFO]"),
                                             LogSeverity::Warn => (AMBER_WARN, "[WARN]"),
                                             LogSeverity::Error => (RED_LIVE, "[ERROR]"),
                                         };

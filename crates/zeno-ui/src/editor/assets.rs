@@ -10,8 +10,8 @@ use zeno_engine::AssetKind;
 
 use crate::editor::state::OverlayEditor;
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, GRID_UNIT, SURFACE_0, SURFACE_1,
-    SURFACE_2, TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, SURFACE_0, SURFACE_1, SURFACE_2,
+    TEXT, TEXT_MUTED,
 };
 
 /// Renders the asset browser panel.
@@ -38,7 +38,7 @@ pub fn ui_assets_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
-            if ui.button("+ Import Media…").clicked() {
+            if ui.button("+ Import Media...").clicked() {
                 let picked = rfd::FileDialog::new()
                     .add_filter(
                         "Supported Media (*.png, *.jpg, *.jpeg, *.gif, *.webp, *.mp4, *.mov, *.webm, *.wav, *.mp3, *.ttf, *.otf)",
@@ -103,7 +103,7 @@ pub fn ui_assets_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 let (badge_text, badge_color) = match asset.kind {
                     AssetKind::Image => ("[IMG]", ACCENT),
                     AssetKind::Video => ("[VID]", AMBER_WARN),
-                    AssetKind::Audio => ("[AUD]", GREEN_OK),
+                    AssetKind::Audio => ("[AUD]", TEXT_MUTED),
                     AssetKind::Font => ("[FONT]", TEXT),
                     AssetKind::Model3D => ("[3D]", ACCENT),
                 };
@@ -117,7 +117,7 @@ pub fn ui_assets_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                         ui.horizontal(|ui| {
                             // Drag grip
                             let grip_resp = ui
-                                .colored_label(TEXT_MUTED, "⠿")
+                                .colored_label(TEXT_MUTED, "::")
                                 .interact(Sense::drag());
 
                             if grip_resp.hovered() {

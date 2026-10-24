@@ -36,7 +36,7 @@ pub use spreadsheet_panel::{ui_spreadsheet_links_panel, SpreadsheetPanelState};
 pub use theme::{
     apply_theme, color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS,
     GREEN_OK, GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3,
-    TEXT, TEXT_MUTED,
+    TEXT, TEXT_MUTED, TINT_NONE, TRANSPARENT,
 };
 pub use transform_gizmo::*;
 pub use wizard::{
@@ -72,6 +72,29 @@ mod tests {
         let mut files = Vec::new();
         collect_rs_files(&ui_src_dir, &mut files);
 
+        let forbidden_color_literals = [
+            "Color32::from_rgb",
+            "Color32::from_rgba",
+            "Color32::from_gray",
+            "Color32::from_black_alpha",
+            "Color32::from_white_alpha",
+            "Color32::WHITE",
+            "Color32::BLACK",
+            "Color32::RED",
+            "Color32::GREEN",
+            "Color32::BLUE",
+            "Color32::YELLOW",
+            "Color32::TRANSPARENT",
+            "Color32::LIGHT_",
+            "Color32::DARK_",
+            "Color32::GRAY",
+        ];
+
+        let forbidden_emojis = [
+            '●', '■', '▶', '⏸', '⏹', '▲', '▼', '★', '⚙', '👁', '🔒', '🔓', '⚠', '❌', '✔', '📁',
+            '☰', '⠿', '🖼', '•',
+        ];
+
         for path in files {
             let file_name = path.file_name().unwrap().to_str().unwrap();
             if file_name == "theme.rs" || file_name == "lib.rs" {
@@ -81,23 +104,38 @@ mod tests {
             let content = fs::read_to_string(&path).expect("Failed to read file");
 
             // Check 1: No color constructor literals outside theme.rs
-            assert!(
-                !content.contains("Color32::from_rgb"),
-                "File '{}' contains Color32::from_rgb! All colors must be imported from theme::*",
-                file_name
-            );
-            assert!(
-                !content.contains("Color32::from_rgba"),
-                "File '{}' contains Color32::from_rgba! All colors must be imported from theme::*",
-                file_name
-            );
+            for &lit in &forbidden_color_literals {
+                assert!(
+                    !content.contains(lit),
+                    "File '{}' contains '{}'! All colors must be imported from theme::*",
+                    file_name,
+                    lit
+                );
+            }
 
-            // Check 2: No gradient APIs allowed anywhere per Section 7
+            // Check 2: No gradient APIs allowed anywhere per Section 12
             assert!(
                 !content.to_lowercase().contains("gradient"),
                 "File '{}' mentions gradients! Broadcast specification strictly forbids gradients.",
                 file_name
             );
+
+            // Check 3: No decorative shadows allowed
+            assert!(
+                !content.contains("Shadow::"),
+                "File '{}' references shadows! Decorative shadows are strictly prohibited.",
+                file_name
+            );
+
+            // Check 4: No emojis in UI chrome
+            for &emoji in &forbidden_emojis {
+                assert!(
+                    !content.contains(emoji),
+                    "File '{}' contains forbidden UI emoji '{}'! UI chrome must be flat and text/Lucide based.",
+                    file_name,
+                    emoji
+                );
+            }
         }
     }
 

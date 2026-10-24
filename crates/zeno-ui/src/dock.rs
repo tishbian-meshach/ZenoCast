@@ -159,7 +159,7 @@ impl<'a> StudioTabViewer<'a> {
             ui.vertical(|ui| {
                 let preview_name = self.project.preview_scene_id.as_deref().unwrap_or("None");
                 ui.horizontal(|ui| {
-                    ui.colored_label(AMBER_WARN, "● PREVIEW");
+                    ui.colored_label(AMBER_WARN, "PREVIEW");
                     ui.colored_label(TEXT_MUTED, format!("({})", preview_name));
                 });
 
@@ -170,7 +170,7 @@ impl<'a> StudioTabViewer<'a> {
                         tex_id,
                         rect,
                         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
+                        crate::theme::TINT_NONE,
                     );
                 } else {
                     ui.painter().rect(
@@ -325,9 +325,9 @@ impl<'a> StudioTabViewer<'a> {
                 let active_name = self.project.active_scene_id.as_deref().unwrap_or("None");
                 ui.horizontal(|ui| {
                     if self.is_streaming || self.is_recording {
-                        ui.colored_label(RED_LIVE, "● PROGRAM - ON AIR");
+                        ui.colored_label(RED_LIVE, "PROGRAM - ON AIR");
                     } else {
-                        ui.colored_label(TEXT, "● PROGRAM");
+                        ui.colored_label(TEXT, "PROGRAM");
                     }
                     ui.colored_label(TEXT_MUTED, format!("({})", active_name));
                 });
@@ -344,7 +344,7 @@ impl<'a> StudioTabViewer<'a> {
                         tex_id,
                         rect,
                         egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                        egui::Color32::WHITE,
+                        crate::theme::TINT_NONE,
                     );
                 } else {
                     ui.painter().rect(
@@ -397,10 +397,10 @@ impl<'a> StudioTabViewer<'a> {
                     }
                 }
 
-                if ui.button("▲ Up").clicked() {
+                if ui.button("Up").clicked() {
                     *self.trigger_move_scene_up = Some(sel.clone());
                 }
-                if ui.button("▼ Down").clicked() {
+                if ui.button("Down").clicked() {
                     *self.trigger_move_scene_down = Some(sel.clone());
                 }
             }
@@ -490,7 +490,7 @@ impl<'a> StudioTabViewer<'a> {
             }
 
             if ui
-                .add_enabled(has_sel, egui::Button::new("⚙ Properties"))
+                .add_enabled(has_sel, egui::Button::new("Properties"))
                 .on_hover_text("Configure source properties")
                 .clicked()
             {
@@ -505,7 +505,7 @@ impl<'a> StudioTabViewer<'a> {
             let can_send_backward = sel_idx.is_some_and(|i| i > 0);
 
             if ui
-                .add_enabled(can_bring_forward, egui::Button::new("▲ Up"))
+                .add_enabled(can_bring_forward, egui::Button::new("Up"))
                 .on_hover_text("Bring Forward (Ctrl+])")
                 .clicked()
             {
@@ -516,7 +516,7 @@ impl<'a> StudioTabViewer<'a> {
             }
 
             if ui
-                .add_enabled(can_send_backward, egui::Button::new("▼ Down"))
+                .add_enabled(can_send_backward, egui::Button::new("Down"))
                 .on_hover_text("Send Backward (Ctrl+[)")
                 .clicked()
             {
@@ -606,7 +606,7 @@ impl<'a> StudioTabViewer<'a> {
                 } else if is_sel {
                     SURFACE_3
                 } else {
-                    egui::Color32::TRANSPARENT
+                    crate::theme::TRANSPARENT
                 };
 
                 let row_frame = egui::Frame::NONE
@@ -619,20 +619,20 @@ impl<'a> StudioTabViewer<'a> {
                     ui.horizontal(|ui| {
                         // Drag handle grip
                         let grip_resp = ui
-                            .colored_label(TEXT_MUTED, "⠿")
+                            .colored_label(TEXT_MUTED, "::")
                             .on_hover_text("Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         }
 
                         // Visibility toggle
-                        let vis_icon = if src_visible { "👁" } else { "---" };
+                        let vis_icon = if src_visible { "Show" } else { "Hide" };
                         if ui.selectable_label(src_visible, vis_icon).clicked() {
                             *self.trigger_toggle_source_visibility = Some(src_id.clone());
                         }
 
                         // Lock toggle
-                        let lock_icon = if src_locked { "🔒" } else { "🔓" };
+                        let lock_icon = if src_locked { "Lock" } else { "Unlock" };
                         if ui.selectable_label(src_locked, lock_icon).clicked() {
                             *self.trigger_toggle_source_lock = Some(src_id.clone());
                         }
@@ -738,7 +738,7 @@ impl<'a> StudioTabViewer<'a> {
                     ui.layer_id(),
                     egui::Id::new("src_drag_tooltip"),
                     |ui| {
-                        ui.label(format!("⠿ {}", dragged_name));
+                        ui.label(format!(":: {}", dragged_name));
                     },
                 );
 
@@ -861,7 +861,7 @@ impl<'a> StudioTabViewer<'a> {
                             .changed();
                     });
                     ui.horizontal(|ui| {
-                        ui.label("Rotation (°):");
+                        ui.label("Rotation (deg):");
                         changed |= ui
                             .add(egui::DragValue::new(&mut src.rotation).speed(0.5))
                             .changed();
@@ -1034,9 +1034,9 @@ impl<'a> StudioTabViewer<'a> {
         ui.vertical(|ui| {
             // Stream button
             let stream_text = if self.is_streaming {
-                "■ STOP STREAMING"
+                "STOP STREAMING"
             } else {
-                "▶ START STREAMING"
+                "START STREAMING"
             };
             let stream_btn = ui.add_sized(
                 vec2(ui.available_width(), BUTTON_HEIGHT),
@@ -1054,9 +1054,9 @@ impl<'a> StudioTabViewer<'a> {
 
             // Record button
             let record_text = if self.is_recording {
-                "■ STOP RECORDING"
+                "STOP RECORDING"
             } else {
-                "● START RECORDING"
+                "START RECORDING"
             };
             let record_btn = ui.add_sized(
                 vec2(ui.available_width(), BUTTON_HEIGHT),

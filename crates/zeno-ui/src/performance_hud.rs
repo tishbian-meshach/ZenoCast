@@ -6,8 +6,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, GRID_UNIT, RED_LIVE, SURFACE_1,
-    SURFACE_3, TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_1, SURFACE_3,
+    TEXT, TEXT_MUTED,
 };
 
 /// Live broadcast performance telemetry snapshot.
@@ -99,7 +99,7 @@ impl PerformanceOverlay {
                                 .color(TEXT_MUTED),
                         );
                         let fps_color = if self.snapshot.fps >= 58.0 {
-                            GREEN_OK
+                            TEXT
                         } else if self.snapshot.fps >= 45.0 {
                             AMBER_WARN
                         } else {
@@ -136,7 +136,7 @@ impl PerformanceOverlay {
                                 .color(TEXT_MUTED),
                         );
                         let comp_color = if self.snapshot.compositor_time_ms <= 4.0 {
-                            GREEN_OK
+                            TEXT
                         } else if self.snapshot.compositor_time_ms <= 8.0 {
                             AMBER_WARN
                         } else {
@@ -162,7 +162,7 @@ impl PerformanceOverlay {
                                 .color(TEXT_MUTED),
                         );
                         let drop_color = if self.snapshot.dropped_percent <= 0.1 {
-                            GREEN_OK
+                            TEXT
                         } else {
                             RED_LIVE
                         };
@@ -202,7 +202,7 @@ impl PerformanceOverlay {
                                 .color(TEXT_MUTED),
                         );
                         let audio_color = if self.snapshot.audio_latency_ms <= 20.0 {
-                            GREEN_OK
+                            TEXT
                         } else {
                             AMBER_WARN
                         };

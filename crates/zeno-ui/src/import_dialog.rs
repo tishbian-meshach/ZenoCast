@@ -3,9 +3,7 @@
 use egui::{Align, Layout, RichText, ScrollArea, Window};
 use zeno_import::report::ImportReport;
 
-use crate::theme::{
-    ACCENT, AMBER_WARN, BUTTON_HEIGHT, GREEN_OK, GRID_UNIT, RED_LIVE, TEXT, TEXT_MUTED,
-};
+use crate::theme::{ACCENT, AMBER_WARN, BUTTON_HEIGHT, GRID_UNIT, RED_LIVE, TEXT, TEXT_MUTED};
 
 /// State for the Import Report modal dialog.
 #[derive(Debug, Clone, Default)]
@@ -64,7 +62,7 @@ impl ImportReportDialog {
                     // Summary statistics
                     ui.horizontal(|ui| {
                         let status_color = if report.success && !report.has_issues() {
-                            GREEN_OK
+                            TEXT
                         } else if report.success {
                             AMBER_WARN
                         } else {
@@ -102,7 +100,7 @@ impl ImportReportDialog {
                             ui.label(RichText::new("Auto-Generated Data Bindings:").color(ACCENT).strong());
                             for (layer_name, path) in &report.bindings_created {
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new(format!(" • {}", layer_name)).color(TEXT));
+                                    ui.label(RichText::new(format!(" - {}", layer_name)).color(TEXT));
                                     ui.label(RichText::new(format!("-> {}", path)).color(TEXT_MUTED));
                                 });
                             }
@@ -126,7 +124,7 @@ impl ImportReportDialog {
 
                         if !report.has_issues() && report.bindings_created.is_empty() {
                             ui.add_space(8.0);
-                            ui.label(RichText::new("All vector shapes, transforms, and timing curves imported cleanly with no warnings.").color(GREEN_OK));
+                            ui.label(RichText::new("All vector shapes, transforms, and timing curves imported cleanly with no warnings.").color(TEXT));
                         }
                     });
 

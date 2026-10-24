@@ -6,7 +6,7 @@ use zeno_core::{Color, Easing, Property, Vec3};
 use zeno_engine::{Fill, LayerContent, ShapeGeometry, Stroke, TextAlignment};
 
 use crate::editor::state::OverlayEditor;
-use crate::theme::{color_to_egui, egui_to_color, GREEN_OK, RED_LIVE, TEXT_MUTED};
+use crate::theme::{color_to_egui, egui_to_color, RED_LIVE, TEXT, TEXT_MUTED};
 
 /// Renders the properties inspector for the currently selected layer.
 pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
@@ -670,7 +670,7 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 let runtime = zeno_engine::get_script_runtime();
                 match runtime.compile(source) {
                     Ok(_) => {
-                        ui.colored_label(GREEN_OK, "Expression syntax valid");
+                        ui.colored_label(TEXT, "Expression syntax valid");
                     }
                     Err(e) => {
                         ui.colored_label(RED_LIVE, format!("Error: {e}"));
@@ -698,7 +698,7 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 let runtime = zeno_engine::get_script_runtime();
                 match runtime.compile(source) {
                     Ok(_) => {
-                        ui.colored_label(GREEN_OK, "Expression syntax valid");
+                        ui.colored_label(TEXT, "Expression syntax valid");
                     }
                     Err(e) => {
                         ui.colored_label(RED_LIVE, format!("Error: {e}"));

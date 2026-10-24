@@ -510,7 +510,7 @@ impl SourceDialogState {
 
                         // Error notification banner if any validation fails
                         if let Some(ref err) = self.error_message {
-                            ui.colored_label(RED_LIVE, format!("⚠ {}", err));
+                            ui.colored_label(RED_LIVE, format!("WARNING: {}", err));
                             ui.add_space(4.0);
                         }
 
@@ -727,7 +727,7 @@ impl SourceDialogState {
                                 });
 
                                 ui.horizontal(|ui| {
-                                    if ui.button("Browse…").clicked() {
+                                    if ui.button("Browse...").clicked() {
                                         let dialog = rfd::FileDialog::new()
                                             .add_filter("Media Files", &["mp4", "mov", "mkv", "webm", "png", "jpg", "jpeg", "gif", "webp"])
                                             .add_filter("Video Files", &["mp4", "mov", "mkv", "webm"])
@@ -743,7 +743,7 @@ impl SourceDialogState {
                                         }
                                     }
 
-                                    if ui.button("Browse Multiple…").on_hover_text("Select multiple images for slideshow").clicked() {
+                                    if ui.button("Browse Multiple...").on_hover_text("Select multiple images for slideshow").clicked() {
                                         let dialog = rfd::FileDialog::new()
                                             .add_filter("Image Files", &["png", "jpg", "jpeg", "gif", "webp"])
                                             .add_filter("All Files", &["*"]);
@@ -759,7 +759,7 @@ impl SourceDialogState {
                                     }
 
                                     if !self.file_path.is_empty()
-                                        && ui.button("❌").on_hover_text("Clear selected file").clicked()
+                                        && ui.button("Clear").on_hover_text("Clear selected file").clicked()
                                     {
                                         self.file_path.clear();
                                         self.media_files.clear();
@@ -778,7 +778,7 @@ impl SourceDialogState {
                                                 tex.id(),
                                                 rect,
                                                 egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
-                                                egui::Color32::WHITE,
+                                                crate::theme::TINT_NONE,
                                             );
                                             ui.vertical(|ui| {
                                                 if let Some(fname) = std::path::Path::new(&self.file_path).file_name().and_then(|f| f.to_str()) {
@@ -812,11 +812,11 @@ impl SourceDialogState {
                                     ui.group(|ui| {
                                         ui.colored_label(TEXT, "Transport & Playback:");
                                         ui.horizontal(|ui| {
-                                            let play_text = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
+                                            let play_text = if self.is_playing { "Pause" } else { "Play" };
                                             if ui.button(play_text).clicked() {
                                                 self.is_playing = !self.is_playing;
                                             }
-                                            if ui.button("⏹ Stop / Rewind").clicked() {
+                                            if ui.button("Stop / Rewind").clicked() {
                                                 self.is_playing = false;
                                             }
                                         });
@@ -977,7 +977,7 @@ impl SourceDialogState {
                                 ui.horizontal(|ui| {
                                     ui.colored_label(TEXT, "Package (.arx):");
                                     ui.text_edit_singleline(&mut self.file_path);
-                                    if ui.button("Browse…").clicked() {
+                                    if ui.button("Browse...").clicked() {
                                         let dialog = rfd::FileDialog::new()
                                             .add_filter("Zenocast Overlay (.arx)", &["arx"])
                                             .add_filter("All Files", &["*"]);

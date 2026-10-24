@@ -59,7 +59,7 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
             let can_send_backward = sel_idx.is_some_and(|i| i > 0);
 
             if ui
-                .add_enabled(can_bring_forward, Button::new("▲ Up"))
+                .add_enabled(can_bring_forward, Button::new("Up"))
                 .on_hover_text("Bring Forward (Ctrl+])")
                 .clicked()
             {
@@ -69,7 +69,7 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
             }
 
             if ui
-                .add_enabled(can_send_backward, Button::new("▼ Down"))
+                .add_enabled(can_send_backward, Button::new("Down"))
                 .on_hover_text("Send Backward (Ctrl+[)")
                 .clicked()
             {
@@ -154,14 +154,14 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     ui.horizontal(|ui| {
                         // Drag handle grip
                         let grip_resp = ui
-                            .colored_label(TEXT_MUTED, "⠿")
+                            .colored_label(TEXT_MUTED, "::")
                             .on_hover_text("Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         }
 
                         // Eye visibility toggle
-                        let eye_label = if layer_visible { "👁" } else { "---" };
+                        let eye_label = if layer_visible { "Show" } else { "Hide" };
                         if ui.selectable_label(layer_visible, eye_label).clicked() {
                             editor.composition.layers[l_idx].visible = !layer_visible;
                         }
@@ -273,7 +273,7 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     ui.layer_id(),
                     egui::Id::new("layer_drag_tooltip"),
                     |ui| {
-                        ui.label(format!("⠿ {}", dragged_name));
+                        ui.label(format!(":: {}", dragged_name));
                     },
                 );
 

@@ -15,7 +15,7 @@ use std::time::Instant;
 
 use crate::settings::StudioSettings;
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GREEN_OK, GRID_UNIT, SURFACE_2,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, SURFACE_2,
     SURFACE_3, TEXT, TEXT_MUTED,
 };
 use zeno_audio::wasapi::enumerate_audio_devices;
@@ -444,21 +444,21 @@ impl FirstRunWizard {
                             .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
                             .inner_margin(Margin::same((GRID_UNIT * 1.5) as i8))
                             .show(ui, |ui| {
-                                ui.colored_label(GREEN_OK, "✔ Displays & Monitors Detected:");
+                                ui.colored_label(TEXT, "[OK] Displays & Monitors Detected:");
                                 for d in &self.inventory.displays {
-                                    ui.label(format!("  • {} ({}x{} @ {}Hz)", d.name, d.width, d.height, d.refresh_rate_hz));
+                                    ui.label(format!("  - {} ({}x{} @ {}Hz)", d.name, d.width, d.height, d.refresh_rate_hz));
                                 }
 
                                 ui.add_space(GRID_UNIT);
-                                ui.colored_label(GREEN_OK, "✔ Webcams & Capture Cards Detected:");
+                                ui.colored_label(TEXT, "[OK] Webcams & Capture Cards Detected:");
                                 for c in &self.inventory.cameras {
-                                    ui.label(format!("  • {} (Max {}x{} @ {}fps)", c.name, c.max_width, c.max_height, c.max_fps));
+                                    ui.label(format!("  - {} (Max {}x{} @ {}fps)", c.name, c.max_width, c.max_height, c.max_fps));
                                 }
 
                                 ui.add_space(GRID_UNIT);
-                                ui.colored_label(GREEN_OK, "✔ Audio Ingest Interfaces:");
+                                ui.colored_label(TEXT, "[OK] Audio Ingest Interfaces:");
                                 for a in &self.inventory.microphones {
-                                    ui.label(format!("  • {} ({}Hz, {}ch)", a.name, a.sample_rate_hz, a.channels));
+                                    ui.label(format!("  - {} ({}Hz, {}ch)", a.name, a.sample_rate_hz, a.channels));
                                 }
                             });
                     }
@@ -474,7 +474,7 @@ impl FirstRunWizard {
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
                                     ui.label("Recommended Video Codec:");
-                                    let badge_color = if self.recommendation.is_hardware { GREEN_OK } else { AMBER_WARN };
+                                    let badge_color = if self.recommendation.is_hardware { TEXT } else { AMBER_WARN };
                                     ui.colored_label(badge_color, &self.recommendation.encoder_label);
                                 });
 
@@ -536,12 +536,12 @@ impl FirstRunWizard {
                             .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
                             .inner_margin(Margin::same((GRID_UNIT * 1.5) as i8))
                             .show(ui, |ui| {
-                                ui.colored_label(GREEN_OK, "Configuration Summary:");
-                                ui.label(format!("• Output: {}x{} @ {:.0} fps", self.recommendation.output_width, self.recommendation.output_height, self.recommendation.output_fps));
-                                ui.label(format!("• Encoder: {}", self.recommendation.encoder_label));
-                                ui.label(format!("• Video Bitrate: {} kbps", self.recommendation.video_bitrate_kbps));
-                                ui.label(format!("• Audio Master: {} kbps AAC (48000 Hz stereo)", self.recommendation.audio_bitrate_kbps));
-                                ui.label(format!("• Destination: {}", self.destination.service_name));
+                                ui.colored_label(TEXT, "Configuration Summary:");
+                                ui.label(format!("- Output: {}x{} @ {:.0} fps", self.recommendation.output_width, self.recommendation.output_height, self.recommendation.output_fps));
+                                ui.label(format!("- Encoder: {}", self.recommendation.encoder_label));
+                                ui.label(format!("- Video Bitrate: {} kbps", self.recommendation.video_bitrate_kbps));
+                                ui.label(format!("- Audio Master: {} kbps AAC (48000 Hz stereo)", self.recommendation.audio_bitrate_kbps));
+                                ui.label(format!("- Destination: {}", self.destination.service_name));
                             });
                     }
                 }

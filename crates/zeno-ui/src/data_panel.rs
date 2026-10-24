@@ -41,7 +41,7 @@ pub fn ui_esports_data_panel(
                 .is_streaming
                 .load(std::sync::atomic::Ordering::Relaxed);
             let stream_btn = if is_streaming {
-                Button::new(RichText::new("[● STREAMING]").color(SURFACE_0).strong()).fill(RED_LIVE)
+                Button::new(RichText::new("[STREAMING]").color(SURFACE_0).strong()).fill(RED_LIVE)
             } else {
                 Button::new(RichText::new("START STREAM").color(TEXT)).fill(SURFACE_2)
             };
@@ -55,7 +55,7 @@ pub fn ui_esports_data_panel(
                 .is_recording
                 .load(std::sync::atomic::Ordering::Relaxed);
             let record_btn = if is_recording {
-                Button::new(RichText::new("[● REC]").color(SURFACE_0).strong()).fill(AMBER_WARN)
+                Button::new(RichText::new("[REC]").color(SURFACE_0).strong()).fill(AMBER_WARN)
             } else {
                 Button::new(RichText::new("RECORD").color(TEXT)).fill(SURFACE_2)
             };
@@ -90,7 +90,7 @@ pub fn ui_esports_data_panel(
                 let is_active = active_scene == scn;
                 let btn = if is_active {
                     Button::new(
-                        RichText::new(format!("[▶ {}]", scn))
+                        RichText::new(format!("[{}]", scn))
                             .color(SURFACE_0)
                             .strong(),
                     )

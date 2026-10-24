@@ -17,7 +17,7 @@ use crate::editor::{
 };
 use crate::project::{Autosaver, Project, SceneDefinition, SourceDefinition, SourceKind};
 use crate::source_dialog::{SourceDialogAction, SourceDialogState};
-use crate::theme::{apply_theme, AMBER_WARN, GREEN_OK, RED_LIVE, TEXT, TEXT_MUTED};
+use crate::theme::{apply_theme, AMBER_WARN, RED_LIVE, TEXT, TEXT_MUTED};
 use crate::transform_gizmo::TransformGizmoState;
 use crate::wizard::FirstRunWizard;
 use zeno_compositor::{
@@ -1220,10 +1220,10 @@ impl ZenocastApp {
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if self.is_streaming {
-                        ui.colored_label(RED_LIVE, "● LIVE");
+                        ui.colored_label(RED_LIVE, "LIVE");
                     }
                     if self.is_recording {
-                        ui.colored_label(RED_LIVE, "● REC");
+                        ui.colored_label(RED_LIVE, "REC");
                     }
                 });
             });
@@ -1363,7 +1363,7 @@ impl ZenocastApp {
                                             .selectable_label(
                                                 self.overlay_editor.active_left_tab
                                                     == LeftTab::Layers,
-                                                "☰ Layers",
+                                                "Layers",
                                             )
                                             .clicked()
                                         {
@@ -1373,7 +1373,7 @@ impl ZenocastApp {
                                             .selectable_label(
                                                 self.overlay_editor.active_left_tab
                                                     == LeftTab::Assets,
-                                                "📁 Assets",
+                                                "Assets",
                                             )
                                             .clicked()
                                         {
@@ -1547,7 +1547,7 @@ impl ZenocastApp {
                             )
                             .truncate(),
                         );
-                        if ui.button("Browse…").clicked() {
+                        if ui.button("Browse...").clicked() {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("Zenocast Project", &["arxproj"])
                                 .add_filter("All Files", &["*"])
@@ -1593,7 +1593,7 @@ impl ZenocastApp {
                             )
                             .truncate(),
                         );
-                        if ui.button("Browse…").clicked() {
+                        if ui.button("Browse...").clicked() {
                             if let Some(path) = rfd::FileDialog::new()
                                 .add_filter("Zenocast Project", &["arxproj"])
                                 .add_filter("All Files", &["*"])
@@ -1695,7 +1695,7 @@ impl ZenocastApp {
                         LicenseState::Valid { certificate } => {
                             ui.horizontal(|ui| {
                                 ui.label("Status:");
-                                ui.colored_label(GREEN_OK, "Licensed & Active");
+                                ui.colored_label(TEXT, "Licensed & Active");
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Edition:");

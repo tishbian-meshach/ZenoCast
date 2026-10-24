@@ -186,3 +186,39 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | **Modal Keyboard Navigation (Enter)** | Pressing Enter confirms/submits dialogs across all modals | Verified: validates input and emits confirmed action in `test_section_6_consistency_pass_and_modal_navigation`. | [x] Verified |
 | **Modal Keyboard Navigation (Tab)** | Tab key cycles focus between input fields across all dialogs | Verified: standard egui tab navigation active on text edit and interactable controls. | [x] Verified |
 | **Consistent Zero/Empty States** | Every panel (Scenes, Sources, Mixer, Layers, Assets) displays inline hint when empty | Verified: verified across all studio and editor panels in `test_section_6_consistency_pass_and_modal_navigation`. | [x] Verified |
+
+---
+
+## 13. Broadcast Design System Compliance & Flat Styling Audit
+
+Automated enforcement and manual inspection verified against `Zenocast: Build Specification (v1.0)`, Section 12:
+
+### Automated Enforcement
+- **Automated Scanner Test**: `crates/zeno-ui/src/lib.rs` (`test_strict_theme_and_no_color_literals_outside_theme`).
+  - Scans every `.rs` file under `zeno-ui/src/` (excluding `theme.rs` and the scanner itself in `lib.rs`).
+  - Fails the build if any forbidden color constructor or literal constant (`Color32::from_rgb`, `Color32::from_rgba`, `Color32::from_gray`, `Color32::from_black_alpha`, `Color32::from_white_alpha`, `Color32::WHITE`, `Color32::BLACK`, `Color32::RED`, `Color32::GREEN`, `Color32::BLUE`, `Color32::YELLOW`, `Color32::TRANSPARENT`, `Color32::LIGHT_`, `Color32::DARK_`, `Color32::GRAY`) is detected.
+  - Fails the build if any gradient API (`gradient` case-insensitive) is detected.
+  - Fails the build if any decorative shadow (`Shadow::` outside `Shadow::NONE` in `theme.rs`) is detected.
+  - Fails the build if any emoji or decorative chrome symbol (`●`, `■`, `▶`, `⏸`, `⏹`, `▲`, `▼`, `★`, `⚙`, `👁`, `🔒`, `🔓`, `⚠`, `❌`, `✔`, `📁`, `☰`, `⠿`, `🖼`, `•`) is detected.
+
+### Panels Audited & Corrected
+| Panel / Component | File | Corrections Applied | Status |
+| :--- | :--- | :--- | :--- |
+| **Theme System** | `theme.rs` | Enforced flat surfaces (`SURFACE_0..3`), disabled all shadows (`Shadow::NONE`), constrained typography styles to strictly 12, 13, 16px, added flat `TINT_NONE` and `TRANSPARENT` tokens, mapped legacy green to `TEXT`. | [x] Verified |
+| **Automated Scanner & Re-exports** | `lib.rs` | Re-exported `TINT_NONE` and `TRANSPARENT`, implemented comprehensive scanner test for color literals, gradients, shadows, and emojis. | [x] Verified |
+| **Live Studio Dock & Chrome** | `dock.rs` | Removed all emojis (`● PREVIEW` -> `PREVIEW`, `● PROGRAM - ON AIR` -> `PROGRAM - ON AIR`, `● PROGRAM` -> `PROGRAM`, `▲ Up` -> `Up`, `▼ Down` -> `Down`, `⚙ Properties` -> `Properties`, `⠿` -> `::`, `👁` / `---` -> `Show` / `Hide`, `🔒` / `🔓` -> `Lock` / `Unlock`, `■ STOP STREAMING` / `▶ START STREAMING` -> `STOP STREAMING` / `START STREAMING`, `■ STOP RECORDING` / `● START RECORDING` -> `STOP RECORDING` / `START RECORDING`, `Rotation (°)` -> `Rotation (deg)`). Eliminated `Color32::WHITE` and `Color32::TRANSPARENT`. | [x] Verified |
+| **New Source & Properties Dialog** | `source_dialog.rs` | Replaced `Color32::WHITE` with `crate::theme::TINT_NONE`. Removed warning emoji `⚠` -> `WARNING:`, `❌` -> `Clear`, `⏸ Pause` / `▶ Play` / `⏹ Stop / Rewind` -> `Pause` / `Play` / `Stop / Rewind`. Replaced unicode ellipses with standard periods. | [x] Verified |
+| **On-Canvas Transform Gizmo** | `transform_gizmo.rs` | Replaced `Color32::WHITE` with `TEXT` design token across rotation and resize handle squares. Cleaned doc comment degree symbol. | [x] Verified |
+| **Overlay Editor Layers Panel** | `editor/layers_panel.rs` | Replaced `▲ Up` / `▼ Down` with `Up` / `Down`, grip handle `⠿` with `::`, and visibility toggle `👁` / `---` with `Show` / `Hide`. | [x] Verified |
+| **Overlay Editor Canvas** | `editor/canvas.rs` | Replaced image emoji `🖼` with `[IMG]`, normalized font size to strictly `13.0px`, and set 3D axis colors to strictly allowed design tokens (`RED_LIVE`, `AMBER_WARN`, `ACCENT`). | [x] Verified |
+| **Overlay Editor Asset Browser** | `editor/assets.rs` | Replaced drag grip `⠿` with `::`, replaced `+ Import Media…` with `+ Import Media...`, replaced `GREEN_OK` with `TEXT_MUTED`. | [x] Verified |
+| **Overlay Editor Timeline** | `editor/timeline.rs` | Normalized all font sizes to strictly `12.0px` (replacing 9px, 10px, 11px); replaced `GREEN_OK` with `ACCENT` and `TEXT`. | [x] Verified |
+| **Overlay Editor Properties** | `editor/properties_panel.rs` | Replaced `GREEN_OK` with `TEXT` token for expression compile status labels. | [x] Verified |
+| **Main App Shell & Modals** | `app.rs` | Replaced `● LIVE` / `● REC` with `LIVE` / `REC`, removed emojis `☰ Layers` / `📁 Assets` -> `Layers` / `Assets`, replaced unicode ellipses `Browse…` -> `Browse...`, replaced `GREEN_OK` with `TEXT`. | [x] Verified |
+| **First-Run Wizard** | `wizard.rs` | Replaced `✔` with `[OK]`, replaced bullet points `•` with `-`, replaced `GREEN_OK` with `TEXT`. | [x] Verified |
+| **Esports Data Control Panel** | `data_panel.rs` | Replaced `[● STREAMING]` with `[STREAMING]`, `[● REC]` with `[REC]`, and `[▶ Scene]` with `[Scene]`. | [x] Verified |
+| **Import Report Dialog** | `import_dialog.rs` | Replaced ` • ` with ` - `, replaced `GREEN_OK` with `TEXT`. | [x] Verified |
+| **Spreadsheet Links Panel** | `spreadsheet_panel.rs` | Replaced `GREEN_OK` with `TEXT`. | [x] Verified |
+| **Performance Telemetry HUD** | `performance_hud.rs` | Replaced `GREEN_OK` with `TEXT` token across all telemetry thresholds. | [x] Verified |
+| **Log Viewer Panel** | `log_viewer.rs` | Replaced `GREEN_OK` with `TEXT_MUTED` for INFO badges and severity filters. | [x] Verified |
+

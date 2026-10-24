@@ -10,7 +10,7 @@ use zeno_core::{Easing, Keyframe, LayerId, Lifecycle, Property, TimeRange, Vec3}
 use crate::editor::command::AnimProperty;
 use crate::editor::state::{OverlayEditor, SelectedKeyframe, TimelineMarker};
 use crate::theme::{
-    ACCENT, AMBER_WARN, CORNER_RADIUS, GREEN_OK, RED_LIVE, REGION_IN, REGION_LOOP, REGION_OUT,
+    ACCENT, AMBER_WARN, CORNER_RADIUS, RED_LIVE, REGION_IN, REGION_LOOP, REGION_OUT,
     ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
 };
 
@@ -146,7 +146,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
                 Pos2::new(x + 2.0, ruler_rect.min.y + 2.0),
                 Align2::LEFT_TOP,
                 format!("{}s", s),
-                FontId::proportional(11.0),
+                FontId::proportional(12.0),
                 TEXT_MUTED,
             );
         }
@@ -165,7 +165,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
     let in_x = track_rect.min.x + in_end * pixels_per_second;
     let loop_x = track_rect.min.x + loop_end * pixels_per_second;
 
-    // Draw In Region (Green tint)
+    // Draw In Region (Neutral surface tint)
     let in_rect = Rect::from_min_max(
         Pos2::new(track_rect.min.x, ruler_rect.min.y + 16.0),
         Pos2::new(in_x.min(track_rect.max.x), ruler_rect.max.y),
@@ -175,11 +175,11 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
         Pos2::new(track_rect.min.x + 4.0, ruler_rect.min.y + 16.0),
         Align2::LEFT_TOP,
         "Intro",
-        FontId::proportional(9.0),
-        GREEN_OK,
+        FontId::proportional(12.0),
+        ACCENT,
     );
 
-    // Draw Loop Region (Amber tint)
+    // Draw Loop Region (Neutral surface tint)
     let loop_rect = Rect::from_min_max(
         Pos2::new(
             in_x.clamp(track_rect.min.x, track_rect.max.x),
@@ -192,11 +192,11 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
         Pos2::new(in_x + 4.0, ruler_rect.min.y + 16.0),
         Align2::LEFT_TOP,
         "Loop",
-        FontId::proportional(9.0),
+        FontId::proportional(12.0),
         AMBER_WARN,
     );
 
-    // Draw Out Region (Red tint)
+    // Draw Out Region (Neutral surface tint)
     let out_rect = Rect::from_min_max(
         Pos2::new(
             loop_x.clamp(track_rect.min.x, track_rect.max.x),
@@ -209,7 +209,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
         Pos2::new(loop_x + 4.0, ruler_rect.min.y + 16.0),
         Align2::LEFT_TOP,
         "Out",
-        FontId::proportional(9.0),
+        FontId::proportional(12.0),
         RED_LIVE,
     );
 
@@ -219,7 +219,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
             Pos2::new(in_x, ruler_rect.min.y),
             Pos2::new(in_x, rect.max.y),
         ],
-        Stroke::new(1.5_f32, GREEN_OK),
+        Stroke::new(1.5_f32, ACCENT),
     );
     let in_handle = [
         Pos2::new(in_x - 5.0, ruler_rect.min.y),
@@ -228,7 +228,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
     ];
     painter.add(egui::Shape::convex_polygon(
         in_handle.to_vec(),
-        GREEN_OK,
+        ACCENT,
         Stroke::NONE,
     ));
 
@@ -263,7 +263,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
                 Pos2::new(mx + 2.0, ruler_rect.min.y + 12.0),
                 Align2::LEFT_TOP,
                 &marker.name,
-                FontId::proportional(10.0),
+                FontId::proportional(12.0),
                 AMBER_WARN,
             );
         }
@@ -351,7 +351,7 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
         add_kf_hits(
             AnimProperty::Scale,
             layer.transform.scale_percent.as_keyframes(),
-            GREEN_OK,
+            TEXT,
         );
         add_kf_hits(
             AnimProperty::Rotation,

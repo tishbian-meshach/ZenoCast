@@ -25,7 +25,13 @@ pub const TEXT_MUTED: Color32 = Color32::from_rgb(0x8E, 0x95, 0x9D);
 pub const ACCENT: Color32 = Color32::from_rgb(0x4C, 0x8D, 0xFF);
 pub const RED_LIVE: Color32 = Color32::from_rgb(0xE5, 0x48, 0x4D);
 pub const AMBER_WARN: Color32 = Color32::from_rgb(0xF5, 0xA5, 0x24);
-pub const GREEN_OK: Color32 = Color32::from_rgb(0x46, 0xA7, 0x58);
+
+// Flat Utility Tokens (raw unmultiplied for texture passes & transparent fills)
+pub const TINT_NONE: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
+pub const TRANSPARENT: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 0);
+
+// Status indicator alias mapped to standard neutral text
+pub const GREEN_OK: Color32 = TEXT;
 
 // Spacing & Sizing Constants
 pub const GRID_UNIT: f32 = 8.0;
@@ -34,10 +40,10 @@ pub const CORNER_RADIUS: f32 = 4.0;
 pub const ROW_HEIGHT_LIST: f32 = 28.0;
 pub const BUTTON_HEIGHT: f32 = 32.0;
 
-// Shaded lifecycle timeline region tints
-pub const REGION_IN: Color32 = Color32::from_rgba_premultiplied(14, 42, 18, 60);
-pub const REGION_LOOP: Color32 = Color32::from_rgba_premultiplied(51, 35, 9, 60);
-pub const REGION_OUT: Color32 = Color32::from_rgba_premultiplied(47, 14, 14, 60);
+// Shaded lifecycle timeline region tints (flat neutral surfaces with alpha)
+pub const REGION_IN: Color32 = Color32::from_rgba_premultiplied(0x1D, 0x20, 0x24, 70);
+pub const REGION_LOOP: Color32 = Color32::from_rgba_premultiplied(0x27, 0x2B, 0x30, 70);
+pub const REGION_OUT: Color32 = Color32::from_rgba_premultiplied(0x15, 0x17, 0x1A, 70);
 
 /// Converts a `zeno_core::Color` into an `egui::Color32`.
 pub fn color_to_egui(c: zeno_core::Color) -> Color32 {
@@ -68,14 +74,16 @@ pub fn with_alpha(c: Color32, a: u8) -> Color32 {
 pub fn apply_theme(ctx: &egui::Context) {
     let mut visuals = Visuals::dark();
 
-    // Dark flat background surfaces
+    // Dark flat background surfaces - absolutely no gradients, glassmorphism, or glow
     visuals.panel_fill = SURFACE_1;
     visuals.window_fill = SURFACE_1;
     visuals.faint_bg_color = SURFACE_0;
     visuals.extreme_bg_color = SURFACE_0;
 
-    // Strict 1px solid borders
+    // Strict 1px solid borders, zero decorative shadows
     visuals.window_stroke = Stroke::new(BORDER_WIDTH, SURFACE_3);
+    visuals.window_shadow = egui::epaint::Shadow::NONE;
+    visuals.popup_shadow = egui::epaint::Shadow::NONE;
 
     // Widgets inactive
     visuals.widgets.inactive.bg_fill = SURFACE_2;
@@ -117,6 +125,16 @@ pub fn apply_theme(ctx: &egui::Context) {
     style.spacing.window_margin = Margin::same(GRID_UNIT as i8);
     style.spacing.button_padding = egui::vec2(GRID_UNIT * 1.5, GRID_UNIT * 0.75);
     style.spacing.indent = GRID_UNIT * 2.0;
+
+    // Strict typography: Sizes 12, 13, 14, 16px only
+    style.text_styles = [
+        (egui::TextStyle::Small, egui::FontId::proportional(12.0)),
+        (egui::TextStyle::Body, egui::FontId::proportional(13.0)),
+        (egui::TextStyle::Button, egui::FontId::proportional(13.0)),
+        (egui::TextStyle::Heading, egui::FontId::proportional(16.0)),
+        (egui::TextStyle::Monospace, egui::FontId::monospace(13.0)),
+    ]
+    .into();
 
     ctx.set_style(style);
 }

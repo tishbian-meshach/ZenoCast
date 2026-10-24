@@ -12,11 +12,10 @@
 //! - Multi-selection (Ctrl+click, marquee drag)
 
 use egui::{
-    pos2, vec2, Color32, CornerRadius, CursorIcon, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Ui,
-    Vec2,
+    pos2, vec2, CornerRadius, CursorIcon, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
 
-use crate::theme::{ACCENT, AMBER_WARN};
+use crate::theme::{ACCENT, AMBER_WARN, TEXT};
 
 /// Represents an item on the canvas that can be transformed.
 #[derive(Debug, Clone, PartialEq)]
@@ -547,7 +546,7 @@ impl TransformGizmoState {
                 let p_rot = rotate_local(0.0, -half_h - 24.0);
                 painter.line_segment([p_tm, p_rot], Stroke::new(1.0_f32, ACCENT));
                 painter.circle_filled(p_rot, 5.0, ACCENT);
-                painter.circle_stroke(p_rot, 5.0, Stroke::new(1.0_f32, Color32::WHITE));
+                painter.circle_stroke(p_rot, 5.0, Stroke::new(1.0_f32, TEXT));
 
                 // 8 Resize handle squares
                 let h_size = vec2(handle_radius_screen * 2.0, handle_radius_screen * 2.0);
@@ -566,7 +565,7 @@ impl TransformGizmoState {
                     painter.rect(
                         Rect::from_center_size(h_pos, h_size),
                         CornerRadius::same(1),
-                        Color32::WHITE,
+                        TEXT,
                         Stroke::new(1.0_f32, ACCENT),
                         StrokeKind::Inside,
                     );

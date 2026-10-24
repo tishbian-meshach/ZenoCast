@@ -6,7 +6,7 @@ use zeno_engine::eval::{evaluate_at, ResolvedContent};
 
 use crate::editor::state::OverlayEditor;
 use crate::theme::{
-    color_to_egui, ACCENT, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, RED_LIVE, SURFACE_0, SURFACE_1,
+    color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, RED_LIVE, SURFACE_0, SURFACE_1,
     SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem};
@@ -264,12 +264,12 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                         })
                         .unwrap_or_else(|| "Image".into());
 
-                    let badge_text = format!("🖼 {}", filename);
+                    let badge_text = format!("[IMG] {}", filename);
                     painter.text(
                         img_rect.center(),
                         Align2::CENTER_CENTER,
                         badge_text,
-                        FontId::proportional((13.0 * editor.zoom).clamp(10.0, 20.0)),
+                        FontId::proportional(13.0),
                         TEXT,
                     );
                 }
@@ -371,8 +371,8 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                     painter.line_segment([layer_pos, x_tip], Stroke::new(2.0_f32, RED_LIVE));
                     painter.circle_filled(x_tip, 4.0, RED_LIVE);
 
-                    painter.line_segment([layer_pos, y_tip], Stroke::new(2.0_f32, GREEN_OK));
-                    painter.circle_filled(y_tip, 4.0, GREEN_OK);
+                    painter.line_segment([layer_pos, y_tip], Stroke::new(2.0_f32, AMBER_WARN));
+                    painter.circle_filled(y_tip, 4.0, AMBER_WARN);
 
                     painter.line_segment([layer_pos, z_tip], Stroke::new(2.0_f32, ACCENT));
                     painter.circle_filled(z_tip, 4.0, ACCENT);

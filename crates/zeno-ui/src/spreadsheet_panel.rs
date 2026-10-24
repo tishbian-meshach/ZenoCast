@@ -9,7 +9,7 @@ use zeno_data::sheet::{
 use zeno_data::DataStore;
 
 use crate::theme::{
-    ACCENT, AMBER_WARN, GREEN_OK, GRID_UNIT, RED_LIVE, SURFACE_0, SURFACE_2, TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, GRID_UNIT, RED_LIVE, SURFACE_0, SURFACE_2, TEXT, TEXT_MUTED,
 };
 
 /// UI state for the spreadsheet links panel.
@@ -59,7 +59,7 @@ pub fn ui_spreadsheet_links_panel(
                         let link = &engine.links()[i];
 
                         let status_chip = match &link.status {
-                            SheetLinkStatus::Ok => RichText::new("[OK]").color(GREEN_OK),
+                            SheetLinkStatus::Ok => RichText::new("[OK]").color(TEXT),
                             SheetLinkStatus::Warning(_) => {
                                 RichText::new("[WARN]").color(AMBER_WARN)
                             }
@@ -126,7 +126,7 @@ pub fn ui_spreadsheet_links_panel(
                 if let Some(link) = engine.links().get(sel_idx) {
                     match &link.status {
                         SheetLinkStatus::Ok => {
-                            ui.label(RichText::new("Live Synced").color(GREEN_OK));
+                            ui.label(RichText::new("Live Synced").color(TEXT));
                         }
                         SheetLinkStatus::Warning(msg) => {
                             ui.label(RichText::new(format!("Warning: {}", msg)).color(AMBER_WARN));
