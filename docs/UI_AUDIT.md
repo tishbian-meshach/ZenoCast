@@ -222,3 +222,12 @@ Automated enforcement and manual inspection verified against `Zenocast: Build Sp
 | **Performance Telemetry HUD** | `performance_hud.rs` | Replaced `GREEN_OK` with `TEXT` token across all telemetry thresholds. | [x] Verified |
 | **Log Viewer Panel** | `log_viewer.rs` | Replaced `GREEN_OK` with `TEXT_MUTED` for INFO badges and severity filters. | [x] Verified |
 
+---
+
+## 14. Edit Overlay Mode Input Lockup Resolution (v1.3 Pass 1)
+
+| Audit Item | Root Cause Identified | Remediation | Verification | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Overlay Editor Dead Input** | Canvas `transform_gizmo` was passed `comp_rect` (1920x1080 viewport) instead of `canvas_rect`. In egui, an interaction area of 1920x1080 overflowed the canvas and covered the Layers panel, toolbar buttons (`+ Text`, `+ Shape`, etc.), Properties, and Timeline, capturing all clicks as empty-canvas marquee drags. Additionally, `allocate_ui` in `app.rs` inherited horizontal layout from parent, causing layout overflow. | 1. Confined gizmo interaction rect strictly to `canvas_rect`, passing `editor.pan` to compute projection.<br>2. Switched canvas `allocate_painter` to `Sense::hover()`, delegating drag/click handling to `transform_gizmo_state`.<br>3. Wrapped toolbar row with `horizontal_wrapped` in `layers_panel.rs`.<br>4. Re-architected 3 editor columns in `app.rs` with `allocate_ui_with_layout(Layout::top_down)` and 280px left panel width. | Verified end-to-end via automated integration test `test_mode_switching_and_overlay_clicks` in `tests/ui_wiring/app_render_flow.rs` asserting real pointer click on `+ Text` adds layer. | [x] Verified |
+
+

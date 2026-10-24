@@ -136,3 +136,111 @@ fn test_app_renders_multiple_frames_without_panic() {
         app.update_ui(ctx);
     });
 }
+
+#[test]
+fn test_mode_switching_and_overlay_clicks() {
+    let mut app = create_test_app();
+    let ctx = egui::Context::default();
+
+    // 1. LiveStudio mode renders
+    app.app_mode = zeno_ui::app::AppMode::LiveStudio;
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 900.0),
+            )),
+            ..Default::default()
+        },
+        |ctx| app.update_ui(ctx),
+    );
+
+    // 2. Switch to EditOverlay mode
+    app.app_mode = zeno_ui::app::AppMode::EditOverlay;
+    assert_eq!(app.overlay_editor.composition.layers.len(), 0);
+
+    // Initial render in EditOverlay mode to layout panels
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 900.0),
+            )),
+            ..Default::default()
+        },
+        |ctx| app.update_ui(ctx),
+    );
+
+    // 3. Click "+ Text" directly through UI interaction in EditOverlay mode
+    // Toolbar button "+ Text" is in the left panel toolbar around (50, 75)
+    let click_pos = egui::pos2(50.0, 75.0);
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 900.0),
+            )),
+            events: vec![
+                egui::Event::PointerMoved(click_pos),
+                egui::Event::PointerButton {
+                    pos: click_pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            ..Default::default()
+        },
+        |ctx| app.update_ui(ctx),
+    );
+
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 900.0),
+            )),
+            events: vec![egui::Event::PointerButton {
+                pos: click_pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            ..Default::default()
+        },
+        |ctx| app.update_ui(ctx),
+    );
+
+    // Verify "+ Text" was clicked and layer was added
+    assert_eq!(
+        app.overlay_editor.composition.layers.len(),
+        1,
+        "Clicking '+ Text' button in EditOverlay mode must add a new layer"
+    );
+
+    // 4. Switch to DataControl mode
+    app.app_mode = zeno_ui::app::AppMode::DataControl;
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 900.0),
+            )),
+            ..Default::default()
+        },
+        |ctx| app.update_ui(ctx),
+    );
+
+    // 5. Switch back to LiveStudio mode
+    app.app_mode = zeno_ui::app::AppMode::LiveStudio;
+    let _ = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1440.0, 900.0),
+            )),
+            ..Default::default()
+        },
+        |ctx| app.update_ui(ctx),
+    );
+}

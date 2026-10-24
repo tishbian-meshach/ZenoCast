@@ -46,8 +46,21 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
         ui.separator();
 
         // Canvas Area
-        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::click_and_drag());
+        let (response, painter) = ui.allocate_painter(ui.available_size(), Sense::hover());
         let canvas_rect = response.rect;
+
+        // Middle-mouse drag to pan or mouse-wheel to zoom
+        if response.hovered() {
+            let scroll_delta = ui.input(|i| i.raw_scroll_delta);
+            if scroll_delta.y != 0.0 {
+                editor.zoom = (editor.zoom + scroll_delta.y * 0.001).clamp(0.1, 4.0);
+            }
+            if ui.input(|i| i.pointer.button_down(egui::PointerButton::Middle)) {
+                let delta = ui.input(|i| i.pointer.delta());
+                editor.pan.x += delta.x;
+                editor.pan.y += delta.y;
+            }
+        }
 
         // Background dark surface
         painter.rect(
@@ -345,9 +358,9 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
 
         let events = editor.transform_gizmo_state.draw_and_interact(
             ui,
-            comp_rect,
+            canvas_rect,
             canvas_size,
-            egui::Vec2::ZERO,
+            vec2(editor.pan.x, editor.pan.y),
             editor.zoom,
             &gizmo_items,
             &selected_ids,

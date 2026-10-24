@@ -23,7 +23,7 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
             .and_then(|id| editor.composition.layers.iter().position(|l| l.id == id));
 
         // Toolbar: Add Layer, Delete Layer, Up, Down
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             if ui.button("+ Text").clicked() {
                 let name = format!("Text Layer {}", layer_count + 1);
                 editor.add_text_layer(&name, "New Text");

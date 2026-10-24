@@ -1356,56 +1356,71 @@ impl ZenocastApp {
                         vec2(ui.available_width(), top_height),
                         egui::Layout::left_to_right(egui::Align::Min),
                         |ui| {
-                            ui.allocate_ui(vec2(250.0, top_height), |ui| {
-                                egui::Frame::group(ui.style()).show(ui, |ui| {
-                                    ui.horizontal(|ui| {
-                                        if ui
-                                            .selectable_label(
-                                                self.overlay_editor.active_left_tab
-                                                    == LeftTab::Layers,
-                                                "Layers",
-                                            )
-                                            .clicked()
-                                        {
-                                            self.overlay_editor.active_left_tab = LeftTab::Layers;
-                                        }
-                                        if ui
-                                            .selectable_label(
-                                                self.overlay_editor.active_left_tab
-                                                    == LeftTab::Assets,
-                                                "Assets",
-                                            )
-                                            .clicked()
-                                        {
-                                            self.overlay_editor.active_left_tab = LeftTab::Assets;
+                            let left_w = 280.0_f32.min(ui.available_width() * 0.28);
+                            ui.allocate_ui_with_layout(
+                                vec2(left_w, top_height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            if ui
+                                                .selectable_label(
+                                                    self.overlay_editor.active_left_tab
+                                                        == LeftTab::Layers,
+                                                    "Layers",
+                                                )
+                                                .clicked()
+                                            {
+                                                self.overlay_editor.active_left_tab =
+                                                    LeftTab::Layers;
+                                            }
+                                            if ui
+                                                .selectable_label(
+                                                    self.overlay_editor.active_left_tab
+                                                        == LeftTab::Assets,
+                                                    "Assets",
+                                                )
+                                                .clicked()
+                                            {
+                                                self.overlay_editor.active_left_tab =
+                                                    LeftTab::Assets;
+                                            }
+                                        });
+                                        ui.separator();
+                                        match self.overlay_editor.active_left_tab {
+                                            LeftTab::Layers => {
+                                                ui_layers_panel(&mut self.overlay_editor, ui);
+                                            }
+                                            LeftTab::Assets => {
+                                                ui_assets_panel(&mut self.overlay_editor, ui);
+                                            }
                                         }
                                     });
-                                    ui.separator();
-                                    match self.overlay_editor.active_left_tab {
-                                        LeftTab::Layers => {
-                                            ui_layers_panel(&mut self.overlay_editor, ui);
-                                        }
-                                        LeftTab::Assets => {
-                                            ui_assets_panel(&mut self.overlay_editor, ui);
-                                        }
-                                    }
-                                });
-                            });
+                                },
+                            );
                             ui.separator();
 
                             let canvas_w = (ui.available_width() - 320.0).max(300.0);
-                            ui.allocate_ui(vec2(canvas_w, top_height), |ui| {
-                                egui::Frame::group(ui.style()).show(ui, |ui| {
-                                    ui_canvas(&mut self.overlay_editor, ui);
-                                });
-                            });
+                            ui.allocate_ui_with_layout(
+                                vec2(canvas_w, top_height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                                        ui_canvas(&mut self.overlay_editor, ui);
+                                    });
+                                },
+                            );
                             ui.separator();
 
-                            ui.allocate_ui(vec2(ui.available_width(), top_height), |ui| {
-                                egui::Frame::group(ui.style()).show(ui, |ui| {
-                                    ui_properties_panel(&mut self.overlay_editor, ui);
-                                });
-                            });
+                            ui.allocate_ui_with_layout(
+                                vec2(ui.available_width(), top_height),
+                                egui::Layout::top_down(egui::Align::Min),
+                                |ui| {
+                                    egui::Frame::group(ui.style()).show(ui, |ui| {
+                                        ui_properties_panel(&mut self.overlay_editor, ui);
+                                    });
+                                },
+                            );
                         },
                     );
 
