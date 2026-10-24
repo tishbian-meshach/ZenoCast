@@ -99,6 +99,7 @@ pub struct StudioTabViewer<'a> {
     pub trigger_move_scene_down: &'a mut Option<String>,
     pub trigger_audio_change: &'a mut bool,
     pub trigger_open_add_source: &'a mut bool,
+    pub trigger_open_add_source_with_path: &'a mut Option<String>,
     pub trigger_open_edit_source: &'a mut Option<String>,
     pub trigger_remove_source: &'a mut Option<String>,
     pub trigger_toggle_source_visibility: &'a mut Option<String>,
@@ -366,6 +367,29 @@ impl<'a> StudioTabViewer<'a> {
         });
 
         ui.separator();
+
+        // Drag & drop file onto Sources panel
+        let panel_rect = ui.max_rect();
+        if ui.rect_contains_pointer(panel_rect) {
+            ui.ctx().input(|i| {
+                if let Some(dropped) = i.raw.dropped_files.first() {
+                    if let Some(ref path) = dropped.path {
+                        *self.trigger_open_add_source_with_path =
+                            Some(path.to_string_lossy().to_string());
+                    }
+                }
+            });
+        }
+
+        if scene.sources.is_empty() {
+            ui.vertical_centered(|ui| {
+                ui.add_space(24.0);
+                ui.colored_label(
+                    TEXT_MUTED,
+                    "No sources yet — click + Add Source or drag media here",
+                );
+            });
+        }
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             for src in &mut scene.sources {

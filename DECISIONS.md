@@ -730,6 +730,20 @@ This log records major architectural and implementation choices, defaults select
   - Dynamic code swapping/true hot-reloading is not natively supported by `egui`/`eframe` on native desktop platforms without dynamic library boundary separation (`dylib` / `cdylib` architecture).
   - Implemented `scripts/dev-watch.ps1` with incremental change detection on `crates/**/*.rs` and `Cargo.toml`. When changes occur, it automatically terminates the previous process and launches the newly compiled build, achieving a sub-10-second iteration loop from file save to running window.
 
+### 2026-10-24: Section 2 - Unified Media Source (`feat(media): unified Media Source with native file picker and thumbnail`)
+- **Unified Media Source**:
+  - Merged separate Video File and Image source kinds into a single "Media Source" option in the Type Picker, auto-detecting behavior from file extensions (`mp4`, `mov`, `mkv`, `webm`, `png`, `jpg`, `jpeg`, `gif`, `webp`).
+  - Still images render with scale mode choices (`Fit`, `Fill`, `Stretch`, `Center`) and support multiple file selection for slideshows with configurable interval timing.
+  - Video and GIF media expose transport controls (Play/Pause, Stop/Rewind), continuous looping checkbox, and audio volume/gain slider (for video files).
+- **Native File Pickers (`rfd`)**:
+  - Replaced typed file paths in New Source dialog and Open/Save Project modals with real native Windows file pickers (`rfd::FileDialog`) with media extension filters, read-only truncated path labels, and one-click clear ("❌") buttons.
+- **In-Dialog Thumbnail Preview**:
+  - Generates real-time 160x90 thumbnails on file selection: extracted directly via `image` for still graphics/GIFs and extracted from the initial video frame via hidden FFmpeg subprocess (`CREATE_NO_WINDOW`), falling back gracefully to dark letterboxed film frames if offline.
+- **Drag-and-Drop & Modal Navigation**:
+  - Supported dragging media files directly onto the New Source dialog or onto the Live Studio Sources panel (which auto-opens the Media Source dialog with the dropped file pre-loaded).
+  - Modal keyboard navigation: Escape key closes/cancels dialogs, Enter key confirms and creates/updates source.
+
+
 
 
 

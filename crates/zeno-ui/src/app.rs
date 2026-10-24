@@ -556,9 +556,21 @@ impl ZenocastApp {
                         ImageSource::new(&name, file_path).with_id(source_id),
                     )),
                     SourceKind::MediaFile => {
-                        let mut vid = VideoSource::new(&name, file_path).with_id(source_id);
-                        vid.set_looping(looping);
-                        Some(Box::new(vid))
+                        let ext = std::path::Path::new(&file_path)
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| e.to_ascii_lowercase())
+                            .unwrap_or_default();
+                        let is_video = matches!(ext.as_str(), "mp4" | "mov" | "mkv" | "webm");
+                        if is_video {
+                            let mut vid = VideoSource::new(&name, file_path).with_id(source_id);
+                            vid.set_looping(looping);
+                            Some(Box::new(vid))
+                        } else {
+                            Some(Box::new(
+                                ImageSource::new(&name, file_path).with_id(source_id),
+                            ))
+                        }
                     }
                     SourceKind::AudioInput => {
                         let mut aud =
@@ -1086,6 +1098,7 @@ impl ZenocastApp {
         let mut trigger_toggle_stream = false;
         let mut trigger_toggle_record = false;
         let mut trigger_open_add_source = false;
+        let mut trigger_open_add_source_with_path: Option<String> = None;
         let mut trigger_open_edit_source: Option<String> = None;
         let mut trigger_remove_source: Option<String> = None;
         let mut trigger_toggle_source_visibility: Option<String> = None;
@@ -1142,6 +1155,7 @@ impl ZenocastApp {
                     preview_texture_id: self.preview_texture_id,
                     program_texture_id: self.program_texture_id,
                     trigger_open_add_source: &mut trigger_open_add_source,
+                    trigger_open_add_source_with_path: &mut trigger_open_add_source_with_path,
                     trigger_open_edit_source: &mut trigger_open_edit_source,
                     trigger_remove_source: &mut trigger_remove_source,
                     trigger_toggle_source_visibility: &mut trigger_toggle_source_visibility,
@@ -1225,6 +1239,9 @@ impl ZenocastApp {
         if trigger_open_add_source {
             self.source_dialog.open_add();
         }
+        if let Some(path) = trigger_open_add_source_with_path {
+            self.source_dialog.open_add_media_with_path(path);
+        }
         if let Some(ref edit_id) = trigger_open_edit_source {
             if let Some(ref sel_scene) = self.selected_scene_id {
                 if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == sel_scene) {
@@ -1306,10 +1323,26 @@ impl ZenocastApp {
             Window::new("Open Project")
                 .collapsible(false)
                 .resizable(false)
-                .default_size(vec2(400.0, 160.0))
+                .default_size(vec2(480.0, 160.0))
                 .show(ctx, |ui| {
-                    ui.label("Enter project file path (.arxproj):");
-                    ui.text_edit_singleline(&mut self.file_dialog_path);
+                    ui.label("Project file (.arxproj):");
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&self.file_dialog_path).monospace(),
+                            )
+                            .truncate(),
+                        );
+                        if ui.button("Browse…").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Zenocast Project", &["arxproj"])
+                                .add_filter("All Files", &["*"])
+                                .pick_file()
+                            {
+                                self.file_dialog_path = path.to_string_lossy().to_string();
+                            }
+                        }
+                    });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Open").clicked() {
@@ -1329,10 +1362,26 @@ impl ZenocastApp {
             Window::new("Save Project As")
                 .collapsible(false)
                 .resizable(false)
-                .default_size(vec2(400.0, 160.0))
+                .default_size(vec2(480.0, 160.0))
                 .show(ctx, |ui| {
-                    ui.label("Enter destination file path (.arxproj):");
-                    ui.text_edit_singleline(&mut self.file_dialog_path);
+                    ui.label("Destination file (.arxproj):");
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(&self.file_dialog_path).monospace(),
+                            )
+                            .truncate(),
+                        );
+                        if ui.button("Browse…").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Zenocast Project", &["arxproj"])
+                                .add_filter("All Files", &["*"])
+                                .save_file()
+                            {
+                                self.file_dialog_path = path.to_string_lossy().to_string();
+                            }
+                        }
+                    });
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if ui.button("Save").clicked() {

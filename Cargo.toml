@@ -57,7 +57,7 @@ proptest = "1.6"
 wgpu = "24"
 bytemuck = { version = "1.20", features = ["derive"] }
 pollster = "0.4"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 winit = { version = "0.30", default-features = false, features = ["rwh_06"] }
 windows = { version = "0.58", default-features = false }
 parking_lot = "0.12"
@@ -65,6 +65,7 @@ crossbeam-channel = "0.5"
 egui = "0.31"
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu", "persistence"] }
 egui_dock = { version = "0.16", default-features = false }
+rfd = "0.15"
 
 [workspace.lints.rust]
 unsafe_code = "allow" # Restricted per rule 4 to zeno-platform and FFI glue

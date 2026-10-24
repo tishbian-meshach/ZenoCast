@@ -60,8 +60,97 @@ pub enum SourceDialogAction {
     },
 }
 
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+fn create_hidden_command(program: impl AsRef<std::ffi::OsStr>) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// Generates or extracts a thumbnail (RGBA8) for an image or video file.
+pub fn load_media_thumbnail(file_path: &str) -> Option<(u32, u32, Vec<u8>)> {
+    let path = std::path::Path::new(file_path);
+    if !path.exists() {
+        return None;
+    }
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    match ext.as_str() {
+        "png" | "jpg" | "jpeg" | "webp" | "bmp" | "gif" => {
+            if let Ok(dyn_img) = image::open(path) {
+                let thumb = dyn_img.thumbnail(256, 144);
+                let rgba = thumb.to_rgba8();
+                return Some((rgba.width(), rgba.height(), rgba.into_raw()));
+            }
+        }
+        "mp4" | "mov" | "mkv" | "webm" => {
+            let mut cmd = create_hidden_command("ffmpeg");
+            if let Ok(out) = cmd
+                .args([
+                    "-nostdin",
+                    "-y",
+                    "-ss",
+                    "00:00:00",
+                    "-i",
+                    file_path,
+                    "-vframes",
+                    "1",
+                    "-f",
+                    "image2pipe",
+                    "-vcodec",
+                    "png",
+                    "-",
+                ])
+                .output()
+            {
+                if out.status.success() && !out.stdout.is_empty() {
+                    if let Ok(dyn_img) = image::load_from_memory(&out.stdout) {
+                        let thumb = dyn_img.thumbnail(256, 144);
+                        let rgba = thumb.to_rgba8();
+                        return Some((rgba.width(), rgba.height(), rgba.into_raw()));
+                    }
+                }
+            }
+            // Clean fallback thumbnail for video if ffmpeg not available:
+            let w = 256u32;
+            let h = 144u32;
+            let mut buf = vec![0u8; (w * h * 4) as usize];
+            for y in 0..h {
+                for x in 0..w {
+                    let idx = ((y * w + x) * 4) as usize;
+                    let is_border = x < 3 || x >= w - 3 || y < 3 || y >= h - 3;
+                    if is_border {
+                        buf[idx] = 60;
+                        buf[idx + 1] = 65;
+                        buf[idx + 2] = 80;
+                        buf[idx + 3] = 255;
+                    } else {
+                        buf[idx] = 25;
+                        buf[idx + 1] = 28;
+                        buf[idx + 2] = 35;
+                        buf[idx + 3] = 255;
+                    }
+                }
+            }
+            return Some((w, h, buf));
+        }
+        _ => {}
+    }
+    None
+}
+
 /// In-memory state tracking source type picking and properties editing.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub struct SourceDialogState {
     pub mode: SourceDialogMode,
     pub name: String,
@@ -72,6 +161,9 @@ pub struct SourceDialogState {
     pub audio_device: String,
     pub scale_mode: String,
     pub file_path: String,
+    pub media_files: Vec<String>,
+    pub slideshow_interval_sec: f32,
+    pub is_playing: bool,
     pub text_content: String,
     pub font_size: f32,
     pub url: String,
@@ -82,6 +174,66 @@ pub struct SourceDialogState {
     pub volume: f32,
     pub muted: bool,
     pub error_message: Option<String>,
+    pub thumbnail_rgba: Option<(u32, u32, Vec<u8>)>,
+    pub thumbnail_tex: Option<egui::TextureHandle>,
+}
+
+impl std::fmt::Debug for SourceDialogState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SourceDialogState")
+            .field("mode", &self.mode)
+            .field("name", &self.name)
+            .field("color_rgba", &self.color_rgba)
+            .field("display_index", &self.display_index)
+            .field("window_title", &self.window_title)
+            .field("camera_device", &self.camera_device)
+            .field("audio_device", &self.audio_device)
+            .field("scale_mode", &self.scale_mode)
+            .field("file_path", &self.file_path)
+            .field("media_files", &self.media_files)
+            .field("slideshow_interval_sec", &self.slideshow_interval_sec)
+            .field("is_playing", &self.is_playing)
+            .field("text_content", &self.text_content)
+            .field("font_size", &self.font_size)
+            .field("url", &self.url)
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("capture_cursor", &self.capture_cursor)
+            .field("looping", &self.looping)
+            .field("volume", &self.volume)
+            .field("muted", &self.muted)
+            .field("error_message", &self.error_message)
+            .field("has_thumbnail", &self.thumbnail_rgba.is_some())
+            .finish()
+    }
+}
+
+impl PartialEq for SourceDialogState {
+    fn eq(&self, other: &Self) -> bool {
+        self.mode == other.mode
+            && self.name == other.name
+            && self.color_rgba == other.color_rgba
+            && self.display_index == other.display_index
+            && self.window_title == other.window_title
+            && self.camera_device == other.camera_device
+            && self.audio_device == other.audio_device
+            && self.scale_mode == other.scale_mode
+            && self.file_path == other.file_path
+            && self.media_files == other.media_files
+            && self.slideshow_interval_sec == other.slideshow_interval_sec
+            && self.is_playing == other.is_playing
+            && self.text_content == other.text_content
+            && self.font_size == other.font_size
+            && self.url == other.url
+            && self.width == other.width
+            && self.height == other.height
+            && self.capture_cursor == other.capture_cursor
+            && self.looping == other.looping
+            && self.volume == other.volume
+            && self.muted == other.muted
+            && self.error_message == other.error_message
+            && self.thumbnail_rgba == other.thumbnail_rgba
+    }
 }
 
 impl Default for SourceDialogState {
@@ -96,6 +248,9 @@ impl Default for SourceDialogState {
             audio_device: String::new(),
             scale_mode: "Fit".to_string(),
             file_path: String::new(),
+            media_files: Vec::new(),
+            slideshow_interval_sec: 5.0,
+            is_playing: true,
             text_content: "Zenocast Live".into(),
             font_size: 48.0,
             url: "https://zenocast.live".into(),
@@ -106,6 +261,8 @@ impl Default for SourceDialogState {
             volume: 1.0,
             muted: false,
             error_message: None,
+            thumbnail_rgba: None,
+            thumbnail_tex: None,
         }
     }
 }
@@ -115,6 +272,48 @@ impl SourceDialogState {
     pub fn open_add(&mut self) {
         *self = Self::default();
         self.mode = SourceDialogMode::TypePicker;
+    }
+
+    /// Opens the modal in Properties mode pre-filled with a media file path (e.g. from drag-and-drop).
+    pub fn open_add_media_with_path(&mut self, path: String) {
+        *self = Self::default();
+        let stem = std::path::Path::new(&path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Media Source")
+            .to_string();
+        self.name = stem;
+        self.file_path = path.clone();
+        self.media_files = vec![path];
+        self.mode = SourceDialogMode::Properties {
+            kind: SourceKind::MediaFile,
+            edit_source_id: None,
+        };
+    }
+
+    /// Ensures thumbnail texture is initialized for preview rendering.
+    pub fn ensure_thumbnail(&mut self, ctx: &egui::Context) {
+        if self.thumbnail_tex.is_none() {
+            if let Some((w, h, ref rgba)) = self.thumbnail_rgba {
+                let color_img =
+                    egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], rgba);
+                self.thumbnail_tex =
+                    Some(ctx.load_texture("media_thumb", color_img, egui::TextureOptions::LINEAR));
+            } else if !self.file_path.trim().is_empty()
+                && std::path::Path::new(&self.file_path).exists()
+            {
+                if let Some((w, h, rgba)) = load_media_thumbnail(&self.file_path) {
+                    let color_img =
+                        egui::ColorImage::from_rgba_unmultiplied([w as usize, h as usize], &rgba);
+                    self.thumbnail_tex = Some(ctx.load_texture(
+                        "media_thumb",
+                        color_img,
+                        egui::TextureOptions::LINEAR,
+                    ));
+                    self.thumbnail_rgba = Some((w, h, rgba));
+                }
+            }
+        }
     }
 
     /// Opens the modal in Properties mode pre-filled with an existing source's settings.
@@ -152,6 +351,7 @@ impl SourceDialogState {
             }
             SourceKind::Image | SourceKind::MediaFile => {
                 self.file_path = target.to_string();
+                self.media_files = vec![target.to_string()];
             }
             SourceKind::Text => {
                 self.text_content = target.to_string();
@@ -219,14 +419,9 @@ impl SourceDialogState {
                                 "USB UVC webcam, PCIe HDMI or SDI capture feed",
                             ),
                             (
-                                "Video File Source",
+                                "Media Source",
                                 SourceKind::MediaFile,
-                                "MP4, MKV, MOV video playback with looping",
-                            ),
-                            (
-                                "Image Source",
-                                SourceKind::Image,
-                                "Static PNG, JPEG, SVG graphic overlay",
+                                "Video (MP4, MKV, MOV), image (PNG, JPG), or GIF with auto-detected playback",
                             ),
                             (
                                 "Text Source",
@@ -286,14 +481,25 @@ impl SourceDialogState {
                 let title = if is_edit {
                     format!("Source Properties: {}", self.name)
                 } else {
-                    format!("New Source: {:?}", kind)
+                    match kind {
+                        SourceKind::MediaFile | SourceKind::Image => {
+                            "New Source: Media Source".to_string()
+                        }
+                        _ => format!("New Source: {:?}", kind),
+                    }
                 };
+
+                let escape_pressed = ctx.input(|i| i.key_pressed(egui::Key::Escape));
+                let enter_pressed = ctx.input(|i| i.key_pressed(egui::Key::Enter));
+                if escape_pressed {
+                    self.close();
+                }
 
                 Window::new(title)
                     .collapsible(false)
-                    .resizable(false)
+                    .resizable(true)
                     .anchor(Align2::CENTER_CENTER, vec2(0.0, 0.0))
-                    .fixed_size(vec2(520.0, 460.0))
+                    .default_size(vec2(540.0, 520.0))
                     .show(ctx, |ui| {
                         ui.spacing_mut().item_spacing = vec2(GRID_UNIT, GRID_UNIT);
 
@@ -488,51 +694,163 @@ impl SourceDialogState {
                                     }
                                 }
                             }
-                            SourceKind::Image => {
-                                ui.horizontal(|ui| {
-                                    ui.colored_label(TEXT, "Image Path:");
-                                    ui.text_edit_singleline(&mut self.file_path);
+                            SourceKind::Image | SourceKind::MediaFile => {
+                                // Drag & drop detection onto dialog
+                                ctx.input(|i| {
+                                    if let Some(file) = i.raw.dropped_files.first() {
+                                        if let Some(ref path) = file.path {
+                                            let p = path.to_string_lossy().to_string();
+                                            self.file_path = p.clone();
+                                            self.media_files = vec![p];
+                                            self.thumbnail_tex = None;
+                                            self.thumbnail_rgba = None;
+                                        }
+                                    }
                                 });
+
+                                self.ensure_thumbnail(ctx);
+
+                                // File path picker row
+                                ui.horizontal(|ui| {
+                                    ui.colored_label(TEXT, "Media File:");
+                                    let display_path = if self.file_path.is_empty() {
+                                        "No file selected".to_string()
+                                    } else {
+                                        self.file_path.clone()
+                                    };
+                                    ui.add(egui::Label::new(egui::RichText::new(&display_path).monospace()).truncate());
+                                });
+
+                                ui.horizontal(|ui| {
+                                    if ui.button("Browse…").clicked() {
+                                        let dialog = rfd::FileDialog::new()
+                                            .add_filter("Media Files", &["mp4", "mov", "mkv", "webm", "png", "jpg", "jpeg", "gif", "webp"])
+                                            .add_filter("Video Files", &["mp4", "mov", "mkv", "webm"])
+                                            .add_filter("Image Files", &["png", "jpg", "jpeg", "gif", "webp"])
+                                            .add_filter("All Files", &["*"]);
+                                        if let Some(path) = dialog.pick_file() {
+                                            let p = path.to_string_lossy().to_string();
+                                            self.file_path = p.clone();
+                                            self.media_files = vec![p];
+                                            self.thumbnail_tex = None;
+                                            self.thumbnail_rgba = None;
+                                            self.ensure_thumbnail(ctx);
+                                        }
+                                    }
+
+                                    if ui.button("Browse Multiple…").on_hover_text("Select multiple images for slideshow").clicked() {
+                                        let dialog = rfd::FileDialog::new()
+                                            .add_filter("Image Files", &["png", "jpg", "jpeg", "gif", "webp"])
+                                            .add_filter("All Files", &["*"]);
+                                        if let Some(paths) = dialog.pick_files() {
+                                            if !paths.is_empty() {
+                                                self.media_files = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                                                self.file_path = self.media_files[0].clone();
+                                                self.thumbnail_tex = None;
+                                                self.thumbnail_rgba = None;
+                                                self.ensure_thumbnail(ctx);
+                                            }
+                                        }
+                                    }
+
+                                    if !self.file_path.is_empty()
+                                        && ui.button("❌").on_hover_text("Clear selected file").clicked()
+                                    {
+                                        self.file_path.clear();
+                                        self.media_files.clear();
+                                        self.thumbnail_tex = None;
+                                        self.thumbnail_rgba = None;
+                                    }
+                                });
+
+                                // Thumbnail preview
+                                if let Some(ref tex) = self.thumbnail_tex {
+                                    ui.add_space(4.0);
+                                    ui.group(|ui| {
+                                        ui.horizontal(|ui| {
+                                            let (rect, _resp) = ui.allocate_exact_size(vec2(160.0, 90.0), egui::Sense::hover());
+                                            ui.painter().image(
+                                                tex.id(),
+                                                rect,
+                                                egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                                                egui::Color32::WHITE,
+                                            );
+                                            ui.vertical(|ui| {
+                                                if let Some(fname) = std::path::Path::new(&self.file_path).file_name().and_then(|f| f.to_str()) {
+                                                    ui.colored_label(TEXT, fname);
+                                                }
+                                                if self.media_files.len() > 1 {
+                                                    ui.colored_label(TEXT_MUTED, format!("Slideshow: {} files", self.media_files.len()));
+                                                }
+                                                let ext_upper = std::path::Path::new(&self.file_path)
+                                                    .extension()
+                                                    .and_then(|e| e.to_str())
+                                                    .map(|e| e.to_ascii_uppercase())
+                                                    .unwrap_or_default();
+                                                ui.colored_label(TEXT_MUTED, format!("Type: {}", ext_upper));
+                                            });
+                                        });
+                                    });
+                                    ui.add_space(4.0);
+                                }
+
+                                // Auto-detect media behavior
+                                let ext = std::path::Path::new(&self.file_path)
+                                    .extension()
+                                    .and_then(|e| e.to_str())
+                                    .map(|e| e.to_ascii_lowercase())
+                                    .unwrap_or_default();
+                                let is_video = matches!(ext.as_str(), "mp4" | "mov" | "mkv" | "webm");
+                                let is_gif = ext == "gif";
+
+                                if is_video || is_gif {
+                                    ui.group(|ui| {
+                                        ui.colored_label(TEXT, "Transport & Playback:");
+                                        ui.horizontal(|ui| {
+                                            let play_text = if self.is_playing { "⏸ Pause" } else { "▶ Play" };
+                                            if ui.button(play_text).clicked() {
+                                                self.is_playing = !self.is_playing;
+                                            }
+                                            if ui.button("⏹ Stop / Rewind").clicked() {
+                                                self.is_playing = false;
+                                            }
+                                        });
+                                        ui.checkbox(&mut self.looping, "Loop Playback Continuously");
+                                        if is_video {
+                                            ui.horizontal(|ui| {
+                                                ui.colored_label(TEXT, "Volume:");
+                                                ui.add(egui::Slider::new(&mut self.volume, 0.0..=1.5).text("Gain"));
+                                            });
+                                        }
+                                    });
+                                }
+
                                 ui.horizontal(|ui| {
                                     ui.colored_label(TEXT, "Scale Mode:");
-                                    egui::ComboBox::from_id_salt("img_scale")
+                                    egui::ComboBox::from_id_salt("media_scale_mode")
                                         .selected_text(&self.scale_mode)
                                         .show_ui(ui, |ui| {
-                                            for mode in &["Fit", "Stretch", "Center"] {
-                                                if ui
-                                                    .selectable_label(
-                                                        self.scale_mode == *mode,
-                                                        *mode,
-                                                    )
-                                                    .clicked()
-                                                {
+                                            for mode in &["Fit", "Fill", "Stretch", "Center"] {
+                                                if ui.selectable_label(self.scale_mode == *mode, *mode).clicked() {
                                                     self.scale_mode = (*mode).to_string();
                                                 }
                                             }
                                         });
                                 });
-                                if !self.file_path.trim().is_empty()
-                                    && !std::path::Path::new(&self.file_path).exists()
-                                {
-                                    ui.colored_label(
-                                        AMBER_WARN,
-                                        "Notice: File does not exist on disk (test placeholder will be rendered)",
-                                    );
+
+                                if self.media_files.len() > 1 {
+                                    ui.horizontal(|ui| {
+                                        ui.colored_label(TEXT, "Slideshow Interval:");
+                                        ui.add(egui::Slider::new(&mut self.slideshow_interval_sec, 1.0..=60.0).text("sec"));
+                                    });
                                 }
-                                ui.colored_label(TEXT_MUTED, "Supported formats: PNG, JPEG, SVG");
-                            }
-                            SourceKind::MediaFile => {
-                                ui.horizontal(|ui| {
-                                    ui.colored_label(TEXT, "Video File:");
-                                    ui.text_edit_singleline(&mut self.file_path);
-                                });
-                                ui.checkbox(&mut self.looping, "Loop Playback Continuously");
+
                                 if !self.file_path.trim().is_empty()
                                     && !std::path::Path::new(&self.file_path).exists()
                                 {
                                     ui.colored_label(
                                         AMBER_WARN,
-                                        "Notice: Video file does not exist on disk (offline placeholder will be rendered)",
+                                        "Notice: Media file does not exist on disk (test placeholder will be rendered)",
                                     );
                                 }
                             }
@@ -654,6 +972,14 @@ impl SourceDialogState {
                                 ui.horizontal(|ui| {
                                     ui.colored_label(TEXT, "Package (.arx):");
                                     ui.text_edit_singleline(&mut self.file_path);
+                                    if ui.button("Browse…").clicked() {
+                                        let dialog = rfd::FileDialog::new()
+                                            .add_filter("Zenocast Overlay (.arx)", &["arx"])
+                                            .add_filter("All Files", &["*"]);
+                                        if let Some(path) = dialog.pick_file() {
+                                            self.file_path = path.to_string_lossy().to_string();
+                                        }
+                                    }
                                 });
                             }
                         }
@@ -666,7 +992,9 @@ impl SourceDialogState {
                             } else {
                                 "Add Source"
                             };
-                            if ui.button(confirm_label).clicked() {
+                            let confirm_clicked = ui.button(confirm_label).clicked()
+                                || (enter_pressed && kind != SourceKind::Text);
+                            if confirm_clicked {
                                 // Input Validation
                                 if self.name.trim().is_empty() {
                                     self.error_message = Some("Source name cannot be empty".into());
