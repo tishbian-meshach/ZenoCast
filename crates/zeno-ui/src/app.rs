@@ -490,6 +490,119 @@ impl ZenocastApp {
         }
     }
 
+    /// Moves a source forward (closer to foreground / up in UI list) and syncs compositor.
+    pub fn move_source_forward(&mut self, scene_id_str: &str, source_id_str: &str) {
+        if let Some(scene) = self
+            .project
+            .scenes
+            .iter_mut()
+            .find(|s| s.id == scene_id_str)
+        {
+            if let Some(idx) = scene.sources.iter().position(|s| s.id == source_id_str) {
+                if idx + 1 < scene.sources.len() {
+                    scene.sources.swap(idx, idx + 1);
+                }
+            }
+        }
+        self.sync_scene_sources_order_to_compositor(scene_id_str);
+    }
+
+    /// Moves a source backward (closer to background / down in UI list) and syncs compositor.
+    pub fn move_source_backward(&mut self, scene_id_str: &str, source_id_str: &str) {
+        if let Some(scene) = self
+            .project
+            .scenes
+            .iter_mut()
+            .find(|s| s.id == scene_id_str)
+        {
+            if let Some(idx) = scene.sources.iter().position(|s| s.id == source_id_str) {
+                if idx > 0 {
+                    scene.sources.swap(idx, idx - 1);
+                }
+            }
+        }
+        self.sync_scene_sources_order_to_compositor(scene_id_str);
+    }
+
+    /// Moves a source to the front (topmost / foreground) and syncs compositor.
+    pub fn move_source_to_front(&mut self, scene_id_str: &str, source_id_str: &str) {
+        if let Some(scene) = self
+            .project
+            .scenes
+            .iter_mut()
+            .find(|s| s.id == scene_id_str)
+        {
+            if let Some(idx) = scene.sources.iter().position(|s| s.id == source_id_str) {
+                if idx + 1 < scene.sources.len() {
+                    let s = scene.sources.remove(idx);
+                    scene.sources.push(s);
+                }
+            }
+        }
+        self.sync_scene_sources_order_to_compositor(scene_id_str);
+    }
+
+    /// Moves a source to the back (bottommost / background) and syncs compositor.
+    pub fn move_source_to_back(&mut self, scene_id_str: &str, source_id_str: &str) {
+        if let Some(scene) = self
+            .project
+            .scenes
+            .iter_mut()
+            .find(|s| s.id == scene_id_str)
+        {
+            if let Some(idx) = scene.sources.iter().position(|s| s.id == source_id_str) {
+                if idx > 0 {
+                    let s = scene.sources.remove(idx);
+                    scene.sources.insert(0, s);
+                }
+            }
+        }
+        self.sync_scene_sources_order_to_compositor(scene_id_str);
+    }
+
+    /// Reorders a source from `from_idx` to `to_idx` in a scene and syncs compositor.
+    pub fn reorder_source(&mut self, scene_id_str: &str, from_idx: usize, to_idx: usize) {
+        if let Some(scene) = self
+            .project
+            .scenes
+            .iter_mut()
+            .find(|s| s.id == scene_id_str)
+        {
+            if from_idx < scene.sources.len() && to_idx < scene.sources.len() && from_idx != to_idx
+            {
+                let s = scene.sources.remove(from_idx);
+                scene.sources.insert(to_idx, s);
+            }
+        }
+        self.sync_scene_sources_order_to_compositor(scene_id_str);
+    }
+
+    /// Synchronizes compositor Scene items order to match the project scene definition sources order.
+    pub fn sync_scene_sources_order_to_compositor(&mut self, scene_id_str: &str) {
+        if let Some(scene_def) = self.project.scenes.iter().find(|s| s.id == scene_id_str) {
+            if let Some(ref mut comp) = *self.compositor.write() {
+                let sc_id = string_to_scene_id(scene_id_str);
+                if let Some(comp_scene) = comp.get_scene_mut(sc_id) {
+                    let mut reordered = Vec::with_capacity(comp_scene.items.len());
+                    for src_def in &scene_def.sources {
+                        let s_id = string_to_source_id(&src_def.id);
+                        if let Some(pos) = comp_scene.items.iter().position(|it| {
+                            if let SceneItemSource::Source(id) = it.source {
+                                id == s_id
+                            } else {
+                                false
+                            }
+                        }) {
+                            reordered.push(comp_scene.items.remove(pos));
+                        }
+                    }
+                    reordered.append(&mut comp_scene.items);
+                    comp_scene.items = reordered;
+                }
+            }
+        }
+    }
+
     /// Creates and adds a new source from dialog action into registry and compositor.
     pub fn create_and_add_source(&mut self, action: SourceDialogAction) {
         match action {
@@ -1148,6 +1261,7 @@ impl ZenocastApp {
         let mut trigger_rename_scene: Option<(String, String)> = None;
         let mut trigger_move_scene_up: Option<String> = None;
         let mut trigger_move_scene_down: Option<String> = None;
+        let mut trigger_sync_source_order: Option<String> = None;
         let mut trigger_audio_change = false;
 
         let stats = self.output_manager.stats();
@@ -1204,6 +1318,7 @@ impl ZenocastApp {
                     trigger_remove_scene: &mut trigger_remove_scene,
                     live_gizmo_state: &mut self.live_gizmo_state,
                     trigger_transform_source: &mut trigger_transform_source,
+                    trigger_sync_source_order: &mut trigger_sync_source_order,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -1328,6 +1443,9 @@ impl ZenocastApp {
         }
         if let Some(ref sc_id) = trigger_move_scene_down {
             self.move_scene_down(sc_id);
+        }
+        if let Some(ref sc_id) = trigger_sync_source_order {
+            self.sync_scene_sources_order_to_compositor(sc_id);
         }
         if trigger_audio_change {
             if let Some(ref act_id) = self.project.active_scene_id {

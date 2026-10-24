@@ -1092,3 +1092,232 @@ fn test_section_3_ui_interactivity_audit_wiring() {
     assert!(!app.is_streaming);
     assert_eq!(app.source_registry.read().count(), 0);
 }
+
+#[test]
+fn test_source_reordering_live_studio() {
+    let gpu = pollster::block_on(zeno_engine::GpuContext::init_headless()).expect("Headless GPU");
+    let device = Arc::new(gpu.device);
+    let queue = Arc::new(gpu.queue);
+
+    let mut comp =
+        zeno_compositor::SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+
+    let project = Project::default();
+    let scene_id = project.scenes[0].id.clone();
+    let sc_id = zeno_ui::app::string_to_scene_id(&scene_id);
+
+    // Populate compositor scene to match project
+    let mut comp_scene = zeno_compositor::Scene::new("Gameplay");
+    comp_scene.id = sc_id;
+    for src in &project.scenes[0].sources {
+        let sid = zeno_ui::app::string_to_source_id(&src.id);
+        comp_scene.add_item(zeno_compositor::SceneItem::new(
+            &src.name,
+            zeno_compositor::SceneItemSource::Source(sid),
+        ));
+    }
+    comp.add_scene(comp_scene);
+    comp.set_program(sc_id);
+    comp.set_preview(sc_id);
+
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some(scene_id.clone()),
+        selected_source_id: None,
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(Some(comp))),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: Some(device.clone()),
+        wgpu_queue: Some(queue.clone()),
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+    };
+
+    // Start with 2 default sources: src_display (idx 0), src_cam (idx 1)
+    assert_eq!(app.project.scenes[0].sources.len(), 2);
+    let id_0 = app.project.scenes[0].sources[0].id.clone();
+    let id_1 = app.project.scenes[0].sources[1].id.clone();
+
+    // Verify initial compositor items match sources order
+    {
+        let comp_lock = app.compositor.read();
+        let comp_scene = comp_lock
+            .as_ref()
+            .unwrap()
+            .get_scene(zeno_ui::app::string_to_scene_id(&scene_id))
+            .unwrap();
+        assert_eq!(comp_scene.items.len(), 2);
+        assert_eq!(
+            comp_scene.items[0].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_0))
+        );
+        assert_eq!(
+            comp_scene.items[1].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_1))
+        );
+    }
+
+    // Move source 0 forward (swaps 0 and 1)
+    app.move_source_forward(&scene_id, &id_0);
+    assert_eq!(app.project.scenes[0].sources[0].id, id_1);
+    assert_eq!(app.project.scenes[0].sources[1].id, id_0);
+
+    // Verify compositor scene items updated immediately
+    {
+        let comp_lock = app.compositor.read();
+        let comp_scene = comp_lock
+            .as_ref()
+            .unwrap()
+            .get_scene(zeno_ui::app::string_to_scene_id(&scene_id))
+            .unwrap();
+        assert_eq!(
+            comp_scene.items[0].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_1))
+        );
+        assert_eq!(
+            comp_scene.items[1].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_0))
+        );
+    }
+
+    // Move source 0 backward (swaps back)
+    app.move_source_backward(&scene_id, &id_0);
+    assert_eq!(app.project.scenes[0].sources[0].id, id_0);
+    assert_eq!(app.project.scenes[0].sources[1].id, id_1);
+
+    // Add a third source
+    app.create_and_add_source(zeno_ui::SourceDialogAction::Create {
+        name: "Third Source".into(),
+        kind: zeno_ui::SourceKind::Color,
+        target: "rgba(0.1,0.2,0.3,1.0)".into(),
+        width: 1920,
+        height: 1080,
+        color_rgba: [0.1, 0.2, 0.3, 1.0],
+        capture_cursor: false,
+        file_path: "".into(),
+        text_content: "".into(),
+        font_size: 24.0,
+        url: "".into(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    });
+    let id_2 = app.selected_source_id.clone().expect("id_2");
+    assert_eq!(app.project.scenes[0].sources.len(), 3);
+    assert_eq!(app.project.scenes[0].sources[0].id, id_0);
+    assert_eq!(app.project.scenes[0].sources[1].id, id_1);
+    assert_eq!(app.project.scenes[0].sources[2].id, id_2);
+
+    // Move id_0 to front (index 2)
+    app.move_source_to_front(&scene_id, &id_0);
+    assert_eq!(app.project.scenes[0].sources[0].id, id_1);
+    assert_eq!(app.project.scenes[0].sources[1].id, id_2);
+    assert_eq!(app.project.scenes[0].sources[2].id, id_0);
+
+    // Verify compositor order
+    {
+        let comp_lock = app.compositor.read();
+        let comp_scene = comp_lock
+            .as_ref()
+            .unwrap()
+            .get_scene(zeno_ui::app::string_to_scene_id(&scene_id))
+            .unwrap();
+        assert_eq!(
+            comp_scene.items[0].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_1))
+        );
+        assert_eq!(
+            comp_scene.items[1].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_2))
+        );
+        assert_eq!(
+            comp_scene.items[2].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_0))
+        );
+    }
+
+    // Move id_0 to back (index 0)
+    app.move_source_to_back(&scene_id, &id_0);
+    assert_eq!(app.project.scenes[0].sources[0].id, id_0);
+    assert_eq!(app.project.scenes[0].sources[1].id, id_1);
+    assert_eq!(app.project.scenes[0].sources[2].id, id_2);
+
+    // Arbitrary reorder: move index 2 to index 1
+    app.reorder_source(&scene_id, 2, 1);
+    assert_eq!(app.project.scenes[0].sources[0].id, id_0);
+    assert_eq!(app.project.scenes[0].sources[1].id, id_2);
+    assert_eq!(app.project.scenes[0].sources[2].id, id_1);
+
+    // Verify compositor order matches
+    {
+        let comp_lock = app.compositor.read();
+        let comp_scene = comp_lock
+            .as_ref()
+            .unwrap()
+            .get_scene(zeno_ui::app::string_to_scene_id(&scene_id))
+            .unwrap();
+        assert_eq!(
+            comp_scene.items[0].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_0))
+        );
+        assert_eq!(
+            comp_scene.items[1].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_2))
+        );
+        assert_eq!(
+            comp_scene.items[2].source,
+            zeno_compositor::SceneItemSource::Source(zeno_ui::app::string_to_source_id(&id_1))
+        );
+    }
+}

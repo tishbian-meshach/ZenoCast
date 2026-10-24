@@ -141,9 +141,9 @@ fn ui_dopesheet(editor: &mut OverlayEditor, ui: &mut Ui) {
         }
     }
 
-    // Draw Tracks
+    // Draw Tracks (Topmost/Foreground layer at top)
     let track_height = ROW_HEIGHT_LIST;
-    for (idx, layer) in editor.composition.layers.iter().enumerate() {
+    for (idx, layer) in editor.composition.layers.iter().rev().enumerate() {
         let y_top = track_rect.min.y + idx as f32 * track_height;
         let y_bot = y_top + track_height;
 

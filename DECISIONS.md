@@ -761,9 +761,21 @@ This log records major architectural and implementation choices, defaults select
   - Live Studio Sources panel includes a collapsible "Transform" section with typed `DragValue` inputs (X, Y, Width, Height, Rotation, and Reset button) that stay in continuous two-way sync with canvas dragging.
   - Overlay Editor canvas updates `layer.transform.position`, `scale_percent`, and `rotation_degrees.z` in real time, keeping the Properties panel inputs in continuous sync.
 
-
-
-
-
-
+### 2026-10-24: Section 3 - Layer and Source Reordering (`feat(ui): layer/source reordering with drag, context menu, and shortcuts`)
+- **Interaction Model Consistency Across Panels**:
+  - Unified the interaction model between Live Studio Sources panel (`dock.rs`) and Overlay Editor Layers panel (`layers_panel.rs`) following the standard broadcast UX established by OBS Studio and Photoshop/After Effects.
+  - **Front-to-Back UI Ordering**: Top row in the list represents the topmost/foreground item (rendered on top on canvas), while the bottom row represents the background layer.
+  - **Drag-and-Drop with Visual Insertion Indicator**:
+    - Rows feature a `⠿` grip handle and allow dragging across the list.
+    - Dragging changes the cursor to `Grabbing` and presents a hovering tooltip with the item name.
+    - A crisp 2.5px horizontal `ACCENT` insertion line with 3.5px circular endpoint caps highlights the exact destination boundary between rows or at list bounds.
+  - **Toolbar Navigation Fallback**: Added matching `▲ Up` (Bring Forward) and `▼ Down` (Send Backward) chevron buttons to both panels, dynamically enabled when selected items have valid movement slots.
+  - **Context Menu & Keyboard Shortcuts**:
+    - Right-click context menu provides "Bring to Front (Ctrl+Shift+])", "Bring Forward (Ctrl+])", "Send Backward (Ctrl+[)", and "Send to Back (Ctrl+Shift+[)".
+    - Keyboard shortcuts (`Ctrl+Shift+]`, `Ctrl+]`, `Ctrl+[`, `Ctrl+Shift+[`) are active whenever the list or panel has selection.
+  - **Live GPU Compositor Synchronization & Undo Support**:
+    - In Live Studio, reordering triggers `sync_scene_sources_order_to_compositor`, immediately rearranging `comp_scene.items` so the GPU compositor updates stacking order live in Preview and Program buses.
+    - In Overlay Editor, layer reordering executes `ReorderLayerCommand`, providing immediate canvas re-stacking and full undo/redo (`Ctrl+Z` / `Ctrl+Y`) history integration.
+  - **Timeline Dope Sheet Alignment**: Timeline tracks iterate in reverse layer order so Track 0 in the timeline visually aligns with Row 0 in the Layers panel.
+  - **Zero-State Messaging**: Added clean inline hints when lists are empty ("No sources yet — click + Add Source or drag media here" / "No layers yet — click + Text, + Shape, or import media").
 

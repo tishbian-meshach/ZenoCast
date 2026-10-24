@@ -208,3 +208,40 @@ fn test_editor_clipboard_copy_paste() {
     assert_eq!(editor.composition.layers[1].name, "Copyable Layer (Copy)");
     assert_eq!(editor.selected_layer_id, Some(pasted_id));
 }
+
+#[test]
+fn test_layer_reordering_and_undo() {
+    let mut editor = OverlayEditor::new(1920, 1080, 60.0, 10.0);
+    let id_a = editor.add_shape_layer("Layer A", Vec2::new(100.0, 50.0), Color::WHITE);
+    let id_b = editor.add_shape_layer("Layer B", Vec2::new(100.0, 50.0), Color::rgb(1.0, 0.0, 0.0));
+    let id_c = editor.add_shape_layer("Layer C", Vec2::new(100.0, 50.0), Color::rgb(0.0, 0.0, 1.0));
+
+    assert_eq!(editor.composition.layers.len(), 3);
+    assert_eq!(editor.composition.layers[0].id, id_a);
+    assert_eq!(editor.composition.layers[1].id, id_b);
+    assert_eq!(editor.composition.layers[2].id, id_c);
+
+    // Bring Layer A (idx 0) to front (idx 2)
+    editor.reorder_layer(0, 2);
+    assert_eq!(editor.composition.layers[0].id, id_b);
+    assert_eq!(editor.composition.layers[1].id, id_c);
+    assert_eq!(editor.composition.layers[2].id, id_a);
+
+    // Undo brings Layer A back to index 0
+    assert!(editor.undo());
+    assert_eq!(editor.composition.layers[0].id, id_a);
+    assert_eq!(editor.composition.layers[1].id, id_b);
+    assert_eq!(editor.composition.layers[2].id, id_c);
+
+    // Redo moves Layer A back to index 2
+    assert!(editor.redo());
+    assert_eq!(editor.composition.layers[0].id, id_b);
+    assert_eq!(editor.composition.layers[1].id, id_c);
+    assert_eq!(editor.composition.layers[2].id, id_a);
+
+    // Send Layer A from index 2 backward to index 1
+    editor.reorder_layer(2, 1);
+    assert_eq!(editor.composition.layers[0].id, id_b);
+    assert_eq!(editor.composition.layers[1].id, id_a);
+    assert_eq!(editor.composition.layers[2].id, id_c);
+}

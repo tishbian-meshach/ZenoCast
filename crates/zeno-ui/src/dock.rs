@@ -7,9 +7,17 @@ use serde::{Deserialize, Serialize};
 use crate::project::Project;
 use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_0,
-    SURFACE_3, TEXT, TEXT_MUTED,
+    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowOrderAction {
+    BringToFront,
+    BringForward,
+    SendBackward,
+    SendToBack,
+}
 
 /// Studio panel tabs available in Live production mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -109,6 +117,7 @@ pub struct StudioTabViewer<'a> {
     pub trigger_remove_scene: &'a mut Option<String>,
     pub live_gizmo_state: &'a mut TransformGizmoState,
     pub trigger_transform_source: &'a mut Option<(String, f32, f32, f32, f32, f32)>,
+    pub trigger_sync_source_order: &'a mut Option<String>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -452,6 +461,12 @@ impl<'a> StudioTabViewer<'a> {
             return;
         };
 
+        let num_sources = scene.sources.len();
+        let sel_idx = self
+            .selected_source_id
+            .as_ref()
+            .and_then(|id| scene.sources.iter().position(|s| &s.id == id));
+
         ui.horizontal(|ui| {
             if ui.button("+ Add Source").clicked() {
                 *self.trigger_open_add_source = true;
@@ -466,6 +481,33 @@ impl<'a> StudioTabViewer<'a> {
             if let Some(ref sel_id) = *self.selected_source_id {
                 if ui.button("Properties").clicked() {
                     *self.trigger_open_edit_source = Some(sel_id.clone());
+                }
+            }
+
+            ui.separator();
+
+            let can_bring_forward = sel_idx.is_some_and(|i| i + 1 < num_sources);
+            let can_send_backward = sel_idx.is_some_and(|i| i > 0);
+
+            if ui
+                .add_enabled(can_bring_forward, egui::Button::new("▲ Up"))
+                .on_hover_text("Bring Forward (Ctrl+])")
+                .clicked()
+            {
+                if let Some(i) = sel_idx {
+                    scene.sources.swap(i, i + 1);
+                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                }
+            }
+
+            if ui
+                .add_enabled(can_send_backward, egui::Button::new("▼ Down"))
+                .on_hover_text("Send Backward (Ctrl+[)")
+                .clicked()
+            {
+                if let Some(i) = sel_idx {
+                    scene.sources.swap(i, i - 1);
+                    *self.trigger_sync_source_order = Some(scene.id.clone());
                 }
             }
         });
@@ -485,6 +527,38 @@ impl<'a> StudioTabViewer<'a> {
             });
         }
 
+        // Keyboard shortcuts for layer reordering
+        let (key_front, key_fwd, key_bwd, key_back) = ui.input(|i| {
+            let ctrl = i.modifiers.command || i.modifiers.ctrl;
+            let shift = i.modifiers.shift;
+            let close_br = i.key_pressed(egui::Key::CloseBracket);
+            let open_br = i.key_pressed(egui::Key::OpenBracket);
+            (
+                ctrl && shift && close_br,
+                ctrl && !shift && close_br,
+                ctrl && !shift && open_br,
+                ctrl && shift && open_br,
+            )
+        });
+
+        if let Some(i) = sel_idx {
+            if key_front && i + 1 < num_sources {
+                let s = scene.sources.remove(i);
+                scene.sources.push(s);
+                *self.trigger_sync_source_order = Some(scene.id.clone());
+            } else if key_fwd && i + 1 < num_sources {
+                scene.sources.swap(i, i + 1);
+                *self.trigger_sync_source_order = Some(scene.id.clone());
+            } else if key_bwd && i > 0 {
+                scene.sources.swap(i, i - 1);
+                *self.trigger_sync_source_order = Some(scene.id.clone());
+            } else if key_back && i > 0 {
+                let s = scene.sources.remove(i);
+                scene.sources.insert(0, s);
+                *self.trigger_sync_source_order = Some(scene.id.clone());
+            }
+        }
+
         if scene.sources.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(24.0);
@@ -495,32 +569,248 @@ impl<'a> StudioTabViewer<'a> {
             });
         }
 
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            for src in &mut scene.sources {
-                ui.horizontal(|ui| {
-                    // Visibility toggle
-                    let vis_icon = if src.visible { "👁" } else { "---" };
-                    if ui.selectable_label(src.visible, vis_icon).clicked() {
-                        *self.trigger_toggle_source_visibility = Some(src.id.clone());
-                    }
+        let dnd_source_id_key = egui::Id::new("dnd_dragging_source_id");
+        let dragging_source_id: Option<String> = ui.ctx().data(|d| d.get_temp(dnd_source_id_key));
 
-                    // Lock toggle
-                    let lock_icon = if src.locked { "🔒" } else { "🔓" };
-                    if ui.selectable_label(src.locked, lock_icon).clicked() {
-                        *self.trigger_toggle_source_lock = Some(src.id.clone());
-                    }
+        let mut row_rects: Vec<egui::Rect> = Vec::with_capacity(num_sources);
+        let mut row_actions: Vec<(usize, RowOrderAction)> = Vec::new();
 
-                    let is_sel = self.selected_source_id.as_deref() == Some(&src.id);
-                    let resp = ui.selectable_label(is_sel, &src.name);
-                    if resp.clicked() {
-                        *self.selected_source_id = Some(src.id.clone());
+        let scroll_output = egui::ScrollArea::vertical().show(ui, |ui| {
+            let list_width = ui.available_width();
+            for display_idx in 0..num_sources {
+                let src_idx = num_sources - 1 - display_idx;
+                let src_id = scene.sources[src_idx].id.clone();
+                let src_name = scene.sources[src_idx].name.clone();
+                let src_visible = scene.sources[src_idx].visible;
+                let src_locked = scene.sources[src_idx].locked;
+                let is_sel = self.selected_source_id.as_deref() == Some(&src_id);
+                let is_dragged = dragging_source_id.as_deref() == Some(&src_id);
+
+                let bg_color = if is_dragged {
+                    SURFACE_2
+                } else if is_sel {
+                    SURFACE_3
+                } else {
+                    egui::Color32::TRANSPARENT
+                };
+
+                let row_frame = egui::Frame::NONE
+                    .fill(bg_color)
+                    .corner_radius(CornerRadius::same(3))
+                    .inner_margin(egui::Margin::symmetric(4, 3));
+
+                let resp = row_frame.show(ui, |ui| {
+                    ui.set_width(list_width);
+                    ui.horizontal(|ui| {
+                        // Drag handle grip
+                        let grip_resp = ui
+                            .colored_label(TEXT_MUTED, "⠿")
+                            .on_hover_text("Drag to reorder");
+                        if grip_resp.hovered() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                        }
+
+                        // Visibility toggle
+                        let vis_icon = if src_visible { "👁" } else { "---" };
+                        if ui.selectable_label(src_visible, vis_icon).clicked() {
+                            *self.trigger_toggle_source_visibility = Some(src_id.clone());
+                        }
+
+                        // Lock toggle
+                        let lock_icon = if src_locked { "🔒" } else { "🔓" };
+                        if ui.selectable_label(src_locked, lock_icon).clicked() {
+                            *self.trigger_toggle_source_lock = Some(src_id.clone());
+                        }
+
+                        // Source name
+                        let text_color = if is_sel { ACCENT } else { TEXT };
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&src_name).color(text_color))
+                                .truncate(),
+                        );
+                    });
+                });
+
+                let row_rect = resp.response.rect;
+                row_rects.push(row_rect);
+
+                // Row interaction
+                let row_sense = ui.interact(
+                    row_rect,
+                    egui::Id::new("source_row_interact").with(&src_id),
+                    Sense::click_and_drag(),
+                );
+
+                if row_sense.drag_started() {
+                    ui.ctx()
+                        .data_mut(|d| d.insert_temp(dnd_source_id_key, src_id.clone()));
+                }
+
+                if row_sense.clicked() {
+                    *self.selected_source_id = Some(src_id.clone());
+                }
+                if row_sense.double_clicked() {
+                    *self.trigger_open_edit_source = Some(src_id.clone());
+                }
+
+                // Context menu
+                row_sense.context_menu(|ui| {
+                    let cur_idx_opt = scene.sources.iter().position(|s| s.id == src_id);
+                    let can_front = cur_idx_opt.is_some_and(|i| i + 1 < num_sources);
+                    let can_back = cur_idx_opt.is_some_and(|i| i > 0);
+
+                    if ui
+                        .add_enabled(can_front, egui::Button::new("Bring to Front\tCtrl+Shift+]"))
+                        .clicked()
+                    {
+                        if let Some(i) = cur_idx_opt {
+                            row_actions.push((i, RowOrderAction::BringToFront));
+                        }
+                        ui.close_menu();
                     }
-                    if resp.double_clicked() {
-                        *self.trigger_open_edit_source = Some(src.id.clone());
+                    if ui
+                        .add_enabled(can_front, egui::Button::new("Bring Forward\tCtrl+]"))
+                        .clicked()
+                    {
+                        if let Some(i) = cur_idx_opt {
+                            row_actions.push((i, RowOrderAction::BringForward));
+                        }
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(can_back, egui::Button::new("Send Backward\tCtrl+["))
+                        .clicked()
+                    {
+                        if let Some(i) = cur_idx_opt {
+                            row_actions.push((i, RowOrderAction::SendBackward));
+                        }
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(can_back, egui::Button::new("Send to Back\tCtrl+Shift+["))
+                        .clicked()
+                    {
+                        if let Some(i) = cur_idx_opt {
+                            row_actions.push((i, RowOrderAction::SendToBack));
+                        }
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Properties").clicked() {
+                        *self.trigger_open_edit_source = Some(src_id.clone());
+                        ui.close_menu();
+                    }
+                    if ui.button("Remove Source").clicked() {
+                        *self.trigger_remove_source = Some(src_id.clone());
+                        ui.close_menu();
                     }
                 });
             }
         });
+
+        if let Some(ref dragged_id) = dragging_source_id {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+
+            if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
+                let dragged_name = scene
+                    .sources
+                    .iter()
+                    .find(|s| &s.id == dragged_id)
+                    .map(|s| s.name.as_str())
+                    .unwrap_or("Source");
+                egui::show_tooltip(
+                    ui.ctx(),
+                    ui.layer_id(),
+                    egui::Id::new("src_drag_tooltip"),
+                    |ui| {
+                        ui.label(format!("⠿ {}", dragged_name));
+                    },
+                );
+
+                if !row_rects.is_empty() {
+                    let mut slot_y = Vec::with_capacity(num_sources + 1);
+                    slot_y.push(row_rects[0].top());
+                    for i in 1..num_sources {
+                        slot_y.push((row_rects[i - 1].bottom() + row_rects[i].top()) * 0.5);
+                    }
+                    slot_y.push(row_rects[num_sources - 1].bottom());
+
+                    let target_slot = (0..=num_sources)
+                        .min_by(|&a, &b| {
+                            let dist_a = (slot_y[a] - pointer_pos.y).abs();
+                            let dist_b = (slot_y[b] - pointer_pos.y).abs();
+                            dist_a
+                                .partial_cmp(&dist_b)
+                                .unwrap_or(std::cmp::Ordering::Equal)
+                        })
+                        .unwrap_or(0);
+
+                    let line_y = slot_y[target_slot];
+                    let min_x = scroll_output.inner_rect.left() + 4.0;
+                    let max_x = scroll_output.inner_rect.right() - 4.0;
+                    ui.painter()
+                        .hline(min_x..=max_x, line_y, Stroke::new(2.5_f32, ACCENT));
+                    ui.painter()
+                        .circle_filled(egui::pos2(min_x, line_y), 3.5_f32, ACCENT);
+                    ui.painter()
+                        .circle_filled(egui::pos2(max_x, line_y), 3.5_f32, ACCENT);
+
+                    if ui.input(|i| i.pointer.any_released()) {
+                        let from_row = (0..num_sources).find(|&r| {
+                            let s_idx = num_sources - 1 - r;
+                            &scene.sources[s_idx].id == dragged_id
+                        });
+                        if let Some(from_r) = from_row {
+                            if target_slot != from_r && target_slot != from_r + 1 {
+                                let new_row = if target_slot < from_r {
+                                    target_slot
+                                } else {
+                                    target_slot - 1
+                                };
+                                let from_idx = num_sources - 1 - from_r;
+                                let to_idx = num_sources - 1 - new_row;
+                                let item = scene.sources.remove(from_idx);
+                                scene.sources.insert(to_idx, item);
+                                *self.trigger_sync_source_order = Some(scene.id.clone());
+                            }
+                        }
+                        ui.ctx()
+                            .data_mut(|d| d.remove_temp::<String>(dnd_source_id_key));
+                    }
+                }
+            } else if ui.input(|i| i.pointer.any_released()) {
+                ui.ctx()
+                    .data_mut(|d| d.remove_temp::<String>(dnd_source_id_key));
+            }
+        }
+
+        // Apply context menu row actions
+        for (i, action) in row_actions {
+            match action {
+                RowOrderAction::BringToFront => {
+                    let s = scene.sources.remove(i);
+                    scene.sources.push(s);
+                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                }
+                RowOrderAction::BringForward => {
+                    if i + 1 < scene.sources.len() {
+                        scene.sources.swap(i, i + 1);
+                        *self.trigger_sync_source_order = Some(scene.id.clone());
+                    }
+                }
+                RowOrderAction::SendBackward => {
+                    if i > 0 {
+                        scene.sources.swap(i, i - 1);
+                        *self.trigger_sync_source_order = Some(scene.id.clone());
+                    }
+                }
+                RowOrderAction::SendToBack => {
+                    let s = scene.sources.remove(i);
+                    scene.sources.insert(0, s);
+                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                }
+            }
+        }
 
         if let Some(ref sel_id) = *self.selected_source_id {
             if let Some(src) = scene.sources.iter_mut().find(|s| &s.id == sel_id) {
