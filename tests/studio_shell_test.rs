@@ -50,6 +50,7 @@ fn test_m8_user_builds_scenes_and_adds_sources_via_ui() {
         y: 0.0,
         width: 1920.0,
         height: 1080.0,
+        rotation: 0.0,
     });
 
     // 3. User adds Camera Feed source
@@ -66,6 +67,7 @@ fn test_m8_user_builds_scenes_and_adds_sources_via_ui() {
         y: 600.0,
         width: 480.0,
         height: 270.0,
+        rotation: 0.0,
     });
 
     // 4. User adds ARX Motion Graphics Overlay
@@ -82,6 +84,7 @@ fn test_m8_user_builds_scenes_and_adds_sources_via_ui() {
         y: 0.0,
         width: 1920.0,
         height: 1080.0,
+        rotation: 0.0,
     });
 
     project.scenes.push(new_scene);
@@ -162,6 +165,7 @@ fn test_m8_preview_to_program_transition_switching() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     assert_eq!(
@@ -250,6 +254,7 @@ fn test_m8_one_click_live_streaming_and_recording() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     assert!(!app.is_streaming);
@@ -424,6 +429,7 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     // Step 1: User adds a real backend source through the source dialog flow
@@ -642,6 +648,7 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     // The 10 broadcast source types required by Section 2.2
@@ -906,6 +913,7 @@ fn test_section_3_ui_interactivity_audit_wiring() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     // 1. AppMode Switching

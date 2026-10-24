@@ -53,6 +53,8 @@ pub struct SourceDefinition {
     pub y: f32,
     pub width: f32,
     pub height: f32,
+    #[serde(default)]
+    pub rotation: f32,
 }
 
 /// Serialized scene containing ordered source items.
@@ -94,6 +96,7 @@ impl Default for Project {
                     y: 0.0,
                     width: 1920.0,
                     height: 1080.0,
+                    rotation: 0.0,
                 },
                 SourceDefinition {
                     id: "src_cam".into(),
@@ -108,6 +111,7 @@ impl Default for Project {
                     y: 810.0,
                     width: 480.0,
                     height: 270.0,
+                    rotation: 0.0,
                 },
             ],
         };
@@ -128,6 +132,7 @@ impl Default for Project {
                 y: 0.0,
                 width: 1920.0,
                 height: 1080.0,
+                rotation: 0.0,
             }],
         };
 

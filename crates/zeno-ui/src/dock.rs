@@ -9,6 +9,7 @@ use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_0,
     SURFACE_3, TEXT, TEXT_MUTED,
 };
+use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
 
 /// Studio panel tabs available in Live production mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -106,6 +107,8 @@ pub struct StudioTabViewer<'a> {
     pub trigger_toggle_source_lock: &'a mut Option<String>,
     pub trigger_add_scene: &'a mut bool,
     pub trigger_remove_scene: &'a mut Option<String>,
+    pub live_gizmo_state: &'a mut TransformGizmoState,
+    pub trigger_transform_source: &'a mut Option<(String, f32, f32, f32, f32, f32)>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -176,6 +179,107 @@ impl<'a> StudioTabViewer<'a> {
                         TEXT_MUTED,
                     );
                 }
+
+                // Interactive on-canvas Transform Gizmo for Preview Monitor
+                let preview_scene_id_opt = self
+                    .project
+                    .preview_scene_id
+                    .clone()
+                    .or_else(|| self.selected_scene_id.clone());
+                let mut gizmo_items = Vec::new();
+                if let Some(ref sc_id) = preview_scene_id_opt {
+                    if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == sc_id) {
+                        for src in &scene.sources {
+                            gizmo_items.push(TransformGizmoItem {
+                                id: src.id.clone(),
+                                name: src.name.clone(),
+                                center_x: src.x + src.width * 0.5,
+                                center_y: src.y + src.height * 0.5,
+                                width: src.width,
+                                height: src.height,
+                                rotation_degrees: src.rotation,
+                                locked: src.locked,
+                                visible: src.visible,
+                            });
+                        }
+                    }
+                }
+
+                let selected_ids = if let Some(ref sel_id) = *self.selected_source_id {
+                    vec![sel_id.clone()]
+                } else {
+                    Vec::new()
+                };
+
+                let canvas_w = (self.project.settings.video.base_width as f32).max(1.0);
+                let canvas_h = (self.project.settings.video.base_height as f32).max(1.0);
+                let canvas_size = vec2(canvas_w, canvas_h);
+                let zoom = rect.width() / canvas_size.x;
+
+                let events = self.live_gizmo_state.draw_and_interact(
+                    ui,
+                    rect,
+                    canvas_size,
+                    egui::Vec2::ZERO,
+                    zoom,
+                    &gizmo_items,
+                    &selected_ids,
+                );
+
+                for event in events {
+                    match event {
+                        TransformGizmoEvent::SelectOnly(id) => {
+                            *self.selected_source_id = Some(id);
+                        }
+                        TransformGizmoEvent::ToggleSelect(id) => {
+                            if self.selected_source_id.as_deref() == Some(&id) {
+                                *self.selected_source_id = None;
+                            } else {
+                                *self.selected_source_id = Some(id);
+                            }
+                        }
+                        TransformGizmoEvent::SelectMultiple(ids) => {
+                            if let Some(first) = ids.first() {
+                                *self.selected_source_id = Some(first.clone());
+                            }
+                        }
+                        TransformGizmoEvent::DeselectAll => {
+                            *self.selected_source_id = None;
+                        }
+                        TransformGizmoEvent::Transformed {
+                            id,
+                            center_x,
+                            center_y,
+                            width,
+                            height,
+                            rotation_degrees,
+                        } => {
+                            if let Some(ref sc_id) = preview_scene_id_opt {
+                                if let Some(scene) =
+                                    self.project.scenes.iter_mut().find(|s| &s.id == sc_id)
+                                {
+                                    if let Some(src) = scene.sources.iter_mut().find(|s| s.id == id)
+                                    {
+                                        src.x = center_x - width * 0.5;
+                                        src.y = center_y - height * 0.5;
+                                        src.width = width;
+                                        src.height = height;
+                                        src.rotation = rotation_degrees;
+                                        *self.trigger_transform_source = Some((
+                                            src.id.clone(),
+                                            src.x,
+                                            src.y,
+                                            src.width,
+                                            src.height,
+                                            src.rotation,
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 ui.painter().rect_stroke(
                     rect,
                     CornerRadius::same(CORNER_RADIUS as u8),
@@ -417,6 +521,63 @@ impl<'a> StudioTabViewer<'a> {
                 });
             }
         });
+
+        if let Some(ref sel_id) = *self.selected_source_id {
+            if let Some(src) = scene.sources.iter_mut().find(|s| &s.id == sel_id) {
+                ui.separator();
+                ui.collapsing("Transform", |ui| {
+                    let mut changed = false;
+                    ui.horizontal(|ui| {
+                        ui.label("X:");
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut src.x).speed(1.0))
+                            .changed();
+                        ui.label("Y:");
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut src.y).speed(1.0))
+                            .changed();
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Width:");
+                        changed |= ui
+                            .add(
+                                egui::DragValue::new(&mut src.width)
+                                    .speed(1.0)
+                                    .range(1.0..=7680.0),
+                            )
+                            .changed();
+                        ui.label("Height:");
+                        changed |= ui
+                            .add(
+                                egui::DragValue::new(&mut src.height)
+                                    .speed(1.0)
+                                    .range(1.0..=4320.0),
+                            )
+                            .changed();
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Rotation (°):");
+                        changed |= ui
+                            .add(egui::DragValue::new(&mut src.rotation).speed(0.5))
+                            .changed();
+                        if ui.button("Reset").clicked() {
+                            src.rotation = 0.0;
+                            changed = true;
+                        }
+                    });
+                    if changed {
+                        *self.trigger_transform_source = Some((
+                            src.id.clone(),
+                            src.x,
+                            src.y,
+                            src.width,
+                            src.height,
+                            src.rotation,
+                        ));
+                    }
+                });
+            }
+        }
     }
 
     /// Renders 6-track audio mixer sliders, mute buttons, and live meters.

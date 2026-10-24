@@ -17,6 +17,7 @@ use crate::editor::{
 use crate::project::{Autosaver, Project, SceneDefinition, SourceDefinition, SourceKind};
 use crate::source_dialog::{SourceDialogAction, SourceDialogState};
 use crate::theme::{apply_theme, AMBER_WARN, GREEN_OK, RED_LIVE, TEXT, TEXT_MUTED};
+use crate::transform_gizmo::TransformGizmoState;
 use crate::wizard::FirstRunWizard;
 use zeno_compositor::{
     Scene, SceneCompositor, SceneItem, SceneItemSource, SlideDirection, TransitionDefinition,
@@ -146,6 +147,8 @@ pub struct ZenocastApp {
     pub rename_scene_id: Option<String>,
     /// Text buffer for scene renaming
     pub rename_scene_buffer: String,
+    /// Live Studio on-canvas transform gizmo state
+    pub live_gizmo_state: TransformGizmoState,
 }
 
 impl ZenocastApp {
@@ -307,6 +310,7 @@ impl ZenocastApp {
             file_dialog_path: "project.arxproj".to_string(),
             rename_scene_id: None,
             rename_scene_buffer: String::new(),
+            live_gizmo_state: TransformGizmoState::default(),
         };
 
         if let Ok(proj_path) = std::env::var("ZENOCAST_DEV_PROJECT") {
@@ -621,6 +625,7 @@ impl ZenocastApp {
                         y: 0.0,
                         width: width as f32,
                         height: height as f32,
+                        rotation: 0.0,
                     });
                 }
 
@@ -826,6 +831,40 @@ impl ZenocastApp {
             {
                 if let Some(src) = scene.sources.iter_mut().find(|s| s.id == source_id_str) {
                     src.locked = !src.locked;
+                }
+            }
+        }
+    }
+
+    /// Synchronizes a source's position, size, and rotation from project to compositor SceneItem.
+    pub fn sync_source_transform_to_compositor(
+        &mut self,
+        source_id_str: &str,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        rotation: f32,
+    ) {
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let s_id = string_to_source_id(source_id_str);
+            let canvas_w = comp.width() as f32;
+            let canvas_h = comp.height() as f32;
+
+            for sc_def in &self.project.scenes {
+                let sc_id = string_to_scene_id(&sc_def.id);
+                if let Some(scene) = comp.get_scene_mut(sc_id) {
+                    for item in &mut scene.items {
+                        if let SceneItemSource::Source(src_id) = item.source {
+                            if src_id == s_id {
+                                item.transform.position =
+                                    zeno_core::Vec2::new(x + width / 2.0, y + height / 2.0);
+                                item.transform.scale =
+                                    zeno_core::Vec2::new(width / canvas_w, height / canvas_h);
+                                item.transform.rotation_degrees = rotation;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1103,6 +1142,7 @@ impl ZenocastApp {
         let mut trigger_remove_source: Option<String> = None;
         let mut trigger_toggle_source_visibility: Option<String> = None;
         let mut trigger_toggle_source_lock: Option<String> = None;
+        let mut trigger_transform_source: Option<(String, f32, f32, f32, f32, f32)> = None;
         let mut trigger_add_scene = false;
         let mut trigger_remove_scene: Option<String> = None;
         let mut trigger_rename_scene: Option<(String, String)> = None;
@@ -1162,6 +1202,8 @@ impl ZenocastApp {
                     trigger_toggle_source_lock: &mut trigger_toggle_source_lock,
                     trigger_add_scene: &mut trigger_add_scene,
                     trigger_remove_scene: &mut trigger_remove_scene,
+                    live_gizmo_state: &mut self.live_gizmo_state,
+                    trigger_transform_source: &mut trigger_transform_source,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -1268,6 +1310,9 @@ impl ZenocastApp {
         }
         if let Some(ref lock_id) = trigger_toggle_source_lock {
             self.toggle_source_lock(lock_id);
+        }
+        if let Some((ref src_id, x, y, width, height, rot)) = trigger_transform_source {
+            self.sync_source_transform_to_compositor(src_id, x, y, width, height, rot);
         }
         if trigger_add_scene {
             self.add_new_scene();

@@ -743,6 +743,24 @@ This log records major architectural and implementation choices, defaults select
   - Supported dragging media files directly onto the New Source dialog or onto the Live Studio Sources panel (which auto-opens the Media Source dialog with the dropped file pre-loaded).
   - Modal keyboard navigation: Escape key closes/cancels dialogs, Enter key confirms and creates/updates source.
 
+### 2026-10-24: Section 4 - On-Canvas Transform Gizmo (`feat(ui): on-canvas transform gizmo shared by Live Studio and overlay editor`)
+- **Shared Transform Gizmo Component (`transform_gizmo.rs`)**:
+  - Built a unified `TransformGizmoState` and `TransformGizmoItem` system reused across Live Studio Preview monitor (`dock.rs`) and Overlay Editor composition canvas (`canvas.rs`).
+  - Selection bounding box rendered with 8 resize handles (4 corners + 4 edge midpoints) and a rotation handle on a 24px vertical stem positioned above top-center.
+  - Handle styling strictly follows broadcast tokens: 6px square handles (`Color32::WHITE` with `ACCENT` stroke), 5px circular rotate handle with white outline, and a 3.5px `AMBER_WARN` center anchor pivot indicator.
+- **Transform Interaction & Modifier Controls**:
+  - **Body Dragging**: Translates logical item center with sub-pixel precision.
+  - **Corner Scaling**: Dragging any of the 4 corner handles scales width and height. Holding **Shift** locks aspect ratio. Holding **Alt** scales symmetrically about the center anchor point.
+  - **Edge Stretching**: Midpoint handles (TopMid, BottomMid, LeftMid, RightMid) stretch a single axis independently.
+  - **Rotation**: Dragging the rotate handle computes clockwise angular displacement; holding **Shift** snaps rotation to strict 15° increments.
+  - **Canvas Hit Testing**: Clicking directly on any visible layer selects it with topmost layer taking precedence; clicking empty canvas deselects.
+  - **Marquee Multi-Selection**: Dragging across empty canvas draws an `ACCENT`-tinted marquee box that selects all intersecting layers upon release; `Ctrl+click` toggles multi-selection.
+  - **Keyboard Nudging**: Arrow keys nudge selected items by 1px; `Shift + Arrow` nudges by 10px.
+- **Two-Way Live Synchronization**:
+  - Live Studio Preview canvas dragging immediately updates `SourceDefinition` (`x, y, width, height, rotation`) and synchronizes live to GPU compositor `SceneItem`s (`position`, `scale`, `rotation_degrees`), matching the visual transform upon CUT / AUTO transitions.
+  - Live Studio Sources panel includes a collapsible "Transform" section with typed `DragValue` inputs (X, Y, Width, Height, Rotation, and Reset button) that stay in continuous two-way sync with canvas dragging.
+  - Overlay Editor canvas updates `layer.transform.position`, `scale_percent`, and `rotation_degrees.z` in real time, keeping the Properties panel inputs in continuous sync.
+
 
 
 

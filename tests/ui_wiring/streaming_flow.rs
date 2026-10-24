@@ -118,6 +118,7 @@ pub fn test_streaming_against_local_test_server() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     assert!(!app.is_streaming);

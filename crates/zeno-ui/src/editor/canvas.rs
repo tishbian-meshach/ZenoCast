@@ -6,9 +6,10 @@ use zeno_engine::eval::{evaluate_at, ResolvedContent};
 
 use crate::editor::state::OverlayEditor;
 use crate::theme::{
-    color_to_egui, ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, RED_LIVE, SURFACE_0,
-    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
+    color_to_egui, ACCENT, BORDER_WIDTH, CORNER_RADIUS, GREEN_OK, RED_LIVE, SURFACE_0, SURFACE_2,
+    SURFACE_3, TEXT, TEXT_MUTED,
 };
+use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem};
 
 /// Renders the central motion graphics canvas with interactive transform gizmos.
 pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
@@ -127,75 +128,188 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                 }
                 _ => {}
             }
+        }
 
-            // Draw Transform Gizmo if this layer is selected
-            if Some(layer.id) == editor.selected_layer_id {
-                let gizmo_size = vec2(120.0 * editor.zoom, 40.0 * editor.zoom);
-                let gizmo_rect = Rect::from_center_size(layer_pos, gizmo_size);
+        // Interactive on-canvas Transform Gizmo for Overlay Composition
+        let mut gizmo_items = Vec::new();
+        for layer in &editor.composition.layers {
+            let pos = *layer.transform.position.fallback_value();
+            let rot = *layer.transform.rotation_degrees.fallback_value();
+            let scale = *layer.transform.scale_percent.fallback_value();
 
-                // Bounding outline
-                painter.rect_stroke(
-                    gizmo_rect,
-                    CornerRadius::ZERO,
-                    Stroke::new(1.0_f32, ACCENT),
-                    StrokeKind::Inside,
-                );
+            let (base_w, base_h) = match &layer.content {
+                zeno_engine::LayerContent::Shape(s) => match &s.geometry {
+                    zeno_engine::ShapeGeometry::Rectangle { size } => {
+                        let s_val = *size.fallback_value();
+                        (s_val.x, s_val.y)
+                    }
+                    zeno_engine::ShapeGeometry::Ellipse { radius } => {
+                        let r_val = *radius.fallback_value();
+                        (r_val.x * 2.0, r_val.y * 2.0)
+                    }
+                    _ => (120.0, 80.0),
+                },
+                zeno_engine::LayerContent::Text(t) => {
+                    let fs = *t.font_size.fallback_value();
+                    let txt = t.text.fallback_value();
+                    let approx_char_w = fs * 0.55;
+                    let w = (txt.len() as f32 * approx_char_w).max(60.0);
+                    let h = (fs * 1.3).max(24.0);
+                    (w, h)
+                }
+                zeno_engine::LayerContent::Particles(..) => (200.0, 200.0),
+                zeno_engine::LayerContent::Image { .. }
+                | zeno_engine::LayerContent::Video { .. } => (320.0, 180.0),
+                _ => (160.0, 90.0),
+            };
 
+            let w = (base_w * (scale.x.abs() / 100.0)).max(10.0);
+            let h = (base_h * (scale.y.abs() / 100.0)).max(10.0);
+
+            gizmo_items.push(TransformGizmoItem {
+                id: layer.id.0.to_string(),
+                name: layer.name.clone(),
+                center_x: pos.x,
+                center_y: pos.y,
+                width: w,
+                height: h,
+                rotation_degrees: rot.z,
+                locked: false,
+                visible: layer.visible,
+            });
+        }
+
+        let selected_ids = if let Some(sel_id) = editor.selected_layer_id {
+            vec![sel_id.0.to_string()]
+        } else {
+            Vec::new()
+        };
+
+        let canvas_size = vec2(
+            editor.composition.width as f32,
+            editor.composition.height as f32,
+        );
+
+        let events = editor.transform_gizmo_state.draw_and_interact(
+            ui,
+            comp_rect,
+            canvas_size,
+            egui::Vec2::ZERO,
+            editor.zoom,
+            &gizmo_items,
+            &selected_ids,
+        );
+
+        // Draw 3D coordinate axes if selected layer is 3D
+        if let Some(sel_id) = editor.selected_layer_id {
+            if let Some(layer) = editor.composition.layers.iter().find(|l| l.id == sel_id) {
                 if layer.is_3d {
-                    // 3D Gizmo coordinate axes: X (Red), Y (Green), Z (Blue)
+                    let pos = *layer.transform.position.fallback_value();
+                    let screen_center = comp_rect.center();
+                    let sx = screen_center.x + (pos.x - canvas_size.x * 0.5) * editor.zoom;
+                    let sy = screen_center.y + (pos.y - canvas_size.y * 0.5) * editor.zoom;
+                    let layer_pos = egui::pos2(sx, sy);
+
                     let axis_len = 50.0 * editor.zoom;
                     let x_tip = layer_pos + vec2(axis_len, 0.0);
                     let y_tip = layer_pos + vec2(0.0, axis_len);
                     let z_tip = layer_pos + vec2(-axis_len * 0.7, axis_len * 0.7);
 
-                    // X Axis (Red)
                     painter.line_segment([layer_pos, x_tip], Stroke::new(2.0_f32, RED_LIVE));
                     painter.circle_filled(x_tip, 4.0, RED_LIVE);
 
-                    // Y Axis (Green)
                     painter.line_segment([layer_pos, y_tip], Stroke::new(2.0_f32, GREEN_OK));
                     painter.circle_filled(y_tip, 4.0, GREEN_OK);
 
-                    // Z Axis (Blue / ACCENT)
                     painter.line_segment([layer_pos, z_tip], Stroke::new(2.0_f32, ACCENT));
                     painter.circle_filled(z_tip, 4.0, ACCENT);
-                } else {
-                    // Standard 2D corner handles
-                    let handle_radius = 4.0;
-                    let corners = [
-                        gizmo_rect.left_top(),
-                        gizmo_rect.right_top(),
-                        gizmo_rect.left_bottom(),
-                        gizmo_rect.right_bottom(),
-                    ];
-                    for corner in corners {
-                        painter.rect_filled(
-                            Rect::from_center_size(
-                                corner,
-                                vec2(handle_radius * 2.0, handle_radius * 2.0),
-                            ),
-                            CornerRadius::same(1),
-                            ACCENT,
-                        );
+                }
+            }
+        }
+
+        for event in events {
+            match event {
+                TransformGizmoEvent::SelectOnly(id_str) => {
+                    if let Ok(uid) = uuid::Uuid::parse_str(&id_str) {
+                        editor.selected_layer_id = Some(zeno_core::LayerId(uid));
                     }
                 }
+                TransformGizmoEvent::ToggleSelect(id_str) => {
+                    if let Ok(uid) = uuid::Uuid::parse_str(&id_str) {
+                        let id = zeno_core::LayerId(uid);
+                        if editor.selected_layer_id == Some(id) {
+                            editor.selected_layer_id = None;
+                        } else {
+                            editor.selected_layer_id = Some(id);
+                        }
+                    }
+                }
+                TransformGizmoEvent::SelectMultiple(ids) => {
+                    if let Some(first) = ids.first() {
+                        if let Ok(uid) = uuid::Uuid::parse_str(first) {
+                            editor.selected_layer_id = Some(zeno_core::LayerId(uid));
+                        }
+                    }
+                }
+                TransformGizmoEvent::DeselectAll => {
+                    editor.selected_layer_id = None;
+                }
+                TransformGizmoEvent::Transformed {
+                    id,
+                    center_x,
+                    center_y,
+                    width,
+                    height,
+                    rotation_degrees,
+                } => {
+                    if let Ok(uid) = uuid::Uuid::parse_str(&id) {
+                        let lid = zeno_core::LayerId(uid);
+                        if let Some(layer) =
+                            editor.composition.layers.iter_mut().find(|l| l.id == lid)
+                        {
+                            let old_pos = *layer.transform.position.fallback_value();
+                            let old_scale = *layer.transform.scale_percent.fallback_value();
+                            let old_rot = *layer.transform.rotation_degrees.fallback_value();
 
-                // Center Move Handle
-                painter.circle_filled(layer_pos, 4.0, AMBER_WARN);
+                            let (base_w, base_h) = match &layer.content {
+                                zeno_engine::LayerContent::Shape(s) => match &s.geometry {
+                                    zeno_engine::ShapeGeometry::Rectangle { size } => {
+                                        let s_val = *size.fallback_value();
+                                        (s_val.x, s_val.y)
+                                    }
+                                    zeno_engine::ShapeGeometry::Ellipse { radius } => {
+                                        let r_val = *radius.fallback_value();
+                                        (r_val.x * 2.0, r_val.y * 2.0)
+                                    }
+                                    _ => (120.0, 80.0),
+                                },
+                                zeno_engine::LayerContent::Text(t) => {
+                                    let fs = *t.font_size.fallback_value();
+                                    let txt = t.text.fallback_value();
+                                    let approx_char_w = fs * 0.55;
+                                    let w = (txt.len() as f32 * approx_char_w).max(60.0);
+                                    let h = (fs * 1.3).max(24.0);
+                                    (w, h)
+                                }
+                                zeno_engine::LayerContent::Particles(..) => (200.0, 200.0),
+                                zeno_engine::LayerContent::Image { .. }
+                                | zeno_engine::LayerContent::Video { .. } => (320.0, 180.0),
+                                _ => (160.0, 90.0),
+                            };
 
-                // Interactive Dragging on Canvas
-                if response.dragged() {
-                    let delta = response.drag_delta();
-                    if let Some(target_layer) = editor
-                        .composition
-                        .layers
-                        .iter_mut()
-                        .find(|l| l.id == layer.id)
-                    {
-                        let old_pos = *target_layer.transform.position.fallback_value();
-                        let new_pos =
-                            old_pos + Vec3::new(delta.x / editor.zoom, delta.y / editor.zoom, 0.0);
-                        target_layer.transform.position = zeno_core::Property::constant(new_pos);
+                            let new_scale_x = (width / base_w.max(1.0)) * 100.0;
+                            let new_scale_y = (height / base_h.max(1.0)) * 100.0;
+
+                            layer.transform.position = zeno_core::Property::constant(Vec3::new(
+                                center_x, center_y, old_pos.z,
+                            ));
+                            layer.transform.scale_percent = zeno_core::Property::constant(
+                                Vec3::new(new_scale_x, new_scale_y, old_scale.z),
+                            );
+                            layer.transform.rotation_degrees = zeno_core::Property::constant(
+                                Vec3::new(old_rot.x, old_rot.y, rotation_degrees),
+                            );
+                        }
                     }
                 }
             }

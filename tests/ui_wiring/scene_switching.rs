@@ -94,6 +94,7 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
                     y: 0.0,
                     width: 1920.0,
                     height: 1080.0,
+                    rotation: 0.0,
                 }],
             },
             SceneDefinition {
@@ -112,6 +113,7 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
                     y: 0.0,
                     width: 1920.0,
                     height: 1080.0,
+                    rotation: 0.0,
                 }],
             },
         ],
@@ -180,6 +182,7 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
         file_dialog_path: "project.arxproj".to_string(),
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
     };
 
     // 1. Initial State Check

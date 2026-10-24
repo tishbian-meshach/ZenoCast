@@ -16,6 +16,7 @@ pub mod settings;
 pub mod source_dialog;
 pub mod spreadsheet_panel;
 pub mod theme;
+pub mod transform_gizmo;
 pub mod wizard;
 
 pub use app::ZenocastApp;
@@ -37,6 +38,7 @@ pub use theme::{
     GREEN_OK, GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST, SURFACE_0, SURFACE_1, SURFACE_2, SURFACE_3,
     TEXT, TEXT_MUTED,
 };
+pub use transform_gizmo::*;
 pub use wizard::{
     AudioDevice, CameraDevice, DestinationSetup, DisplayDevice, EncoderRecommendation,
     FirstRunWizard, HardwareInventory, UpdateChecker, UpdateInfo, WizardStep,

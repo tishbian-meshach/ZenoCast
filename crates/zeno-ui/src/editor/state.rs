@@ -51,6 +51,8 @@ pub struct OverlayEditor {
     pub curve_c2: Vec2,
     /// Name of active overlay
     pub name: String,
+    /// Interactive on-canvas transform gizmo state
+    pub transform_gizmo_state: crate::transform_gizmo::TransformGizmoState,
 }
 
 impl Default for OverlayEditor {
@@ -90,6 +92,7 @@ impl OverlayEditor {
             curve_c1: Vec2::new(0.42, 0.0),
             curve_c2: Vec2::new(0.58, 1.0),
             name: "Untitled Overlay".into(),
+            transform_gizmo_state: crate::transform_gizmo::TransformGizmoState::default(),
         }
     }
 
