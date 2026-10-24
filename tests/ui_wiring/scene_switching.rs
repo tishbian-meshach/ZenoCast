@@ -671,4 +671,39 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
 
     // Verify preview renders successfully without error and without needing a scene switch
     assert_eq!(app.project.preview_sources().len(), 2);
+
+    // Independently verify for Program: adding a source to Program scene shows immediately in Program
+    app.create_and_add_source(zeno_ui::SourceDialogAction::Create {
+        name: "Green Source".into(),
+        kind: SourceKind::Color,
+        target: "rgba(0.0,1.0,0.0,1.0)".into(),
+        width: 640,
+        height: 480,
+        color_rgba: [0.0, 1.0, 0.0, 1.0],
+        capture_cursor: false,
+        file_path: String::new(),
+        text_content: String::new(),
+        font_size: 24.0,
+        url: String::new(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    });
+
+    let comp_lock = app.compositor.read();
+    let comp_ref = comp_lock.as_ref().unwrap();
+    let prog_scene = comp_ref.get_scene(comp_ref.program_scene()).unwrap();
+    assert_eq!(prog_scene.items.len(), 3);
+    assert_eq!(prog_scene.items.last().unwrap().name, "Green Source");
+    drop(comp_lock);
+
+    let mut reg_lock = app.source_registry.write();
+    let frame_views = reg_lock.get_all_frame_views();
+    assert!(app
+        .compositor
+        .write()
+        .as_mut()
+        .unwrap()
+        .render_frame(&frame_views, 1.0 / 60.0)
+        .is_ok());
 }
