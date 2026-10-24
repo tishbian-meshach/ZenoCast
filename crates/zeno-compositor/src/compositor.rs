@@ -23,6 +23,7 @@ pub struct SceneCompositor {
     height: u32,
     fps: f32,
     scenes: HashMap<SceneId, Scene>,
+    pub preview_working_scene: Option<Scene>,
     transitions: HashMap<zeno_core::TransitionId, TransitionDefinition>,
     transition_rules: Vec<TransitionRule>,
     global_default_transition: TransitionDefinition,
@@ -133,6 +134,7 @@ impl SceneCompositor {
             height,
             fps,
             scenes: HashMap::new(),
+            preview_working_scene: None,
             transitions: HashMap::new(),
             transition_rules: Vec::new(),
             global_default_transition: default_fade,
@@ -183,9 +185,12 @@ impl SceneCompositor {
         self.bus.program_scene = scene;
     }
 
-    /// Sets the active preview scene ID.
+    /// Sets the active preview scene ID and clones a working copy.
     pub fn set_preview(&mut self, scene: SceneId) {
-        self.bus.preview_scene = scene;
+        if self.bus.preview_scene != scene || self.preview_working_scene.is_none() {
+            self.bus.preview_scene = scene;
+            self.preview_working_scene = self.scenes.get(&scene).cloned();
+        }
     }
 
     /// Returns `true` if a scene transition is currently in progress.
@@ -207,6 +212,7 @@ impl SceneCompositor {
         if self.scenes.len() == 1 {
             self.bus.program_scene = id;
             self.bus.preview_scene = id;
+            self.preview_working_scene = self.scenes.get(&id).cloned();
         }
     }
 
@@ -220,9 +226,84 @@ impl SceneCompositor {
         self.scenes.get_mut(&id)
     }
 
+    /// Returns a mutable reference to the Preview working scene (initializing it if needed).
+    pub fn preview_working_scene_mut(&mut self) -> Option<&mut Scene> {
+        if self.preview_working_scene.is_none() {
+            self.preview_working_scene = self.scenes.get(&self.bus.preview_scene).cloned();
+        }
+        self.preview_working_scene.as_mut()
+    }
+
+    /// Returns a reference to the Preview working scene (or fall back to saved scene).
+    pub fn preview_working_scene(&self) -> Option<&Scene> {
+        self.preview_working_scene
+            .as_ref()
+            .or_else(|| self.scenes.get(&self.bus.preview_scene))
+    }
+
+    /// Adds an item to the Preview working scene.
+    pub fn add_preview_item(&mut self, item: crate::scene::SceneItem) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            scene.add_item(item);
+        }
+    }
+
+    /// Removes an item by source ID from the Preview working scene.
+    pub fn remove_preview_item_by_source(&mut self, source_id: SourceId) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            scene.items.retain(|it| match it.source {
+                SceneItemSource::Source(s_id) => s_id != source_id,
+                _ => true,
+            });
+        }
+    }
+
+    /// Updates transform of an item in the Preview working scene.
+    pub fn update_preview_item_transform(
+        &mut self,
+        source_id: SourceId,
+        pos_x: f32,
+        pos_y: f32,
+        scale_x: f32,
+        scale_y: f32,
+        rotation: f32,
+    ) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id {
+                        item.transform.position = zeno_core::Vec2::new(pos_x, pos_y);
+                        item.transform.scale = zeno_core::Vec2::new(scale_x, scale_y);
+                        item.transform.rotation_degrees = rotation;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Reorders items in the Preview working scene.
+    pub fn sync_preview_items_order(&mut self, item_source_ids: &[SourceId]) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            let mut ordered = Vec::new();
+            for &s_id in item_source_ids {
+                if let Some(pos) = scene.items.iter().position(|it| match it.source {
+                    SceneItemSource::Source(id) => id == s_id,
+                    _ => false,
+                }) {
+                    ordered.push(scene.items.remove(pos));
+                }
+            }
+            ordered.append(&mut scene.items);
+            scene.items = ordered;
+        }
+    }
+
     /// Removes a scene by ID from the compositor.
     pub fn remove_scene(&mut self, id: SceneId) {
         self.scenes.remove(&id);
+        if self.bus.preview_scene == id {
+            self.preview_working_scene = None;
+        }
     }
 
     /// Registers a reusable transition definition.
@@ -343,7 +424,11 @@ impl SceneCompositor {
     /// Executes an instant Cut transition between Preview and Program buses.
     pub fn cut(&mut self) {
         self.active_transition = None;
-        self.bus.swap_buses();
+        if let Some(ref working) = self.preview_working_scene {
+            self.scenes.insert(self.bus.preview_scene, working.clone());
+        }
+        self.bus.program_scene = self.bus.preview_scene;
+        self.bus.t_bar_position = 0.0;
     }
 
     /// Triggers an Auto transition between Preview and Program buses.
@@ -359,9 +444,6 @@ impl SceneCompositor {
             self.bus.program_scene
         };
         let to = self.bus.preview_scene;
-        if from == to {
-            return;
-        }
 
         let transition = transition_override.unwrap_or_else(|| self.resolve_transition(from, to));
         if transition.duration_seconds <= 0.0 || matches!(transition.kind, TransitionKind::Cut) {
@@ -380,14 +462,14 @@ impl SceneCompositor {
         let to = self.bus.preview_scene;
 
         if position >= 1.0 {
-            // T-bar finished at 100%: complete cut and swap
+            // T-bar finished at 100%: complete cut and commit
             self.cut();
         } else if position <= 0.0 {
             // T-bar reset to 0%: cancel transition
             self.active_transition = None;
         } else {
-            // In manual transition
-            if self.active_transition.is_none() && from != to {
+            // In manual transition: start transition if not already active
+            if self.active_transition.is_none() {
                 let trans = self.resolve_transition(from, to);
                 self.active_transition = Some(ActiveTransition::new(from, to, trans));
             }
@@ -486,13 +568,23 @@ impl SceneCompositor {
                     0,
                 )?;
             }
-            self.render_scene_internal(
-                active.to_scene,
-                &self.intermediate_view_b,
-                sources,
-                &mut encoder,
-                0,
-            )?;
+            if let Some(ref working) = self.preview_working_scene {
+                self.render_scene_object(
+                    working,
+                    &self.intermediate_view_b,
+                    sources,
+                    &mut encoder,
+                    0,
+                )?;
+            } else {
+                self.render_scene_internal(
+                    active.to_scene,
+                    &self.intermediate_view_b,
+                    sources,
+                    &mut encoder,
+                    0,
+                )?;
+            }
 
             // Execute GPU transition shader pass blending Intermediate A and B into Program
             let eased_t = active.eased_progress();
@@ -604,18 +696,27 @@ impl SceneCompositor {
 
         // 3. Render Preview scene if in Studio Mode
         if self.bus.mode == StudioMode::Studio {
-            self.render_scene_internal(
-                self.bus.preview_scene,
-                &self.preview_view,
-                sources,
-                &mut encoder,
-                0,
-            )?;
+            if let Some(ref working) = self.preview_working_scene {
+                self.render_scene_object(working, &self.preview_view, sources, &mut encoder, 0)?;
+            } else {
+                self.render_scene_internal(
+                    self.bus.preview_scene,
+                    &self.preview_view,
+                    sources,
+                    &mut encoder,
+                    0,
+                )?;
+            }
         }
 
         // 4. Finalize transition completion
         if transition_completed {
             if let Some(target_scene) = new_program_scene {
+                if let Some(ref working) = self.preview_working_scene {
+                    if self.bus.preview_scene == target_scene {
+                        self.scenes.insert(target_scene, working.clone());
+                    }
+                }
                 self.bus.program_scene = target_scene;
             }
             self.active_transition = None;
@@ -647,13 +748,17 @@ impl SceneCompositor {
             &mut encoder,
             0,
         )?;
-        self.render_scene_internal(
-            to_scene,
-            &self.intermediate_view_b,
-            sources,
-            &mut encoder,
-            0,
-        )?;
+        if let Some(ref working) = self.preview_working_scene {
+            self.render_scene_object(working, &self.intermediate_view_b, sources, &mut encoder, 0)?;
+        } else {
+            self.render_scene_internal(
+                to_scene,
+                &self.intermediate_view_b,
+                sources,
+                &mut encoder,
+                0,
+            )?;
+        }
 
         let eased_t = transition.easing.evaluate(progress.clamp(0.0, 1.0));
         let (kind_u32, dir_u32, param1, dip_color) = match &transition.kind {
@@ -770,6 +875,18 @@ impl SceneCompositor {
             .get(&scene_id)
             .ok_or(CompositorError::SceneNotFound(scene_id))?;
 
+        self.render_scene_object(scene, target_view, sources, encoder, depth)
+    }
+
+    /// Renders a concrete scene object to a target texture view.
+    fn render_scene_object(
+        &self,
+        scene: &Scene,
+        target_view: &TextureView,
+        sources: &HashMap<SourceId, Arc<TextureView>>,
+        encoder: &mut CommandEncoder,
+        _depth: usize,
+    ) -> Result<(), CompositorError> {
         let clear_col = wgpu::Color {
             r: scene.background.r as f64,
             g: scene.background.g as f64,
@@ -861,7 +978,7 @@ impl SceneCompositor {
                     }
                     SceneItemSource::NestedScene(nested_scene_id) => {
                         // Recursively render nested scene if not self
-                        if nested_scene_id != &scene_id {
+                        if nested_scene_id != &scene.id {
                             // Render nested scene onto intermediate target, then composite
                             // Cycles are guarded by depth > 8
                         }

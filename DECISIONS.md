@@ -834,3 +834,15 @@ This log records major architectural and implementation choices, defaults select
     - Assets Panel: `"No assets imported yet — click + Import Media or drag files here"`
 - **Audit Checklist Expansion**:
   - Updated `docs/UI_AUDIT.md` to include all new features and controls introduced in Sections 1–6 (Sections 9 through 12 in the document), verified via workspace test suites.
+
+### 2026-10-24: Section 2 & 4 - Fully Independent Preview and Program Buses (`fix(compositor): fully independent Preview and Program buses`)
+- **Independent Bus Architecture Choice: Approach (a)**:
+  - Preview edits operate on an isolated working copy of the scene's source and item definitions (`preview_working_sources` on `Project`, `preview_working_scene` on `SceneCompositor`).
+  - Loading or switching scenes in the Scenes panel updates Preview only (`preview_scene` / `preview_scene_id`) and initializes a fresh working copy; it never mutates the Program on-air state (`program_scene` / `active_scene_id`).
+  - All Live Studio interactions (transform gizmo drag, DragValue numeric adjustments, adding sources, removing sources, reordering sources, toggling visibility or lock) strictly mutate the Preview working copy and call `update_preview_item_transform` / `add_preview_item` / `remove_preview_item_by_source` / `sync_preview_items_order`. The Program bus remains completely unaffected even when both buses reference the same `SceneId`.
+  - **Immediate Preview Refresh (Section 4)**: Adding a source directly updates `preview_working_sources` and `preview_working_scene`, rendering the new source in Preview on the very next frame without requiring a scene switch. Program does not receive the source until transit.
+  - **Transition Execution (CUT / AUTO / T-BAR)**:
+    - `CUT`: Commits `preview_working_sources` to canonical project scene data, inserts `preview_working_scene` into `SceneCompositor::scenes`, and sets `program_scene = preview_scene`. Preview does NOT clear or swap, preserving standard broadcast switcher conventions.
+    - `AUTO`: Engages configured transition between Program output and Preview working state. On completion, commits the working copy into canonical state and updates `program_scene`.
+    - `T-BAR`: Dynamically blends between Program's canonical scene and Preview's working scene via `render_transition_preview`, with manual scrub support even when both monitors display the same scene. Reaching 1.0 (or 0.95+) triggers commit via `cut()`.
+

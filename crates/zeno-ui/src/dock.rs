@@ -190,28 +190,19 @@ impl<'a> StudioTabViewer<'a> {
                 }
 
                 // Interactive on-canvas Transform Gizmo for Preview Monitor
-                let preview_scene_id_opt = self
-                    .project
-                    .preview_scene_id
-                    .clone()
-                    .or_else(|| self.selected_scene_id.clone());
                 let mut gizmo_items = Vec::new();
-                if let Some(ref sc_id) = preview_scene_id_opt {
-                    if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == sc_id) {
-                        for src in &scene.sources {
-                            gizmo_items.push(TransformGizmoItem {
-                                id: src.id.clone(),
-                                name: src.name.clone(),
-                                center_x: src.x + src.width * 0.5,
-                                center_y: src.y + src.height * 0.5,
-                                width: src.width,
-                                height: src.height,
-                                rotation_degrees: src.rotation,
-                                locked: src.locked,
-                                visible: src.visible,
-                            });
-                        }
-                    }
+                for src in self.project.preview_sources() {
+                    gizmo_items.push(TransformGizmoItem {
+                        id: src.id.clone(),
+                        name: src.name.clone(),
+                        center_x: src.x + src.width * 0.5,
+                        center_y: src.y + src.height * 0.5,
+                        width: src.width,
+                        height: src.height,
+                        rotation_degrees: src.rotation,
+                        locked: src.locked,
+                        visible: src.visible,
+                    });
                 }
 
                 let selected_ids = if let Some(ref sel_id) = *self.selected_source_id {
@@ -263,26 +254,21 @@ impl<'a> StudioTabViewer<'a> {
                             height,
                             rotation_degrees,
                         } => {
-                            if let Some(ref sc_id) = preview_scene_id_opt {
-                                if let Some(scene) =
-                                    self.project.scenes.iter_mut().find(|s| &s.id == sc_id)
-                                {
-                                    if let Some(src) = scene.sources.iter_mut().find(|s| s.id == id)
-                                    {
-                                        src.x = center_x - width * 0.5;
-                                        src.y = center_y - height * 0.5;
-                                        src.width = width;
-                                        src.height = height;
-                                        src.rotation = rotation_degrees;
-                                        *self.trigger_transform_source = Some((
-                                            src.id.clone(),
-                                            src.x,
-                                            src.y,
-                                            src.width,
-                                            src.height,
-                                            src.rotation,
-                                        ));
-                                    }
+                            if let Some(sources) = self.project.preview_working_sources_mut() {
+                                if let Some(src) = sources.iter_mut().find(|s| s.id == id) {
+                                    src.x = center_x - width * 0.5;
+                                    src.y = center_y - height * 0.5;
+                                    src.width = width;
+                                    src.height = height;
+                                    src.rotation = rotation_degrees;
+                                    *self.trigger_transform_source = Some((
+                                        src.id.clone(),
+                                        src.x,
+                                        src.y,
+                                        src.width,
+                                        src.height,
+                                        src.rotation,
+                                    ));
                                 }
                             }
                         }
@@ -447,6 +433,8 @@ impl<'a> StudioTabViewer<'a> {
                     if response.clicked() {
                         *self.selected_scene_id = Some(scene.id.clone());
                         self.project.preview_scene_id = Some(scene.id.clone());
+                        self.project.preview_working_sources =
+                            Some((scene.id.clone(), scene.sources.clone()));
                     }
                     if response.double_clicked() {
                         self.project.active_scene_id = Some(scene.id.clone());
@@ -458,21 +446,27 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders Sources list for the currently selected scene.
     fn ui_sources(&mut self, ui: &mut Ui) {
-        let selected_scene = self
-            .selected_scene_id
-            .as_ref()
-            .and_then(|id| self.project.scenes.iter_mut().find(|s| &s.id == id));
-
-        let Some(scene) = selected_scene else {
+        if self.project.preview_scene_id.is_none() {
+            self.project.preview_scene_id = self
+                .selected_scene_id
+                .clone()
+                .or_else(|| self.project.scenes.first().map(|s| s.id.clone()));
+        }
+        let Some(sc_id) = self.project.preview_scene_id.clone() else {
             ui.colored_label(TEXT_MUTED, "Select a scene to manage sources");
             return;
         };
 
-        let num_sources = scene.sources.len();
+        let Some(sources) = self.project.preview_working_sources_mut() else {
+            ui.colored_label(TEXT_MUTED, "Select a scene to manage sources");
+            return;
+        };
+
+        let num_sources = sources.len();
         let sel_idx = self
             .selected_source_id
             .as_ref()
-            .and_then(|id| scene.sources.iter().position(|s| &s.id == id));
+            .and_then(|id| sources.iter().position(|s| &s.id == id));
 
         ui.horizontal(|ui| {
             if ui.button("+ Add Source").clicked() {
@@ -510,8 +504,8 @@ impl<'a> StudioTabViewer<'a> {
                 .clicked()
             {
                 if let Some(i) = sel_idx {
-                    scene.sources.swap(i, i + 1);
-                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                    sources.swap(i, i + 1);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
                 }
             }
 
@@ -521,8 +515,8 @@ impl<'a> StudioTabViewer<'a> {
                 .clicked()
             {
                 if let Some(i) = sel_idx {
-                    scene.sources.swap(i, i - 1);
-                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                    sources.swap(i, i - 1);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
                 }
             }
         });
@@ -558,23 +552,23 @@ impl<'a> StudioTabViewer<'a> {
 
         if let Some(i) = sel_idx {
             if key_front && i + 1 < num_sources {
-                let s = scene.sources.remove(i);
-                scene.sources.push(s);
-                *self.trigger_sync_source_order = Some(scene.id.clone());
+                let s = sources.remove(i);
+                sources.push(s);
+                *self.trigger_sync_source_order = Some(sc_id.clone());
             } else if key_fwd && i + 1 < num_sources {
-                scene.sources.swap(i, i + 1);
-                *self.trigger_sync_source_order = Some(scene.id.clone());
+                sources.swap(i, i + 1);
+                *self.trigger_sync_source_order = Some(sc_id.clone());
             } else if key_bwd && i > 0 {
-                scene.sources.swap(i, i - 1);
-                *self.trigger_sync_source_order = Some(scene.id.clone());
+                sources.swap(i, i - 1);
+                *self.trigger_sync_source_order = Some(sc_id.clone());
             } else if key_back && i > 0 {
-                let s = scene.sources.remove(i);
-                scene.sources.insert(0, s);
-                *self.trigger_sync_source_order = Some(scene.id.clone());
+                let s = sources.remove(i);
+                sources.insert(0, s);
+                *self.trigger_sync_source_order = Some(sc_id.clone());
             }
         }
 
-        if scene.sources.is_empty() {
+        if sources.is_empty() {
             ui.vertical_centered(|ui| {
                 ui.add_space(24.0);
                 ui.colored_label(
@@ -594,10 +588,10 @@ impl<'a> StudioTabViewer<'a> {
             let list_width = ui.available_width();
             for display_idx in 0..num_sources {
                 let src_idx = num_sources - 1 - display_idx;
-                let src_id = scene.sources[src_idx].id.clone();
-                let src_name = scene.sources[src_idx].name.clone();
-                let src_visible = scene.sources[src_idx].visible;
-                let src_locked = scene.sources[src_idx].locked;
+                let src_id = sources[src_idx].id.clone();
+                let src_name = sources[src_idx].name.clone();
+                let src_visible = sources[src_idx].visible;
+                let src_locked = sources[src_idx].locked;
                 let is_sel = self.selected_source_id.as_deref() == Some(&src_id);
                 let is_dragged = dragging_source_id.as_deref() == Some(&src_id);
 
@@ -670,7 +664,7 @@ impl<'a> StudioTabViewer<'a> {
 
                 // Context menu
                 row_sense.context_menu(|ui| {
-                    let cur_idx_opt = scene.sources.iter().position(|s| s.id == src_id);
+                    let cur_idx_opt = sources.iter().position(|s| s.id == src_id);
                     let can_front = cur_idx_opt.is_some_and(|i| i + 1 < num_sources);
                     let can_back = cur_idx_opt.is_some_and(|i| i > 0);
 
@@ -727,8 +721,7 @@ impl<'a> StudioTabViewer<'a> {
             ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
 
             if let Some(pointer_pos) = ui.ctx().pointer_interact_pos() {
-                let dragged_name = scene
-                    .sources
+                let dragged_name = sources
                     .iter()
                     .find(|s| &s.id == dragged_id)
                     .map(|s| s.name.as_str())
@@ -773,7 +766,7 @@ impl<'a> StudioTabViewer<'a> {
                     if ui.input(|i| i.pointer.any_released()) {
                         let from_row = (0..num_sources).find(|&r| {
                             let s_idx = num_sources - 1 - r;
-                            &scene.sources[s_idx].id == dragged_id
+                            &sources[s_idx].id == dragged_id
                         });
                         if let Some(from_r) = from_row {
                             if target_slot != from_r && target_slot != from_r + 1 {
@@ -784,9 +777,9 @@ impl<'a> StudioTabViewer<'a> {
                                 };
                                 let from_idx = num_sources - 1 - from_r;
                                 let to_idx = num_sources - 1 - new_row;
-                                let item = scene.sources.remove(from_idx);
-                                scene.sources.insert(to_idx, item);
-                                *self.trigger_sync_source_order = Some(scene.id.clone());
+                                let item = sources.remove(from_idx);
+                                sources.insert(to_idx, item);
+                                *self.trigger_sync_source_order = Some(sc_id.clone());
                             }
                         }
                         ui.ctx()
@@ -803,32 +796,32 @@ impl<'a> StudioTabViewer<'a> {
         for (i, action) in row_actions {
             match action {
                 RowOrderAction::BringToFront => {
-                    let s = scene.sources.remove(i);
-                    scene.sources.push(s);
-                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                    let s = sources.remove(i);
+                    sources.push(s);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
                 }
                 RowOrderAction::BringForward => {
-                    if i + 1 < scene.sources.len() {
-                        scene.sources.swap(i, i + 1);
-                        *self.trigger_sync_source_order = Some(scene.id.clone());
+                    if i + 1 < sources.len() {
+                        sources.swap(i, i + 1);
+                        *self.trigger_sync_source_order = Some(sc_id.clone());
                     }
                 }
                 RowOrderAction::SendBackward => {
                     if i > 0 {
-                        scene.sources.swap(i, i - 1);
-                        *self.trigger_sync_source_order = Some(scene.id.clone());
+                        sources.swap(i, i - 1);
+                        *self.trigger_sync_source_order = Some(sc_id.clone());
                     }
                 }
                 RowOrderAction::SendToBack => {
-                    let s = scene.sources.remove(i);
-                    scene.sources.insert(0, s);
-                    *self.trigger_sync_source_order = Some(scene.id.clone());
+                    let s = sources.remove(i);
+                    sources.insert(0, s);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
                 }
             }
         }
 
         if let Some(ref sel_id) = *self.selected_source_id {
-            if let Some(src) = scene.sources.iter_mut().find(|s| &s.id == sel_id) {
+            if let Some(src) = sources.iter_mut().find(|s| &s.id == sel_id) {
                 ui.separator();
                 ui.collapsing("Transform", |ui| {
                     let mut changed = false;

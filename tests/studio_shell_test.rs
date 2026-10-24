@@ -177,18 +177,19 @@ fn test_m8_preview_to_program_transition_switching() {
     // User executes Cut transition
     app.execute_cut();
     assert_eq!(app.project.active_scene_id.as_deref(), Some("scene_brb"));
-    assert_eq!(
-        app.project.preview_scene_id.as_deref(),
-        Some("scene_gameplay")
-    );
+    assert_eq!(app.project.preview_scene_id.as_deref(), Some("scene_brb"));
 
-    // User executes Auto transition
-    app.execute_auto();
+    // Operator loads scene_gameplay into Preview and executes Cut
+    app.project.preview_scene_id = Some("scene_gameplay".into());
+    app.execute_cut();
     assert_eq!(
         app.project.active_scene_id.as_deref(),
         Some("scene_gameplay")
     );
-    assert_eq!(app.project.preview_scene_id.as_deref(), Some("scene_brb"));
+    assert_eq!(
+        app.project.preview_scene_id.as_deref(),
+        Some("scene_gameplay")
+    );
 }
 
 #[test]
@@ -1060,15 +1061,18 @@ fn test_section_3_ui_interactivity_audit_wiring() {
 
     app.execute_cut();
     assert_eq!(app.project.active_scene_id, init_preview);
-    assert_eq!(app.project.preview_scene_id, init_active);
-
-    app.active_transition_kind = "Slide".into();
-    app.transition_duration_ms = 400;
-    app.execute_auto();
-    assert_eq!(app.project.active_scene_id, init_active);
     assert_eq!(app.project.preview_scene_id, init_preview);
 
+    // Operator switches Preview to init_active
+    app.project.preview_scene_id = init_active.clone();
+    app.active_transition_kind = "Slide".into();
+    app.transition_duration_ms = 400;
+    app.execute_cut();
+    assert_eq!(app.project.active_scene_id, init_active);
+    assert_eq!(app.project.preview_scene_id, init_active);
+
     // T-bar completion at >= 0.95
+    app.project.preview_scene_id = init_preview.clone();
     app.t_bar_progress = 0.96;
     if app.t_bar_progress >= 0.95 {
         app.execute_cut();

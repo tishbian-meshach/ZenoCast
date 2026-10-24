@@ -326,9 +326,8 @@ impl ZenocastApp {
 
     /// Handles instant Cut transition between Preview and Program.
     pub fn execute_cut(&mut self) {
-        let temp = self.project.active_scene_id.clone();
+        self.project.commit_preview_working_sources();
         self.project.active_scene_id = self.project.preview_scene_id.clone();
-        self.project.preview_scene_id = temp;
         self.t_bar_progress = 0.0;
         if let Some(ref mut comp) = *self.compositor.write() {
             comp.cut();
@@ -341,9 +340,6 @@ impl ZenocastApp {
 
     /// Handles Auto transition between Preview and Program using active transition settings.
     pub fn execute_auto(&mut self) {
-        let temp = self.project.active_scene_id.clone();
-        self.project.active_scene_id = self.project.preview_scene_id.clone();
-        self.project.preview_scene_id = temp;
         self.t_bar_progress = 0.0;
         if let Some(ref mut comp) = *self.compositor.write() {
             let dur_sec = (self.transition_duration_ms as f64) / 1000.0;
@@ -580,6 +576,15 @@ impl ZenocastApp {
 
     /// Synchronizes compositor Scene items order to match the project scene definition sources order.
     pub fn sync_scene_sources_order_to_compositor(&mut self, scene_id_str: &str) {
+        let source_ids: Vec<SourceId> = self
+            .project
+            .preview_sources()
+            .iter()
+            .map(|s| string_to_source_id(&s.id))
+            .collect();
+        if let Some(ref mut comp) = *self.compositor.write() {
+            comp.sync_preview_items_order(&source_ids);
+        }
         if let Some(scene_def) = self.project.scenes.iter().find(|s| s.id == scene_id_str) {
             if let Some(ref mut comp) = *self.compositor.write() {
                 let sc_id = string_to_scene_id(scene_id_str);
@@ -719,41 +724,51 @@ impl ZenocastApp {
                     self.source_registry.write().register(src);
                 }
 
-                // 2. Add to project scene definition
+                // 2. Add to project scene definition and preview working sources
+                let src_def = SourceDefinition {
+                    id: source_id_str.clone(),
+                    name: name.clone(),
+                    kind,
+                    target,
+                    visible: true,
+                    locked: false,
+                    volume,
+                    muted,
+                    x: 0.0,
+                    y: 0.0,
+                    width: width as f32,
+                    height: height as f32,
+                    rotation: 0.0,
+                };
                 if let Some(scene) = self
                     .project
                     .scenes
                     .iter_mut()
                     .find(|s| &s.id == sel_scene_id)
                 {
-                    scene.sources.push(SourceDefinition {
-                        id: source_id_str.clone(),
-                        name: name.clone(),
-                        kind,
-                        target,
-                        visible: true,
-                        locked: false,
-                        volume,
-                        muted,
-                        x: 0.0,
-                        y: 0.0,
-                        width: width as f32,
-                        height: height as f32,
-                        rotation: 0.0,
-                    });
+                    scene.sources.push(src_def.clone());
+                }
+                if let Some(sources) = self.project.preview_working_sources_mut() {
+                    if !sources.iter().any(|s| s.id == source_id_str) {
+                        sources.push(src_def);
+                    }
                 }
 
-                // 3. Add to Compositor scene items
+                // 3. Add to Compositor scene items and Preview working scene
                 if let Some(ref mut comp) = *self.compositor.write() {
                     let canvas_w = comp.width() as f32;
                     let canvas_h = comp.height() as f32;
                     let sc_id = string_to_scene_id(sel_scene_id);
                     if let Some(scene) = comp.get_scene_mut(sc_id) {
-                        let item = SceneItem::new(name, SceneItemSource::Source(source_id))
+                        let item = SceneItem::new(name.clone(), SceneItemSource::Source(source_id))
                             .with_position(canvas_w / 2.0, canvas_h / 2.0)
                             .with_scale((width as f32) / canvas_w, (height as f32) / canvas_h);
                         scene.add_item(item);
                     }
+                    let item = SceneItem::new(name, SceneItemSource::Source(source_id))
+                        .with_position(canvas_w / 2.0, canvas_h / 2.0)
+                        .with_scale((width as f32) / canvas_w, (height as f32) / canvas_h);
+                    comp.add_preview_item(item);
                 }
 
                 self.selected_source_id = Some(source_id_str);
@@ -779,7 +794,17 @@ impl ZenocastApp {
                     return;
                 };
 
-                // Update Project
+                // Update Project / Preview working sources
+                if let Some(sources) = self.project.preview_working_sources_mut() {
+                    if let Some(src) = sources.iter_mut().find(|s| s.id == id) {
+                        src.name = name.clone();
+                        src.target = target.clone();
+                        src.width = width as f32;
+                        src.height = height as f32;
+                        src.volume = volume;
+                        src.muted = muted;
+                    }
+                }
                 if let Some(scene) = self
                     .project
                     .scenes
@@ -855,13 +880,12 @@ impl ZenocastApp {
                     }
                 }
 
-                // Update Compositor SceneItem
+                // Update Compositor Preview SceneItem
                 if let Some(ref mut comp) = *self.compositor.write() {
-                    let sc_id = string_to_scene_id(sel_scene_id);
-                    if let Some(scene) = comp.get_scene_mut(sc_id) {
+                    if let Some(scene) = comp.preview_working_scene_mut() {
                         for item in &mut scene.items {
-                            if let SceneItemSource::Source(id) = item.source {
-                                if id == src_id {
+                            if let SceneItemSource::Source(sid) = item.source {
+                                if sid == src_id {
                                     item.name = name.clone();
                                 }
                             }
@@ -897,6 +921,12 @@ impl ZenocastApp {
                 }
             }
         }
+        if let Some(sources) = self.project.preview_working_sources_mut() {
+            sources.retain(|s| s.id != source_id_str);
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            comp.remove_preview_item_by_source(src_id);
+        }
         self.source_registry.write().unregister(src_id);
         if self.selected_source_id.as_deref() == Some(source_id_str) {
             self.selected_source_id = None;
@@ -906,8 +936,8 @@ impl ZenocastApp {
     /// Toggles visibility of a source in project and compositor.
     pub fn toggle_source_visibility(&mut self, source_id_str: &str) {
         let src_id = string_to_source_id(source_id_str);
+        let mut new_vis = true;
         if let Some(ref sel_scene_id) = self.selected_scene_id {
-            let mut new_vis = true;
             if let Some(scene) = self
                 .project
                 .scenes
@@ -932,6 +962,22 @@ impl ZenocastApp {
                 }
             }
         }
+        if let Some(sources) = self.project.preview_working_sources_mut() {
+            if let Some(src) = sources.iter_mut().find(|s| s.id == source_id_str) {
+                src.visible = new_vis;
+            }
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            if let Some(scene) = comp.preview_working_scene_mut() {
+                for item in &mut scene.items {
+                    if let SceneItemSource::Source(id) = item.source {
+                        if id == src_id {
+                            item.visible = new_vis;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Toggles lock state of a source.
@@ -946,6 +992,11 @@ impl ZenocastApp {
                 if let Some(src) = scene.sources.iter_mut().find(|s| s.id == source_id_str) {
                     src.locked = !src.locked;
                 }
+            }
+        }
+        if let Some(sources) = self.project.preview_working_sources_mut() {
+            if let Some(src) = sources.iter_mut().find(|s| s.id == source_id_str) {
+                src.locked = !src.locked;
             }
         }
     }
@@ -964,23 +1015,14 @@ impl ZenocastApp {
             let s_id = string_to_source_id(source_id_str);
             let canvas_w = comp.width() as f32;
             let canvas_h = comp.height() as f32;
-
-            for sc_def in &self.project.scenes {
-                let sc_id = string_to_scene_id(&sc_def.id);
-                if let Some(scene) = comp.get_scene_mut(sc_id) {
-                    for item in &mut scene.items {
-                        if let SceneItemSource::Source(src_id) = item.source {
-                            if src_id == s_id {
-                                item.transform.position =
-                                    zeno_core::Vec2::new(x + width / 2.0, y + height / 2.0);
-                                item.transform.scale =
-                                    zeno_core::Vec2::new(width / canvas_w, height / canvas_h);
-                                item.transform.rotation_degrees = rotation;
-                            }
-                        }
-                    }
-                }
-            }
+            comp.update_preview_item_transform(
+                s_id,
+                x + width / 2.0,
+                y + height / 2.0,
+                width / canvas_w,
+                height / canvas_h,
+                rotation,
+            );
         }
     }
 
@@ -1116,8 +1158,10 @@ impl ZenocastApp {
                 if let Some(ref prv) = self.project.preview_scene_id {
                     comp.set_preview(string_to_scene_id(prv));
                 }
-                if let Some(ref act) = self.project.active_scene_id {
-                    comp.set_program(string_to_scene_id(act));
+                if !comp.is_transition_active() {
+                    if let Some(ref act) = self.project.active_scene_id {
+                        comp.set_program(string_to_scene_id(act));
+                    }
                 }
 
                 if self.t_bar_progress > 0.0 && self.t_bar_progress < 1.0 {
@@ -1132,7 +1176,12 @@ impl ZenocastApp {
                         &frame_views,
                     );
                 } else {
+                    let was_transitioning = comp.is_transition_active();
                     let _ = comp.render_frame(&frame_views, 1.0 / 60.0);
+                    if was_transitioning && !comp.is_transition_active() {
+                        self.project.commit_preview_working_sources();
+                        self.project.active_scene_id = self.project.preview_scene_id.clone();
+                    }
                 }
             }
             ctx.request_repaint();
@@ -1461,21 +1510,22 @@ impl ZenocastApp {
             self.source_dialog.open_add_media_with_path(path);
         }
         if let Some(ref edit_id) = trigger_open_edit_source {
-            if let Some(ref sel_scene) = self.selected_scene_id {
-                if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == sel_scene) {
-                    if let Some(src) = scene.sources.iter().find(|s| &s.id == edit_id) {
-                        self.source_dialog.open_edit(
-                            &src.id,
-                            &src.name,
-                            src.kind,
-                            &src.target,
-                            src.width,
-                            src.height,
-                            src.volume,
-                            src.muted,
-                        );
-                    }
-                }
+            if let Some(src) = self
+                .project
+                .preview_sources()
+                .into_iter()
+                .find(|s| &s.id == edit_id)
+            {
+                self.source_dialog.open_edit(
+                    &src.id,
+                    &src.name,
+                    src.kind,
+                    &src.target,
+                    src.width,
+                    src.height,
+                    src.volume,
+                    src.muted,
+                );
             }
         }
         if let Some(ref rem_id) = trigger_remove_source {

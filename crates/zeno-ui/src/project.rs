@@ -75,6 +75,8 @@ pub struct Project {
     pub preview_scene_id: Option<String>,
     pub settings: StudioSettings,
     pub last_modified: u64,
+    #[serde(skip, default)]
+    pub preview_working_sources: Option<(String, Vec<SourceDefinition>)>,
 }
 
 impl Default for Project {
@@ -147,11 +149,55 @@ impl Default for Project {
                 .duration_since(UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            preview_working_sources: None,
         }
     }
 }
 
 impl Project {
+    /// Returns the active sources for Preview (working copy if present, else cloned from scene).
+    pub fn preview_sources(&self) -> Vec<SourceDefinition> {
+        if let Some(ref prev_id) = self.preview_scene_id {
+            if let Some((ref w_id, ref sources)) = self.preview_working_sources {
+                if w_id == prev_id {
+                    return sources.clone();
+                }
+            }
+            if let Some(sc) = self.scenes.iter().find(|s| &s.id == prev_id) {
+                return sc.sources.clone();
+            }
+        }
+        Vec::new()
+    }
+
+    /// Gets a mutable reference to the preview working sources, initializing from saved scene if needed.
+    pub fn preview_working_sources_mut(&mut self) -> Option<&mut Vec<SourceDefinition>> {
+        let prev_id = self.preview_scene_id.clone()?;
+        let needs_init = match self.preview_working_sources {
+            Some((ref id, _)) => id != &prev_id,
+            None => true,
+        };
+        if needs_init {
+            let sources = self
+                .scenes
+                .iter()
+                .find(|s| s.id == prev_id)
+                .map(|s| s.sources.clone())
+                .unwrap_or_default();
+            self.preview_working_sources = Some((prev_id, sources));
+        }
+        self.preview_working_sources.as_mut().map(|(_, s)| s)
+    }
+
+    /// Commits preview working sources into the saved scene.
+    pub fn commit_preview_working_sources(&mut self) {
+        if let Some((ref prev_id, ref sources)) = self.preview_working_sources {
+            if let Some(sc) = self.scenes.iter_mut().find(|s| &s.id == prev_id) {
+                sc.sources = sources.clone();
+            }
+        }
+    }
+
     /// Saves the project to disk as pretty JSON.
     pub fn save_to_file(&mut self, path: &Path) -> Result<(), ProjectError> {
         self.last_modified = SystemTime::now()
