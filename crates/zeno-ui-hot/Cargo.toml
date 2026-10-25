@@ -1,0 +1,42 @@
+[package]
+name = "zeno-ui-hot"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Hot-reloadable UI panels and widgets for Zenocast studio."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+zeno-core = { workspace = true }
+zeno-engine = { workspace = true }
+zeno-data = { workspace = true }
+zeno-compositor = { workspace = true }
+zeno-control = { workspace = true }
+zeno-audio = { workspace = true }
+zeno-output = { workspace = true }
+zeno-license = { workspace = true }
+zeno-media = { workspace = true }
+zeno-format = { workspace = true }
+zeno-import = { workspace = true }
+zeno-script = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true }
+wgpu = { workspace = true }
+egui_dock = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+thiserror = { workspace = true }
+rfd = { workspace = true }
+image = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+pollster = { workspace = true }
+

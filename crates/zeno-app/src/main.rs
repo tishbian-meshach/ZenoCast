@@ -12,6 +12,30 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use zeno_ui::ZenocastApp;
 
+#[cfg(all(feature = "hot-reload", debug_assertions))]
+#[hot_lib_reloader::hot_module(
+    dylib = "zeno_ui_hot",
+    lib_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../target/debug")
+)]
+mod hot_ui {
+    pub use zeno_ui_hot::AppState;
+    hot_functions_from_file!("crates/zeno-ui-hot/src/lib.rs");
+
+    #[lib_updated]
+    pub fn was_updated() -> bool {}
+
+    #[lib_change_subscription]
+    pub fn subscribe() -> hot_lib_reloader::LibReloadObserver {}
+}
+
+#[cfg(not(all(feature = "hot-reload", debug_assertions)))]
+mod hot_ui {
+    pub use zeno_ui_hot::{draw_frame, mark_reloaded};
+    pub fn was_updated() -> bool {
+        false
+    }
+}
+
 /// Resolves the application log directory (%LOCALAPPDATA%/Zenocast/logs/ on Windows).
 pub fn get_log_dir() -> PathBuf {
     if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
@@ -71,6 +95,38 @@ pub fn install_panic_hook() {
     }));
 }
 
+/// Thin host application owning window, event loop, and long-lived application state.
+struct ZenocastHostApp {
+    state: ZenocastApp,
+}
+
+impl ZenocastHostApp {
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        Self {
+            state: ZenocastApp::new(cc),
+        }
+    }
+}
+
+impl eframe::App for ZenocastHostApp {
+    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Engine ticks (stable compositor, audio, and I/O pipeline)
+        self.state.tick_engine(ctx);
+
+        // Check if hot dynamic library reloaded
+        if hot_ui::was_updated() {
+            hot_ui::mark_reloaded();
+        }
+
+        // Delegate UI rendering to the dynamically-loaded or statically-linked UI crate
+        hot_ui::draw_frame(ctx, &mut self.state);
+    }
+
+    fn on_exit(&mut self) {
+        self.state.clean_exit();
+    }
+}
+
 fn main() -> eframe::Result<()> {
     install_panic_hook();
 
@@ -85,7 +141,17 @@ fn main() -> eframe::Result<()> {
     run_native(
         "Zenocast Studio",
         native_options,
-        Box::new(|cc| Ok(Box::new(ZenocastApp::new(cc)))),
+        Box::new(|cc| {
+            #[cfg(all(feature = "hot-reload", debug_assertions))]
+            {
+                let ctx = cc.egui_ctx.clone();
+                std::thread::spawn(move || loop {
+                    hot_ui::subscribe().wait_for_reload();
+                    ctx.request_repaint();
+                });
+            }
+            Ok(Box::new(ZenocastHostApp::new(cc)))
+        }),
     )
 }
 
@@ -116,5 +182,21 @@ mod tests {
     fn test_log_dir_resolution() {
         let log_dir = get_log_dir();
         assert!(log_dir.ends_with("Zenocast\\logs") || log_dir.ends_with("Zenocast/logs"));
+    }
+
+    #[test]
+    fn test_hot_reload_dylib_draw_frame_invocation() {
+        let ctx = egui::Context::default();
+        let mut app = ZenocastApp::new_headless();
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(960.0, 600.0),
+            )),
+            ..Default::default()
+        };
+        let _ = ctx.run(input, |ctx| {
+            hot_ui::draw_frame(ctx, &mut app);
+        });
     }
 }

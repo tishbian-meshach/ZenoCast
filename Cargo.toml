@@ -15,6 +15,7 @@ members = [
     "crates/zeno-platform",
     "crates/zeno-license",
     "crates/zeno-ui",
+    "crates/zeno-ui-hot",
     "crates/zeno-app",
     "crates/zeno-cli",
 ]
@@ -41,6 +42,7 @@ zeno-control = { path = "crates/zeno-control" }
 zeno-platform = { path = "crates/zeno-platform" }
 zeno-license = { path = "crates/zeno-license" }
 zeno-ui = { path = "crates/zeno-ui" }
+zeno-ui-hot = { path = "crates/zeno-ui-hot" }
 
 # Common third-party dependencies
 serde = { version = "1.0", features = ["derive"] }
@@ -66,6 +68,7 @@ egui = "0.31"
 eframe = { version = "0.31", default-features = false, features = ["default_fonts", "wgpu", "persistence"] }
 egui_dock = { version = "0.16", default-features = false }
 rfd = "0.15"
+hot-lib-reloader = "0.8.2"
 
 [workspace.lints.rust]
 unsafe_code = "allow" # Restricted per rule 4 to zeno-platform and FFI glue

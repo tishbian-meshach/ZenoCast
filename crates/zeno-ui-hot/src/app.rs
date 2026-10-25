@@ -324,6 +324,86 @@ impl ZenocastApp {
         app
     }
 
+    /// Initializes a headless studio instance without GPU surface bindings.
+    pub fn new_headless() -> Self {
+        let project = Project::default();
+        let selected_scene_id = project.active_scene_id.clone();
+        let dock_state = create_default_live_layout();
+
+        let v_settings = zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: project.settings.video.output_width,
+            height: project.settings.video.output_height,
+            fps: project.settings.video.fps,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: project.settings.output.video_bitrate_kbps,
+            max_bitrate_kbps: Some(project.settings.output.video_bitrate_kbps),
+            keyframe_interval_seconds: project.settings.output.keyframe_interval_seconds,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        };
+
+        let a_settings = zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: project.settings.audio.sample_rate,
+            channels: project.settings.audio.channels,
+            bitrate_kbps: project.settings.audio.bitrate_kbps,
+        };
+
+        let output_manager = Arc::new(OutputManager::new_dry_run(v_settings, a_settings));
+        let source_registry = Arc::new(parking_lot::RwLock::new(SourceRegistry::new()));
+
+        Self {
+            project,
+            project_path: None,
+            dock_state,
+            selected_scene_id,
+            selected_source_id: None,
+            show_settings: false,
+            is_streaming: false,
+            is_recording: false,
+            stream_start_time: None,
+            active_transition_kind: "Fade".into(),
+            transition_duration_ms: 300,
+            t_bar_progress: 0.0,
+            autosaver: Autosaver::new(
+                &std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
+            ),
+            output_manager,
+            wizard: {
+                let mut w = FirstRunWizard::new();
+                w.is_open = false;
+                w
+            },
+            license_client: Arc::new(LicenseClient::new_mock_valid()),
+            license_key_input: String::new(),
+            source_registry,
+            compositor: Arc::new(parking_lot::RwLock::new(None)),
+            source_dialog: SourceDialogState::default(),
+            preview_texture_id: None,
+            program_texture_id: None,
+            wgpu_device: None,
+            wgpu_queue: None,
+            app_mode: AppMode::LiveStudio,
+            overlay_editor: OverlayEditor::default(),
+            timeline_mode: TimelineMode::DopeSheet,
+            data_panel_state: DataPanelState::default(),
+            data_store: Arc::new(DataStore::new()),
+            control_state: {
+                let s = Arc::new(DataStore::new());
+                Arc::new(ControlState::new(s))
+            },
+            master_volume: 1.0,
+            master_muted: false,
+            show_open_dialog: false,
+            show_save_as_dialog: false,
+            file_dialog_path: "project.arxproj".to_string(),
+            rename_scene_id: None,
+            rename_scene_buffer: String::new(),
+            live_gizmo_state: TransformGizmoState::default(),
+        }
+    }
+
     /// Handles instant Cut transition between Preview and Program.
     pub fn execute_cut(&mut self) {
         self.project.commit_preview_working_sources();
@@ -1140,8 +1220,8 @@ impl ZenocastApp {
         }
     }
 
-    /// Drives a complete UI frame update pass for the given egui context.
-    pub fn update_ui(&mut self, ctx: &Context) {
+    /// Advances real-time engine processing: captures, GPU compositor rendering, and periodic autosaves.
+    pub fn tick_engine(&mut self, ctx: &Context) {
         // Render tick for live sources and compositor
         if let (Some(device), Some(queue)) = (&self.wgpu_device, &self.wgpu_queue) {
             let now_sec = std::time::SystemTime::now()
@@ -1189,7 +1269,10 @@ impl ZenocastApp {
 
         // 30-second periodic autosave check
         let _ = self.autosaver.check_and_save(&mut self.project);
+    }
 
+    /// Renders the complete broadcast UI layout, panels, and modal dialogs.
+    pub fn draw_ui(&mut self, ctx: &Context) {
         // Top Menu Bar
         TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -1288,6 +1371,11 @@ impl ZenocastApp {
                         self.stream_duration_string()
                     ),
                 );
+                #[cfg(debug_assertions)]
+                if let Some(reload_time) = crate::get_reload_indicator() {
+                    ui.separator();
+                    ui.colored_label(crate::theme::ACCENT, format!("UI reloaded {}", reload_time));
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.colored_label(TEXT_MUTED, "Hardware NVENC/AMF Ready");
                 });
@@ -1826,14 +1914,15 @@ impl ZenocastApp {
         // Render First-Run Setup Wizard if open
         self.wizard.ui(ctx, &mut self.project.settings);
     }
-}
 
-impl App for ZenocastApp {
-    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
-        self.update_ui(ctx);
+    /// Drives a complete frame: advances engine state and renders UI.
+    pub fn update_ui(&mut self, ctx: &Context) {
+        self.tick_engine(ctx);
+        self.draw_ui(ctx);
     }
 
-    fn on_exit(&mut self) {
+    /// Performs graceful shutdown of output streams, recordings, and active sources.
+    pub fn clean_exit(&mut self) {
         if self.is_streaming {
             self.output_manager.stop_streaming();
             self.is_streaming = false;
@@ -1846,5 +1935,15 @@ impl App for ZenocastApp {
         }
         self.source_registry.write().clear();
         info!("Clean application exit completed");
+    }
+}
+
+impl App for ZenocastApp {
+    fn update(&mut self, ctx: &Context, _frame: &mut Frame) {
+        self.update_ui(ctx);
+    }
+
+    fn on_exit(&mut self) {
+        self.clean_exit();
     }
 }

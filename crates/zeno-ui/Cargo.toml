@@ -7,6 +7,7 @@ license.workspace = true
 description = "Egui broadcast UI, dockable layouts, motion-graphics editor, and theme tokens for Zenocast."
 
 [dependencies]
+zeno-ui-hot = { path = "../zeno-ui-hot" }
 zeno-core = { path = "../zeno-core" }
 zeno-engine = { path = "../zeno-engine" }
 zeno-data = { path = "../zeno-data" }

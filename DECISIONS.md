@@ -846,3 +846,23 @@ This log records major architectural and implementation choices, defaults select
     - `AUTO`: Engages configured transition between Program output and Preview working state. On completion, commits the working copy into canonical state and updates `program_scene`.
     - `T-BAR`: Dynamically blends between Program's canonical scene and Preview's working scene via `render_transition_preview`, with manual scrub support even when both monitors display the same scene. Reaching 1.0 (or 0.95+) triggers commit via `cut()`.
 
+### 2026-10-25: Dev Watcher In-Place UI Hot Reload (`feat(dev): true in-place UI hot reload via dylib host/hot-crate split`)
+- **Choice of Hot-Reload Framework: `hot-lib-reloader` vs `dexterous_developer`**:
+  - Selected `hot-lib-reloader` (v0.8.2) over `dexterous_developer`.
+  - Rationale:
+    - Zenocast's architecture is built around immediate-mode GUI (`egui`/`eframe`) and direct domain state mutation, rather than a Bevy-style ECS framework (which `dexterous_developer` is tailored for).
+    - `hot-lib-reloader` provides minimal, zero-overhead wrapping around `libloading`, specifically supporting procedural function entry points (`draw_frame(ctx, &mut AppState)`), file watching with debouncing, and the `#[lib_updated]` callback.
+- **Dylib Split & Strict Host State Ownership**:
+  - Partitioned the UI layer into `crates/zeno-ui-hot` (frequently edited UI panels, layout, widgets, styling, and input dispatch) and `crates/zeno-app` (thin host binary owning window, event loop, GPU context, and long-lived `AppState`).
+  - `zeno-ui` re-exports all items from `zeno-ui-hot` to maintain 100% backward compatibility across all integration test suites.
+  - Strict ownership guarantee: `AppState` (`ZenocastApp`), GPU device/queues, and preview/program textures are allocated and owned by `zeno-app` in the host process. The dylib only receives `&mut AppState` across the ABI boundary. No static or global state exists inside the dylib, eliminating state loss or resource leakage on hot swap.
+- **Windows PE/COFF Symbol Table Limit Resolution**:
+  - Compiling `zeno-ui-hot` with standard Rust `dylib` crate type on Windows GNU/LLVM produces 144,000+ exported symbols, exceeding the PE/COFF 16-bit export table limit (max 65,535).
+  - Configured `zeno-ui-hot` as `crate-type = ["cdylib", "rlib"]`, exporting only designated `#[no_mangle]` entry points (`draw_frame`, `mark_reloaded`). This reduced DLL export table size to 2 symbols and compiled cleanly to 12.8 MB in ~1.9s.
+- **Release Build Static Linking**:
+  - Feature-gated hot reload via `hot-reload` Cargo feature. In release builds (`cargo build --release -p zeno-app`), `hot-lib-reloader` is completely omitted from compilation and dependencies; `zeno-ui-hot` is statically linked as an `rlib` with zero runtime overhead, zero dynamic DLL swapping, and zero added attack surface.
+- **Dev Watcher (`scripts/dev-watch.ps1`)**:
+  - Keeps the Zenocast host process open and running continuously.
+  - Granular change detection: edits inside `crates/zeno-ui-hot` trigger incremental compilation of `zeno-ui-hot` only; `hot-lib-reloader` swaps the `.dll` in-place, and a discreet `"UI reloaded HH:MM:SS"` indicator appears in the debug status bar.
+  - Any modifications to engine or static crates (`zeno-engine`, `zeno-compositor`, etc.) display a diagnostic notice (`[dev-watch] Engine/static crate code changed, hot reload unavailable, relaunching...`) and trigger a full rebuild and relaunch.
+

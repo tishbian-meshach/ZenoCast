@@ -14,6 +14,7 @@ path = "src/main.rs"
 zeno-core = { path = "../zeno-core" }
 zeno-engine = { path = "../zeno-engine" }
 zeno-ui = { path = "../zeno-ui" }
+zeno-ui-hot = { path = "../zeno-ui-hot" }
 zeno-compositor = { path = "../zeno-compositor" }
 zeno-output = { path = "../zeno-output" }
 zeno-control = { path = "../zeno-control" }
@@ -22,6 +23,11 @@ zeno-media = { path = "../zeno-media" }
 eframe = { workspace = true }
 egui = { workspace = true }
 tracing = { workspace = true }
+hot-lib-reloader = { workspace = true, optional = true }
+
+[features]
+default = []
+hot-reload = ["dep:hot-lib-reloader"]
 
 [dev-dependencies]
 tempfile = { workspace = true }
