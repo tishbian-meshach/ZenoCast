@@ -92,6 +92,7 @@ fn create_test_app() -> ZenocastApp {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     }
 }
 

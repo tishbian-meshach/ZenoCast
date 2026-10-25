@@ -19,6 +19,8 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | **Mode > Data Control** | Switches `app_mode` to `AppMode::DataControl`, rendering esports rapid scoreboard | Verified: mounts data panel and synchronizes with `DataStore` and `ControlState` in `tests/control_api_overlay_test.rs`. | [x] Verified |
 | **Tools > Auto-Config Wizard** | Opens `FirstRunWizard` modal with hardware inventory & encoder recommendations | Verified: opens wizard and checks GPU encoder support in `tests/wizard_installer_test.rs`. | [x] Verified |
 | **Tools > Settings...** | Opens studio settings dialog directly from tools menu | Verified: opens settings dialog modifying `project.settings` in `test_m8_user_builds_scenes_and_adds_sources_via_ui`. | [x] Verified |
+| **View > Studio Mode** | Toggles between Normal Mode (single Program monitor) and Studio Mode (Preview/Program split) | Verified: switches layout live and persists in user preferences (`preferences.json`). | [x] Verified |
+| **View > Reset UI Layout** | Restores default dock layout splitters and panel positions | Verified: reinitializes dock state with standard split geometry. | [x] Verified |
 
 ---
 
@@ -89,6 +91,7 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | :--- | :--- | :--- | :--- |
 | **START / STOP STREAMING** | Validates license & starts/stops RTMP/SRT output stream | Verified: toggles encoder pipeline and sets `is_streaming` in `test_m8_one_click_live_streaming_and_recording`. | [x] Verified |
 | **START / STOP RECORDING** | Starts/stops local MP4/MKV recording to disk | Verified: writes valid non-empty container to disk in `test_m8_one_click_live_streaming_and_recording`. | [x] Verified |
+| **Studio Mode Button** | Toggles between Normal Mode and Studio Mode live | Verified: toggles dual Preview/Program layout and single Program layout in `test_section_1_normal_mode_default_and_studio_mode_toggle`. | [x] Verified |
 | **Status Readout** | Reflects real live stream status ("LIVE" vs "OFFLINE") | Verified: displays RED_LIVE "LIVE" when active in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **FPS Telemetry** | Real-time encoder framerate from `OutputManager::stats()` | Verified: reports live fps in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Dropped Frame Telemetry** | Percentage of frames dropped by network/encoder | Verified: reports `stats.dropped_percent` with warning color if > 0.1% in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
@@ -101,6 +104,7 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 
 | Control | Action / Engine Target | Verification Note | Status |
 | :--- | :--- | :--- | :--- |
+| **Normal Mode Monitor** | Single Program-only monitor view with on-canvas gizmo and context menu | Verified: single monitor layout in Normal Mode with direct scene switching. | [x] Verified |
 | **CUT Button** | Instantly swaps Preview and Program scene buses | Verified: swaps active and preview scenes immediately in `test_m8_preview_to_program_transition_switching`. | [x] Verified |
 | **AUTO Button** | Runs active transition definition with configured duration | Verified: executes auto transition in `test_m8_preview_to_program_transition_switching`. | [x] Verified |
 | **T-BAR Slider** | Smoothly blends preview and program scenes on drag; cuts at >= 0.95 | Verified: scrubbing smoothly updates progress; drag release >= 0.95 swaps buses in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |

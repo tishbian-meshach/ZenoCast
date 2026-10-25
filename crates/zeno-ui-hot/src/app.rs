@@ -139,6 +139,8 @@ pub struct ZenocastApp {
     pub wgpu_queue: Option<Arc<wgpu::Queue>>,
     /// Transient inline warning message for sources (e.g. "Unlock to delete")
     pub source_warning_message: Option<(String, Instant)>,
+    /// Whether Studio Mode (dual Preview/Program monitors) is enabled, or Normal Mode (single Program monitor).
+    pub studio_mode: bool,
     /// Motion graphics overlay editor state (Edit Overlay mode)
     pub overlay_editor: OverlayEditor,
     /// Timeline mode (DopeSheet vs CurveEditor)
@@ -192,11 +194,19 @@ impl ZenocastApp {
     pub fn new(cc: &eframe::CreationContext) -> Self {
         apply_theme(&cc.egui_ctx);
 
-        let project = Project::default();
-        let selected_scene_id = project
-            .preview_scene_id
-            .clone()
-            .or_else(|| project.active_scene_id.clone());
+        let user_prefs = crate::preferences::UserPreferences::load();
+        let studio_mode = user_prefs.studio_mode;
+
+        let mut project = Project::default();
+        let selected_scene_id = if studio_mode {
+            project
+                .preview_scene_id
+                .clone()
+                .or_else(|| project.active_scene_id.clone())
+        } else {
+            project.preview_scene_id = project.active_scene_id.clone();
+            project.active_scene_id.clone()
+        };
         let dock_state = create_default_live_layout();
 
         let v_settings = zeno_output::encoder::VideoEncoderSettings {
@@ -336,6 +346,7 @@ impl ZenocastApp {
             wgpu_device,
             wgpu_queue,
             source_warning_message: None,
+            studio_mode,
             app_mode: AppMode::LiveStudio,
             overlay_editor: OverlayEditor::default(),
             timeline_mode: TimelineMode::DopeSheet,
@@ -441,6 +452,7 @@ impl ZenocastApp {
             wgpu_device: None,
             wgpu_queue: None,
             source_warning_message: None,
+            studio_mode: false,
             app_mode: AppMode::LiveStudio,
             overlay_editor: OverlayEditor::default(),
             timeline_mode: TimelineMode::DopeSheet,
@@ -503,6 +515,69 @@ impl ZenocastApp {
             "Executed Auto transition ({}ms {}): live='{:?}'",
             self.transition_duration_ms, self.active_transition_kind, self.project.active_scene_id
         );
+    }
+
+    /// Directly switches live Program output to the designated scene (used in Normal Mode and double-clicks).
+    pub fn switch_to_scene_direct(&mut self, scene_id_str: &str) {
+        self.project.commit_preview_working_sources();
+        self.selected_scene_id = Some(scene_id_str.to_string());
+        self.project.preview_scene_id = Some(scene_id_str.to_string());
+        if let Some(scene) = self.project.scenes.iter().find(|s| s.id == scene_id_str) {
+            self.project.preview_working_sources =
+                Some((scene_id_str.to_string(), scene.sources.clone()));
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let sc_id = string_to_scene_id(scene_id_str);
+            comp.set_preview(sc_id);
+            if self.active_transition_kind == "Cut" || self.transition_duration_ms == 0 {
+                comp.set_program(sc_id);
+                comp.cut();
+            } else {
+                let dur_sec = (self.transition_duration_ms as f64) / 1000.0;
+                let def = match self.active_transition_kind.as_str() {
+                    "Fade" => TransitionDefinition::fade(dur_sec),
+                    "Slide" => TransitionDefinition::slide(SlideDirection::Left, true, dur_sec),
+                    "Wipe" => TransitionDefinition::wipe(WipeDirection::Horizontal, 0.1, dur_sec),
+                    _ => TransitionDefinition::fade(dur_sec),
+                };
+                comp.auto_transition(Some(def));
+            }
+        }
+        self.project.active_scene_id = Some(scene_id_str.to_string());
+        info!("Switched live output directly to scene '{}'", scene_id_str);
+    }
+
+    /// Toggles between Normal Mode (single Program monitor) and Studio Mode (dual monitors).
+    pub fn toggle_studio_mode(&mut self) {
+        self.studio_mode = !self.studio_mode;
+        if self.studio_mode {
+            // Switching into Studio Mode duplicates current single monitor into Preview+Program
+            if self.project.preview_scene_id.is_none() {
+                self.project.preview_scene_id = self.project.active_scene_id.clone();
+            }
+            if let Some(ref sc_id) = self.project.preview_scene_id {
+                if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == sc_id) {
+                    self.project.preview_working_sources =
+                        Some((sc_id.clone(), scene.sources.clone()));
+                }
+            }
+        } else {
+            // Switching back to Normal Mode collapses to Program only:
+            // Auto-commit unsaved edits and keep Program as the single visible feed
+            self.project.commit_preview_working_sources();
+            self.selected_scene_id = self.project.active_scene_id.clone();
+            self.project.preview_scene_id = self.project.active_scene_id.clone();
+            if let Some(ref sc_id) = self.project.active_scene_id {
+                if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == sc_id) {
+                    self.project.preview_working_sources =
+                        Some((sc_id.clone(), scene.sources.clone()));
+                }
+            }
+        }
+        let prefs = crate::preferences::UserPreferences {
+            studio_mode: self.studio_mode,
+        };
+        prefs.save();
     }
 
     /// Resets project to a fresh default state.
@@ -1064,8 +1139,7 @@ impl ZenocastApp {
             .map(|s| s.locked)
             .unwrap_or(false);
         if is_locked {
-            self.source_warning_message =
-                Some(("Unlock to delete".to_string(), Instant::now()));
+            self.source_warning_message = Some(("Unlock to delete".to_string(), Instant::now()));
             return;
         }
 
@@ -2664,6 +2738,18 @@ impl ZenocastApp {
                     }
                 });
 
+                ui.menu_button("View", |ui| {
+                    let mut sm = self.studio_mode;
+                    if ui.checkbox(&mut sm, "Studio Mode").clicked() {
+                        self.toggle_studio_mode();
+                        ui.close_menu();
+                    }
+                    if ui.button("Reset UI Layout").clicked() {
+                        self.dock_state = create_default_live_layout();
+                        ui.close_menu();
+                    }
+                });
+
                 ui.menu_button("Tools", |ui| {
                     if ui.button("Auto-Configuration Wizard...").clicked() {
                         self.wizard.is_open = true;
@@ -2739,6 +2825,8 @@ impl ZenocastApp {
         let mut trigger_sync_source_order: Option<String> = None;
         let mut trigger_snapshot_undo = false;
         let mut trigger_audio_change = false;
+        let mut trigger_toggle_studio_mode = false;
+        let mut trigger_switch_scene_direct: Option<String> = None;
 
         let stats = self.output_manager.stats();
         let fps = if stats.encode_time_ms > 0.0 {
@@ -2798,6 +2886,9 @@ impl ZenocastApp {
                     trigger_sync_source_order: &mut trigger_sync_source_order,
                     trigger_snapshot_undo: &mut trigger_snapshot_undo,
                     source_warning_message: &mut self.source_warning_message,
+                    studio_mode: self.studio_mode,
+                    trigger_toggle_studio_mode: &mut trigger_toggle_studio_mode,
+                    trigger_switch_scene_direct: &mut trigger_switch_scene_direct,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -2916,6 +3007,12 @@ impl ZenocastApp {
         }
         if trigger_toggle_record {
             self.toggle_recording();
+        }
+        if trigger_toggle_studio_mode {
+            self.toggle_studio_mode();
+        }
+        if let Some(ref sc_id) = trigger_switch_scene_direct {
+            self.switch_to_scene_direct(sc_id);
         }
         if trigger_open_add_source {
             self.source_dialog.open_add();

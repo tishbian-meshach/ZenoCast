@@ -177,6 +177,7 @@ fn test_m8_preview_to_program_transition_switching() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     assert_eq!(
@@ -278,6 +279,7 @@ fn test_m8_one_click_live_streaming_and_recording() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     assert!(!app.is_streaming);
@@ -464,6 +466,7 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     // Step 1: User adds a real backend source through the source dialog flow
@@ -694,6 +697,7 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     // The 10 broadcast source types required by Section 2.2
@@ -970,6 +974,7 @@ fn test_section_3_ui_interactivity_audit_wiring() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     // 1. AppMode Switching
@@ -1252,6 +1257,7 @@ fn test_source_reordering_live_studio() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     // Start with 2 default sources: src_display (idx 0), src_cam (idx 1)
@@ -1504,8 +1510,10 @@ fn test_section_6_consistency_pass_and_modal_navigation() {
 
 #[test]
 fn test_section_4_eye_lock_visibility_and_safety_controls() {
-    let mut project = Project::default();
-    project.preview_scene_id = Some("scene_gameplay".into());
+    let project = Project {
+        preview_scene_id: Some("scene_gameplay".into()),
+        ..Default::default()
+    };
     let output_manager = Arc::new(OutputManager::new_dry_run(
         zeno_output::encoder::VideoEncoderSettings {
             encoder_kind: zeno_output::encoder::EncoderKind::X264,
@@ -1579,34 +1587,207 @@ fn test_section_4_eye_lock_visibility_and_safety_controls() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     // 1. Initial State: src_display is visible and not locked
-    assert!(app.project.preview_sources().iter().find(|s| s.id == "src_display").unwrap().visible);
-    assert!(!app.project.preview_sources().iter().find(|s| s.id == "src_display").unwrap().locked);
+    assert!(
+        app.project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == "src_display")
+            .unwrap()
+            .visible
+    );
+    assert!(
+        !app.project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == "src_display")
+            .unwrap()
+            .locked
+    );
 
     // 2. Toggle visibility: should turn hidden
     app.toggle_source_visibility("src_display");
-    assert!(!app.project.preview_sources().iter().find(|s| s.id == "src_display").unwrap().visible);
+    assert!(
+        !app.project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == "src_display")
+            .unwrap()
+            .visible
+    );
 
     // 3. Toggle visibility back: should turn visible
     app.toggle_source_visibility("src_display");
-    assert!(app.project.preview_sources().iter().find(|s| s.id == "src_display").unwrap().visible);
+    assert!(
+        app.project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == "src_display")
+            .unwrap()
+            .visible
+    );
 
     // 4. Toggle lock: should lock
     app.toggle_source_lock("src_display");
-    assert!(app.project.preview_sources().iter().find(|s| s.id == "src_display").unwrap().locked);
+    assert!(
+        app.project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == "src_display")
+            .unwrap()
+            .locked
+    );
 
     // 5. Attempt delete while locked: delete must be BLOCKED and warning set
     app.delete_selected_source();
-    assert!(app.project.preview_sources().iter().any(|s| s.id == "src_display"), "Locked source must not be deleted");
-    assert!(app.source_warning_message.is_some(), "Warning message must be set when delete blocked");
-    assert_eq!(app.source_warning_message.as_ref().unwrap().0, "Unlock to delete");
+    assert!(
+        app.project
+            .preview_sources()
+            .iter()
+            .any(|s| s.id == "src_display"),
+        "Locked source must not be deleted"
+    );
+    assert!(
+        app.source_warning_message.is_some(),
+        "Warning message must be set when delete blocked"
+    );
+    assert_eq!(
+        app.source_warning_message.as_ref().unwrap().0,
+        "Unlock to delete"
+    );
 
     // 6. Unlock and delete: should succeed
     app.toggle_source_lock("src_display");
-    assert!(!app.project.preview_sources().iter().find(|s| s.id == "src_display").unwrap().locked);
+    assert!(
+        !app.project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == "src_display")
+            .unwrap()
+            .locked
+    );
     app.delete_selected_source();
-    assert!(!app.project.preview_sources().iter().any(|s| s.id == "src_display"), "Unlocked source must be deleted");
+    assert!(
+        !app.project
+            .preview_sources()
+            .iter()
+            .any(|s| s.id == "src_display"),
+        "Unlocked source must be deleted"
+    );
 }
 
+#[test]
+fn test_section_1_normal_mode_default_and_studio_mode_toggle() {
+    let project = Project::default();
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some("scene_gameplay".into()),
+        selected_source_id: None,
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(None)),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: None,
+        wgpu_queue: None,
+        source_warning_message: None,
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
+    };
+
+    // 1. Initial State: Normal Mode by default
+    assert!(!app.studio_mode, "Default mode must be Normal Mode");
+    assert_eq!(
+        app.project.active_scene_id.as_deref(),
+        Some("scene_gameplay")
+    );
+
+    // 2. Normal Mode direct scene switch
+    app.switch_to_scene_direct("scene_brb");
+    assert_eq!(
+        app.project.active_scene_id.as_deref(),
+        Some("scene_brb"),
+        "Scene switch direct must immediately switch active Program scene"
+    );
+
+    // 3. Toggle into Studio Mode
+    app.toggle_studio_mode();
+    assert!(app.studio_mode, "Studio Mode must be active after toggle");
+    assert_eq!(
+        app.project.preview_scene_id.as_deref(),
+        Some("scene_brb"),
+        "Preview scene must match program scene upon entering Studio Mode"
+    );
+
+    // 4. Toggle back into Normal Mode (collapses to Program)
+    app.toggle_studio_mode();
+    assert!(!app.studio_mode, "Normal Mode must be active after toggle");
+    assert_eq!(
+        app.project.active_scene_id.as_deref(),
+        Some("scene_brb"),
+        "Program scene must be preserved when returning to Normal Mode"
+    );
+}

@@ -13,6 +13,7 @@ pub mod import_dialog;
 pub mod log_viewer;
 pub mod overlay_control;
 pub mod performance_hud;
+pub mod preferences;
 pub mod project;
 pub mod settings;
 pub mod source_dialog;
@@ -20,6 +21,8 @@ pub mod spreadsheet_panel;
 pub mod theme;
 pub mod transform_gizmo;
 pub mod wizard;
+
+pub use preferences::UserPreferences;
 
 pub use hotkey_registry::{
     generate_shortcuts_markdown, ActionCategory, ActionId, ConflictWarning, HotkeyRegistry,

@@ -93,6 +93,7 @@ pub fn test_start_stop_local_recording_creates_valid_file_on_disk() {
         studio_redo_stack: Vec::new(),
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
     };
 
     assert!(!app.is_recording);
