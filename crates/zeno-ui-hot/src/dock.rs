@@ -213,15 +213,16 @@ impl<'a> StudioTabViewer<'a> {
                 let canvas_size = vec2(canvas_w, canvas_h);
                 let zoom = rect.width() / canvas_size.x;
 
-                let events = self.live_gizmo_state.draw_and_interact(
-                    ui,
-                    rect,
-                    canvas_size,
-                    egui::Vec2::ZERO,
-                    zoom,
-                    &gizmo_items,
-                    &selected_ids,
-                );
+                let (canvas_response, events) =
+                    self.live_gizmo_state.draw_and_interact_with_response(
+                        ui,
+                        rect,
+                        canvas_size,
+                        egui::Vec2::ZERO,
+                        zoom,
+                        &gizmo_items,
+                        &selected_ids,
+                    );
 
                 for event in events {
                     match event {
@@ -274,6 +275,300 @@ impl<'a> StudioTabViewer<'a> {
                         }
                     }
                 }
+
+                // Context menu on the Preview Canvas (Right-Click support)
+                canvas_response.context_menu(|ui| {
+                    if let Some(ref sel_id) = *self.selected_source_id {
+                        let sources = self.project.preview_sources();
+                        let src_name = sources
+                            .iter()
+                            .find(|s| &s.id == sel_id)
+                            .map(|s| s.name.clone())
+                            .unwrap_or_else(|| sel_id.clone());
+
+                        ui.label(egui::RichText::new(&src_name).strong());
+                        ui.separator();
+
+                        let num_sources = sources.len();
+                        let cur_idx_opt = sources.iter().position(|s| &s.id == sel_id);
+                        let can_front = cur_idx_opt.is_some_and(|i| i + 1 < num_sources);
+                        let can_back = cur_idx_opt.is_some_and(|i| i > 0);
+                        let sc_id_opt = self.project.preview_scene_id.clone();
+
+                        ui.menu_button("Order", |ui| {
+                            if ui
+                                .add_enabled(
+                                    can_front,
+                                    egui::Button::new("Bring to Front\tCtrl+Shift+]"),
+                                )
+                                .clicked()
+                            {
+                                if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
+                                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                        *self.trigger_snapshot_undo = true;
+                                        if idx < srcs.len() {
+                                            let s = srcs.remove(idx);
+                                            srcs.push(s);
+                                            *self.trigger_sync_source_order = Some(sc_id);
+                                        }
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                            if ui
+                                .add_enabled(can_front, egui::Button::new("Bring Forward\tCtrl+]"))
+                                .clicked()
+                            {
+                                if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
+                                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                        *self.trigger_snapshot_undo = true;
+                                        if idx + 1 < srcs.len() {
+                                            srcs.swap(idx, idx + 1);
+                                            *self.trigger_sync_source_order = Some(sc_id);
+                                        }
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                            if ui
+                                .add_enabled(can_back, egui::Button::new("Send Backward\tCtrl+["))
+                                .clicked()
+                            {
+                                if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
+                                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                        *self.trigger_snapshot_undo = true;
+                                        if idx > 0 && idx < srcs.len() {
+                                            srcs.swap(idx, idx - 1);
+                                            *self.trigger_sync_source_order = Some(sc_id);
+                                        }
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                            if ui
+                                .add_enabled(
+                                    can_back,
+                                    egui::Button::new("Send to Back\tCtrl+Shift+["),
+                                )
+                                .clicked()
+                            {
+                                if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
+                                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                        *self.trigger_snapshot_undo = true;
+                                        if idx < srcs.len() {
+                                            let s = srcs.remove(idx);
+                                            srcs.insert(0, s);
+                                            *self.trigger_sync_source_order = Some(sc_id);
+                                        }
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                        });
+
+                        ui.menu_button("Transform", |ui| {
+                            if ui.button("Reset Transform\tCtrl+R").clicked() {
+                                *self.trigger_snapshot_undo = true;
+                                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                    if let Some(s) = srcs.iter_mut().find(|s| &s.id == sel_id) {
+                                        s.x = 0.0;
+                                        s.y = 0.0;
+                                        s.rotation = 0.0;
+                                        *self.trigger_transform_source = Some((
+                                            s.id.clone(),
+                                            s.x,
+                                            s.y,
+                                            s.width,
+                                            s.height,
+                                            s.rotation,
+                                        ));
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                            if ui.button("Center on Screen\tCtrl+D").clicked() {
+                                *self.trigger_snapshot_undo = true;
+                                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                    if let Some(s) = srcs.iter_mut().find(|s| &s.id == sel_id) {
+                                        s.x = (canvas_w - s.width) * 0.5;
+                                        s.y = (canvas_h - s.height) * 0.5;
+                                        *self.trigger_transform_source = Some((
+                                            s.id.clone(),
+                                            s.x,
+                                            s.y,
+                                            s.width,
+                                            s.height,
+                                            s.rotation,
+                                        ));
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                            if ui.button("Fit to Screen\tCtrl+F").clicked() {
+                                *self.trigger_snapshot_undo = true;
+                                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                    if let Some(s) = srcs.iter_mut().find(|s| &s.id == sel_id) {
+                                        s.x = 0.0;
+                                        s.y = 0.0;
+                                        s.width = canvas_w;
+                                        s.height = canvas_h;
+                                        s.rotation = 0.0;
+                                        *self.trigger_transform_source = Some((
+                                            s.id.clone(),
+                                            s.x,
+                                            s.y,
+                                            s.width,
+                                            s.height,
+                                            s.rotation,
+                                        ));
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                        });
+
+                        ui.separator();
+
+                        let prop_acc = self.project.settings.hotkeys.registry.accelerator_text(
+                            crate::hotkey_registry::ActionId::OpenSourceProperties,
+                        );
+                        let prop_btn = if prop_acc.is_empty() {
+                            egui::Button::new("Properties...")
+                        } else {
+                            egui::Button::new("Properties...").shortcut_text(&prop_acc)
+                        };
+                        if ui.add(prop_btn).clicked() {
+                            *self.trigger_open_edit_source = Some(sel_id.clone());
+                            ui.close_menu();
+                        }
+
+                        let vis_acc = self.project.settings.hotkeys.registry.accelerator_text(
+                            crate::hotkey_registry::ActionId::ToggleSourceVisibility,
+                        );
+                        let vis_btn = if vis_acc.is_empty() {
+                            egui::Button::new("Toggle Visibility")
+                        } else {
+                            egui::Button::new("Toggle Visibility").shortcut_text(&vis_acc)
+                        };
+                        if ui.add(vis_btn).clicked() {
+                            *self.trigger_toggle_source_visibility = Some(sel_id.clone());
+                            ui.close_menu();
+                        }
+
+                        let lock_acc =
+                            self.project.settings.hotkeys.registry.accelerator_text(
+                                crate::hotkey_registry::ActionId::ToggleSourceLock,
+                            );
+                        let lock_btn = if lock_acc.is_empty() {
+                            egui::Button::new("Toggle Lock")
+                        } else {
+                            egui::Button::new("Toggle Lock").shortcut_text(&lock_acc)
+                        };
+                        if ui.add(lock_btn).clicked() {
+                            *self.trigger_toggle_source_lock = Some(sel_id.clone());
+                            ui.close_menu();
+                        }
+
+                        let del_acc = self
+                            .project
+                            .settings
+                            .hotkeys
+                            .registry
+                            .accelerator_text(crate::hotkey_registry::ActionId::DeleteSelected);
+                        let del_btn = if del_acc.is_empty() {
+                            egui::Button::new("Remove Source")
+                        } else {
+                            egui::Button::new("Remove Source").shortcut_text(&del_acc)
+                        };
+                        if ui.add(del_btn).clicked() {
+                            *self.trigger_remove_source = Some(sel_id.clone());
+                            ui.close_menu();
+                        }
+
+                        ui.separator();
+                        ui.label(egui::RichText::new("Source Hotkeys (OBS Parity)").strong());
+                        let src_hk = self
+                            .project
+                            .settings
+                            .hotkeys
+                            .registry
+                            .source_hotkeys
+                            .get(sel_id)
+                            .cloned()
+                            .unwrap_or_default();
+
+                        // Mute/Unmute
+                        let mute_str = src_hk.mute.unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("Mute/Unmute:");
+                            let btn_text = if mute_str.is_empty() {
+                                egui::RichText::new("None").color(TEXT_MUTED)
+                            } else {
+                                egui::RichText::new(&mute_str).color(TEXT)
+                            };
+                            if ui.button(btn_text).clicked() {
+                                *self.rebinding_target =
+                                    Some(crate::hotkey_registry::RebindTarget::SourceMute(
+                                        sel_id.clone(),
+                                    ));
+                                ui.close_menu();
+                            }
+                            if !mute_str.is_empty() && ui.small_button("✖").clicked() {
+                                self.project
+                                    .settings
+                                    .hotkeys
+                                    .registry
+                                    .source_hotkeys
+                                    .entry(sel_id.clone())
+                                    .or_default()
+                                    .mute = None;
+                            }
+                        });
+
+                        // Show/Hide
+                        let sh_str = src_hk.show_hide.unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("Show/Hide:");
+                            let btn_text = if sh_str.is_empty() {
+                                egui::RichText::new("None").color(TEXT_MUTED)
+                            } else {
+                                egui::RichText::new(&sh_str).color(TEXT)
+                            };
+                            if ui.button(btn_text).clicked() {
+                                *self.rebinding_target =
+                                    Some(crate::hotkey_registry::RebindTarget::SourceShowHide(
+                                        sel_id.clone(),
+                                    ));
+                                ui.close_menu();
+                            }
+                            if !sh_str.is_empty() && ui.small_button("✖").clicked() {
+                                self.project
+                                    .settings
+                                    .hotkeys
+                                    .registry
+                                    .source_hotkeys
+                                    .entry(sel_id.clone())
+                                    .or_default()
+                                    .show_hide = None;
+                            }
+                        });
+                    } else {
+                        // Empty Canvas Context Menu
+                        ui.label(egui::RichText::new("Preview Canvas").strong());
+                        ui.separator();
+                        if ui.button("+ Add Source...").clicked() {
+                            *self.trigger_open_add_source = true;
+                            ui.close_menu();
+                        }
+                        if ui
+                            .add(egui::Button::new("Deselect All").shortcut_text("Escape"))
+                            .clicked()
+                        {
+                            *self.selected_source_id = None;
+                            ui.close_menu();
+                        }
+                    }
+                });
 
                 ui.painter().rect_stroke(
                     rect,

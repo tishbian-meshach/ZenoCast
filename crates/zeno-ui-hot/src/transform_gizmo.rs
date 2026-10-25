@@ -100,6 +100,30 @@ impl TransformGizmoState {
         items: &[TransformGizmoItem],
         selected_ids: &[String],
     ) -> Vec<TransformGizmoEvent> {
+        let (_resp, events) = self.draw_and_interact_with_response(
+            ui,
+            viewport_rect,
+            canvas_size,
+            pan,
+            zoom,
+            items,
+            selected_ids,
+        );
+        events
+    }
+
+    /// Renders gizmo overlays, handles interaction, and returns the canvas egui::Response for context menus.
+    #[allow(clippy::too_many_arguments)]
+    pub fn draw_and_interact_with_response(
+        &mut self,
+        ui: &mut Ui,
+        viewport_rect: Rect,
+        canvas_size: Vec2,
+        pan: Vec2,
+        zoom: f32,
+        items: &[TransformGizmoItem],
+        selected_ids: &[String],
+    ) -> (egui::Response, Vec<TransformGizmoEvent>) {
         let mut events = Vec::new();
 
         let response = ui.interact(
@@ -123,7 +147,9 @@ impl TransformGizmoState {
         };
 
         let painter = ui.painter_at(viewport_rect);
-        let pointer_pos = response.interact_pointer_pos();
+        let pointer_pos = response
+            .interact_pointer_pos()
+            .or_else(|| ui.input(|i| i.pointer.latest_pos()));
         let pointer_logical = pointer_pos.map(screen_to_logical);
         self.current_pointer_logical = pointer_logical;
 
@@ -243,7 +269,52 @@ impl TransformGizmoState {
             ui.ctx().set_cursor_icon(cursor);
         }
 
-        // 3. Handle Mouse Drag Initiation
+        // Helper: hit test topmost visible item
+        let find_topmost_hit = |ptr: Vec2| -> Option<TransformGizmoItem> {
+            for item in items.iter().rev() {
+                if !item.visible {
+                    continue;
+                }
+                let dx = ptr.x - item.center_x;
+                let dy = ptr.y - item.center_y;
+                let rad = item.rotation_degrees.to_radians();
+                let unrot_x = dx * rad.cos() + dy * rad.sin();
+                let unrot_y = -dx * rad.sin() + dy * rad.cos();
+                if unrot_x.abs() <= item.width * 0.5 && unrot_y.abs() <= item.height * 0.5 {
+                    return Some(item.clone());
+                }
+            }
+            None
+        };
+
+        // 3. Handle Direct Mouse Left-Click (Select without requiring a drag)
+        if response.clicked() {
+            if let Some(ptr_log) = pointer_logical {
+                if let Some(hit_item) = find_topmost_hit(ptr_log) {
+                    if ctrl_held {
+                        events.push(TransformGizmoEvent::ToggleSelect(hit_item.id));
+                    } else {
+                        events.push(TransformGizmoEvent::SelectOnly(hit_item.id));
+                    }
+                } else if !ctrl_held {
+                    // Clicking empty canvas deselects
+                    events.push(TransformGizmoEvent::DeselectAll);
+                }
+            }
+        }
+
+        // 4. Handle Secondary Click (Right-click selects the target layer before context menu)
+        if response.secondary_clicked() {
+            if let Some(ptr_log) = pointer_logical {
+                if let Some(hit_item) = find_topmost_hit(ptr_log) {
+                    if !selected_ids.contains(&hit_item.id) {
+                        events.push(TransformGizmoEvent::SelectOnly(hit_item.id));
+                    }
+                }
+            }
+        }
+
+        // 5. Handle Mouse Drag Initiation
         if response.drag_started() {
             if let Some(ptr_log) = pointer_logical {
                 if let Some((_, handle)) = hovered_handle {
@@ -262,23 +333,7 @@ impl TransformGizmoState {
                     events.push(TransformGizmoEvent::DragStarted);
                 } else {
                     // Test if clicked directly on another layer (topmost wins)
-                    let mut clicked_topmost: Option<&TransformGizmoItem> = None;
-                    for item in items.iter().rev() {
-                        if !item.visible {
-                            continue;
-                        }
-                        let dx = ptr_log.x - item.center_x;
-                        let dy = ptr_log.y - item.center_y;
-                        let rad = item.rotation_degrees.to_radians();
-                        let unrot_x = dx * rad.cos() + dy * rad.sin();
-                        let unrot_y = -dx * rad.sin() + dy * rad.cos();
-                        if unrot_x.abs() <= item.width * 0.5 && unrot_y.abs() <= item.height * 0.5 {
-                            clicked_topmost = Some(item);
-                            break;
-                        }
-                    }
-
-                    if let Some(hit_item) = clicked_topmost {
+                    if let Some(hit_item) = find_topmost_hit(ptr_log) {
                         if ctrl_held {
                             events.push(TransformGizmoEvent::ToggleSelect(hit_item.id.clone()));
                         } else {
@@ -288,8 +343,9 @@ impl TransformGizmoState {
                         self.active_drag = Some(ActiveGizmoDrag {
                             handle: GizmoHandle::Body,
                             initial_pointer_logical: ptr_log,
-                            initial_items: vec![(hit_item.id.clone(), hit_item.clone())],
+                            initial_items: vec![(hit_item.id.clone(), hit_item)],
                         });
+                        events.push(TransformGizmoEvent::DragStarted);
                     } else {
                         // Clicked empty canvas: start marquee drag
                         if !ctrl_held {
@@ -579,7 +635,7 @@ impl TransformGizmoState {
             }
         }
 
-        events
+        (response, events)
     }
 }
 
@@ -662,5 +718,193 @@ mod tests {
         let dx_out = pt_out.x - item.center_x;
         let dy_out = pt_out.y - item.center_y;
         assert!(!(dx_out.abs() <= item.width * 0.5 && dy_out.abs() <= item.height * 0.5));
+    }
+
+    #[test]
+    fn test_canvas_click_and_right_click_selection() {
+        let ctx = egui::Context::default();
+        let items = vec![
+            TransformGizmoItem {
+                id: "item_bg".into(),
+                name: "Background".into(),
+                center_x: 960.0,
+                center_y: 540.0,
+                width: 1920.0,
+                height: 1080.0,
+                rotation_degrees: 0.0,
+                locked: false,
+                visible: true,
+            },
+            TransformGizmoItem {
+                id: "item_cam".into(),
+                name: "Player Cam".into(),
+                center_x: 1600.0,
+                center_y: 900.0,
+                width: 400.0,
+                height: 300.0,
+                rotation_degrees: 0.0,
+                locked: false,
+                visible: true,
+            },
+        ];
+
+        let mut gizmo = TransformGizmoState::default();
+
+        let screen_r = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+
+        // Frame 0: Warmup frame so egui registers the widget rect and ID
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.05),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![egui::Event::PointerMoved(pos2(1600.0, 900.0))],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &[],
+                    );
+                });
+            },
+        );
+
+        // 1. Simulate left-click on "Player Cam" (mouse down in frame 1, mouse up in frame 2)
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.1),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![egui::Event::PointerButton {
+                    pos: pos2(1600.0, 900.0),
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Default::default(),
+                }],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &[],
+                    );
+                });
+            },
+        );
+
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.15),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![
+                    egui::Event::PointerMoved(pos2(1600.0, 900.0)),
+                    egui::Event::PointerButton {
+                        pos: pos2(1600.0, 900.0),
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: Default::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let (resp, events) = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &[],
+                    );
+                    assert!(resp.clicked());
+                    assert!(events.iter().any(
+                        |e| matches!(e, TransformGizmoEvent::SelectOnly(id) if id == "item_cam")
+                    ));
+                });
+            },
+        );
+
+        // 2. Simulate right-click (secondary click) on "Background"
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.2),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![
+                    egui::Event::PointerMoved(pos2(500.0, 500.0)),
+                    egui::Event::PointerButton {
+                        pos: pos2(500.0, 500.0),
+                        button: egui::PointerButton::Secondary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["item_cam".into()],
+                    );
+                });
+            },
+        );
+
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.25),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![
+                    egui::Event::PointerMoved(pos2(500.0, 500.0)),
+                    egui::Event::PointerButton {
+                        pos: pos2(500.0, 500.0),
+                        button: egui::PointerButton::Secondary,
+                        pressed: false,
+                        modifiers: Default::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let (resp, events) = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["item_cam".into()],
+                    );
+                    assert!(resp.secondary_clicked());
+                    assert!(events.iter().any(
+                        |e| matches!(e, TransformGizmoEvent::SelectOnly(id) if id == "item_bg")
+                    ));
+                });
+            },
+        );
     }
 }
