@@ -119,6 +119,7 @@ pub struct StudioTabViewer<'a> {
     pub live_gizmo_state: &'a mut TransformGizmoState,
     pub trigger_transform_source: &'a mut Option<(String, f32, f32, f32, f32, f32)>,
     pub trigger_sync_source_order: &'a mut Option<String>,
+    pub trigger_snapshot_undo: &'a mut bool,
     pub rebinding_target: &'a mut Option<crate::hotkey_registry::RebindTarget>,
 }
 
@@ -241,6 +242,9 @@ impl<'a> StudioTabViewer<'a> {
                         }
                         TransformGizmoEvent::DeselectAll => {
                             *self.selected_source_id = None;
+                        }
+                        TransformGizmoEvent::DragStarted => {
+                            *self.trigger_snapshot_undo = true;
                         }
                         TransformGizmoEvent::Transformed {
                             id,
@@ -651,19 +655,15 @@ impl<'a> StudioTabViewer<'a> {
         }
 
         // Keyboard shortcuts for layer reordering
-        let (key_front, key_fwd, key_bwd, key_back) = if !ui.ctx().wants_keyboard_input() {
-            ui.input(|i| {
-                let reg = &self.project.settings.hotkeys.registry;
-                (
-                    reg.action_triggered(crate::hotkey_registry::ActionId::BringToFront, i),
-                    reg.action_triggered(crate::hotkey_registry::ActionId::BringForward, i),
-                    reg.action_triggered(crate::hotkey_registry::ActionId::SendBackward, i),
-                    reg.action_triggered(crate::hotkey_registry::ActionId::SendToBack, i),
-                )
-            })
-        } else {
-            (false, false, false, false)
-        };
+        let (key_front, key_fwd, key_bwd, key_back) = ui.input(|i| {
+            let reg = &self.project.settings.hotkeys.registry;
+            (
+                reg.action_triggered(crate::hotkey_registry::ActionId::BringToFront, i),
+                reg.action_triggered(crate::hotkey_registry::ActionId::BringForward, i),
+                reg.action_triggered(crate::hotkey_registry::ActionId::SendBackward, i),
+                reg.action_triggered(crate::hotkey_registry::ActionId::SendToBack, i),
+            )
+        });
 
         if let Some(i) = sel_idx {
             if let Some(srcs) = self.project.preview_working_sources_mut() {
@@ -1151,40 +1151,51 @@ impl<'a> StudioTabViewer<'a> {
                         let mut changed = false;
                         ui.horizontal(|ui| {
                             ui.label("X:");
-                            changed |= ui
-                                .add(egui::DragValue::new(&mut src.x).speed(1.0))
-                                .changed();
+                            let rx = ui.add(egui::DragValue::new(&mut src.x).speed(1.0));
+                            if rx.drag_started() {
+                                *self.trigger_snapshot_undo = true;
+                            }
+                            changed |= rx.changed();
                             ui.label("Y:");
-                            changed |= ui
-                                .add(egui::DragValue::new(&mut src.y).speed(1.0))
-                                .changed();
+                            let ry = ui.add(egui::DragValue::new(&mut src.y).speed(1.0));
+                            if ry.drag_started() {
+                                *self.trigger_snapshot_undo = true;
+                            }
+                            changed |= ry.changed();
                         });
                         ui.horizontal(|ui| {
                             ui.label("Width:");
-                            changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut src.width)
-                                        .speed(1.0)
-                                        .range(1.0..=7680.0),
-                                )
-                                .changed();
+                            let rw = ui.add(
+                                egui::DragValue::new(&mut src.width)
+                                    .speed(1.0)
+                                    .range(1.0..=7680.0),
+                            );
+                            if rw.drag_started() {
+                                *self.trigger_snapshot_undo = true;
+                            }
+                            changed |= rw.changed();
                             ui.label("Height:");
-                            changed |= ui
-                                .add(
-                                    egui::DragValue::new(&mut src.height)
-                                        .speed(1.0)
-                                        .range(1.0..=4320.0),
-                                )
-                                .changed();
+                            let rh = ui.add(
+                                egui::DragValue::new(&mut src.height)
+                                    .speed(1.0)
+                                    .range(1.0..=4320.0),
+                            );
+                            if rh.drag_started() {
+                                *self.trigger_snapshot_undo = true;
+                            }
+                            changed |= rh.changed();
                         });
                         ui.horizontal(|ui| {
                             ui.label("Rotation (deg):");
-                            changed |= ui
-                                .add(egui::DragValue::new(&mut src.rotation).speed(0.5))
-                                .changed();
+                            let rr = ui.add(egui::DragValue::new(&mut src.rotation).speed(0.5));
+                            if rr.drag_started() {
+                                *self.trigger_snapshot_undo = true;
+                            }
+                            changed |= rr.changed();
                             if icon_button(ui, IconKind::RotateCcw, "Reset Rotation to 0 deg")
                                 .clicked()
                             {
+                                *self.trigger_snapshot_undo = true;
                                 src.rotation = 0.0;
                                 changed = true;
                             }

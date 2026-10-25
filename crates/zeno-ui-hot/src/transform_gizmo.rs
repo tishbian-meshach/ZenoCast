@@ -72,6 +72,7 @@ pub enum TransformGizmoEvent {
     ToggleSelect(String),
     SelectMultiple(Vec<String>),
     DeselectAll,
+    DragStarted,
     Transformed {
         id: String,
         center_x: f32,
@@ -151,6 +152,7 @@ impl TransformGizmoState {
             }
 
             if nudge_x != 0.0 || nudge_y != 0.0 {
+                events.push(TransformGizmoEvent::DragStarted);
                 for id in selected_ids {
                     if let Some(item) = items.iter().find(|it| &it.id == id && !it.locked) {
                         events.push(TransformGizmoEvent::Transformed {
@@ -257,6 +259,7 @@ impl TransformGizmoState {
                         initial_pointer_logical: ptr_log,
                         initial_items: snapshot,
                     });
+                    events.push(TransformGizmoEvent::DragStarted);
                 } else {
                     // Test if clicked directly on another layer (topmost wins)
                     let mut clicked_topmost: Option<&TransformGizmoItem> = None;

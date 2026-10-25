@@ -1468,6 +1468,16 @@ impl ZenocastApp {
             self.project = prev;
             if let Some(sc_id) = self.project.preview_scene_id.clone() {
                 self.sync_scene_sources_order_to_compositor(&sc_id);
+                for src in self.project.preview_sources() {
+                    self.sync_source_transform_to_compositor(
+                        &src.id,
+                        src.x,
+                        src.y,
+                        src.width,
+                        src.height,
+                        src.rotation,
+                    );
+                }
             }
         }
     }
@@ -1479,6 +1489,16 @@ impl ZenocastApp {
             self.project = next;
             if let Some(sc_id) = self.project.preview_scene_id.clone() {
                 self.sync_scene_sources_order_to_compositor(&sc_id);
+                for src in self.project.preview_sources() {
+                    self.sync_source_transform_to_compositor(
+                        &src.id,
+                        src.x,
+                        src.y,
+                        src.width,
+                        src.height,
+                        src.rotation,
+                    );
+                }
             }
         }
     }
@@ -1727,6 +1747,7 @@ impl ZenocastApp {
                         }
                     }
                     if changed {
+                        self.studio_snapshot_for_undo();
                         if let Some(sc_id) = sc_id_opt {
                             self.sync_scene_sources_order_to_compositor(&sc_id);
                         }
@@ -1762,6 +1783,7 @@ impl ZenocastApp {
                         }
                     }
                     if changed {
+                        self.studio_snapshot_for_undo();
                         if let Some(sc_id) = sc_id_opt {
                             self.sync_scene_sources_order_to_compositor(&sc_id);
                         }
@@ -1797,6 +1819,7 @@ impl ZenocastApp {
                         }
                     }
                     if changed {
+                        self.studio_snapshot_for_undo();
                         if let Some(sc_id) = sc_id_opt {
                             self.sync_scene_sources_order_to_compositor(&sc_id);
                         }
@@ -1833,6 +1856,7 @@ impl ZenocastApp {
                         }
                     }
                     if changed {
+                        self.studio_snapshot_for_undo();
                         if let Some(sc_id) = sc_id_opt {
                             self.sync_scene_sources_order_to_compositor(&sc_id);
                         }
@@ -1841,16 +1865,19 @@ impl ZenocastApp {
             }
             ActionId::ToggleSourceVisibility => {
                 if let Some(ref sel_id) = self.selected_source_id.clone() {
+                    self.studio_snapshot_for_undo();
                     self.toggle_source_visibility(sel_id);
                 }
             }
             ActionId::ToggleSourceLock => {
                 if let Some(ref sel_id) = self.selected_source_id.clone() {
+                    self.studio_snapshot_for_undo();
                     self.toggle_source_lock(sel_id);
                 }
             }
             ActionId::ToggleSourceMute => {
                 if let Some(ref sel_id) = self.selected_source_id.clone() {
+                    self.studio_snapshot_for_undo();
                     self.toggle_source_mute(sel_id);
                 }
             }
@@ -2182,8 +2209,15 @@ impl ZenocastApp {
             }
         }
 
-        // 3. Normal Focus-Aware Hotkey Handling (only when not editing text and not interactive rebinding)
-        if !ctx.wants_keyboard_input() && self.rebinding_target.is_none() {
+        // 3. Normal Focus-Aware Hotkey Handling (only when not interactive rebinding)
+        if self.rebinding_target.is_none() {
+            let text_editing_active = self.rename_scene_id.is_some()
+                || ((self.show_settings
+                    || self.show_open_dialog
+                    || self.show_save_as_dialog
+                    || self.source_dialog.is_open())
+                    && ctx.wants_keyboard_input());
+
             let mut triggered_action: Option<ActionId> = None;
             let mut triggered_target: Option<RebindTarget> = None;
 
@@ -2197,6 +2231,20 @@ impl ZenocastApp {
                         .registry
                         .action_triggered(meta.id, i)
                     {
+                        // Guard single-key typing shortcuts when actively editing text fields
+                        if text_editing_active {
+                            if let Some(combo) =
+                                self.project.settings.hotkeys.registry.get_combo(meta.id)
+                            {
+                                if !combo.ctrl
+                                    && !combo.alt
+                                    && meta.id != ActionId::DialogCancel
+                                    && meta.id != ActionId::DialogConfirm
+                                {
+                                    continue;
+                                }
+                            }
+                        }
                         triggered_action = Some(meta.id);
                         break;
                     }
@@ -2586,6 +2634,7 @@ impl ZenocastApp {
         let mut trigger_move_scene_up: Option<String> = None;
         let mut trigger_move_scene_down: Option<String> = None;
         let mut trigger_sync_source_order: Option<String> = None;
+        let mut trigger_snapshot_undo = false;
         let mut trigger_audio_change = false;
 
         let stats = self.output_manager.stats();
@@ -2644,6 +2693,7 @@ impl ZenocastApp {
                     live_gizmo_state: &mut self.live_gizmo_state,
                     trigger_transform_source: &mut trigger_transform_source,
                     trigger_sync_source_order: &mut trigger_sync_source_order,
+                    trigger_snapshot_undo: &mut trigger_snapshot_undo,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -2788,31 +2838,42 @@ impl ZenocastApp {
                 );
             }
         }
+        if trigger_snapshot_undo {
+            self.studio_snapshot_for_undo();
+        }
         if let Some(ref rem_id) = trigger_remove_source {
+            self.studio_snapshot_for_undo();
             self.remove_source_by_id(rem_id);
         }
         if let Some(ref vis_id) = trigger_toggle_source_visibility {
+            self.studio_snapshot_for_undo();
             self.toggle_source_visibility(vis_id);
         }
         if let Some(ref lock_id) = trigger_toggle_source_lock {
+            self.studio_snapshot_for_undo();
             self.toggle_source_lock(lock_id);
         }
         if let Some((ref src_id, x, y, width, height, rot)) = trigger_transform_source {
             self.sync_source_transform_to_compositor(src_id, x, y, width, height, rot);
         }
         if trigger_add_scene {
+            self.studio_snapshot_for_undo();
             self.add_new_scene();
         }
         if let Some(ref rem_sc) = trigger_remove_scene {
+            self.studio_snapshot_for_undo();
             self.remove_scene_by_id(rem_sc);
         }
         if let Some((ref sc_id, ref new_name)) = trigger_rename_scene {
+            self.studio_snapshot_for_undo();
             self.rename_scene(sc_id, new_name);
         }
         if let Some(ref sc_id) = trigger_move_scene_up {
+            self.studio_snapshot_for_undo();
             self.move_scene_up(sc_id);
         }
         if let Some(ref sc_id) = trigger_move_scene_down {
+            self.studio_snapshot_for_undo();
             self.move_scene_down(sc_id);
         }
         if let Some(ref sc_id) = trigger_sync_source_order {

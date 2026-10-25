@@ -421,6 +421,7 @@ pub fn ui_canvas(editor: &mut OverlayEditor, ui: &mut Ui) {
                 TransformGizmoEvent::DeselectAll => {
                     editor.selected_layer_id = None;
                 }
+                TransformGizmoEvent::DragStarted => {}
                 TransformGizmoEvent::Transformed {
                     id,
                     center_x,
