@@ -35,6 +35,7 @@ uuid = { workspace = true }
 thiserror = { workspace = true }
 rfd = { workspace = true }
 image = { workspace = true }
+global-hotkey = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

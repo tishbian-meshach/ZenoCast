@@ -166,6 +166,16 @@ fn test_m8_preview_to_program_transition_switching() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     assert_eq!(
@@ -256,6 +266,16 @@ fn test_m8_one_click_live_streaming_and_recording() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     assert!(!app.is_streaming);
@@ -431,6 +451,16 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // Step 1: User adds a real backend source through the source dialog flow
@@ -650,6 +680,16 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // The 10 broadcast source types required by Section 2.2
@@ -915,6 +955,16 @@ fn test_section_3_ui_interactivity_audit_wiring() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // 1. AppMode Switching
@@ -1186,6 +1236,16 @@ fn test_source_reordering_live_studio() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // Start with 2 default sources: src_display (idx 0), src_cam (idx 1)

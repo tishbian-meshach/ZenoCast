@@ -119,6 +119,7 @@ pub struct StudioTabViewer<'a> {
     pub live_gizmo_state: &'a mut TransformGizmoState,
     pub trigger_transform_source: &'a mut Option<(String, f32, f32, f32, f32, f32)>,
     pub trigger_sync_source_order: &'a mut Option<String>,
+    pub rebinding_target: &'a mut Option<crate::hotkey_registry::RebindTarget>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -281,11 +282,33 @@ impl<'a> StudioTabViewer<'a> {
             // Center: T-Bar & Transition Buttons
             ui.vertical(|ui| {
                 ui.add_space(20.0);
-                if ui.button(" CUT ").clicked() {
+                let cut_acc = self
+                    .project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .accelerator_text(crate::hotkey_registry::ActionId::Cut);
+                let cut_tooltip = if cut_acc.is_empty() {
+                    "Cut (Preview → Program immediately)".to_string()
+                } else {
+                    format!("Cut (Preview → Program immediately) [{}]", cut_acc)
+                };
+                if ui.button(" CUT ").on_hover_text(cut_tooltip).clicked() {
                     *self.trigger_cut = true;
                 }
                 ui.add_space(GRID_UNIT);
-                if ui.button(" AUTO ").clicked() {
+                let auto_acc = self
+                    .project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .accelerator_text(crate::hotkey_registry::ActionId::AutoTransition);
+                let auto_tooltip = if auto_acc.is_empty() {
+                    "Trigger Transition (Auto)".to_string()
+                } else {
+                    format!("Trigger Transition (Auto) [{}]", auto_acc)
+                };
+                if ui.button(" AUTO ").on_hover_text(auto_tooltip).clicked() {
                     *self.trigger_auto = true;
                 }
                 ui.add_space(GRID_UNIT);
@@ -438,6 +461,88 @@ impl<'a> StudioTabViewer<'a> {
                     if response.double_clicked() {
                         self.project.active_scene_id = Some(scene.id.clone());
                     }
+
+                    let scene_id = scene.id.clone();
+                    let scene_name = scene.name.clone();
+                    let sc_hk = self
+                        .project
+                        .settings
+                        .hotkeys
+                        .registry
+                        .scene_hotkeys
+                        .get(&scene_id)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    response.context_menu(|ui| {
+                        if ui.button("Switch to Scene").clicked() {
+                            self.project.active_scene_id = Some(scene_id.clone());
+                            ui.close_menu();
+                        }
+                        if ui.button("Rename (F2)").clicked() {
+                            *self.rename_scene_id = Some(scene_id.clone());
+                            *self.rename_scene_buffer = scene_name.clone();
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        ui.label(egui::RichText::new("Scene Hotkeys (OBS Parity)").strong());
+
+                        // Switch To
+                        let switch_to_str = sc_hk.switch_to.unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("Switch To:");
+                            let btn_text = if switch_to_str.is_empty() {
+                                egui::RichText::new("None").color(TEXT_MUTED)
+                            } else {
+                                egui::RichText::new(&switch_to_str).color(TEXT)
+                            };
+                            if ui.button(btn_text).clicked() {
+                                *self.rebinding_target =
+                                    Some(crate::hotkey_registry::RebindTarget::SceneSwitch(
+                                        scene_id.clone(),
+                                    ));
+                                ui.close_menu();
+                            }
+                            if !switch_to_str.is_empty() && ui.small_button("✖").clicked() {
+                                self.project
+                                    .settings
+                                    .hotkeys
+                                    .registry
+                                    .scene_hotkeys
+                                    .entry(scene_id.clone())
+                                    .or_default()
+                                    .switch_to = None;
+                            }
+                        });
+
+                        // Switch Back
+                        let switch_back_str = sc_hk.switch_back.unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label("Switch Back:");
+                            let btn_text = if switch_back_str.is_empty() {
+                                egui::RichText::new("None").color(TEXT_MUTED)
+                            } else {
+                                egui::RichText::new(&switch_back_str).color(TEXT)
+                            };
+                            if ui.button(btn_text).clicked() {
+                                *self.rebinding_target =
+                                    Some(crate::hotkey_registry::RebindTarget::SceneSwitchBack(
+                                        scene_id.clone(),
+                                    ));
+                                ui.close_menu();
+                            }
+                            if !switch_back_str.is_empty() && ui.small_button("✖").clicked() {
+                                self.project
+                                    .settings
+                                    .hotkeys
+                                    .registry
+                                    .scene_hotkeys
+                                    .entry(scene_id.clone())
+                                    .or_default()
+                                    .switch_back = None;
+                            }
+                        });
+                    });
                 }
             }
         });
@@ -456,11 +561,7 @@ impl<'a> StudioTabViewer<'a> {
             return;
         };
 
-        let Some(sources) = self.project.preview_working_sources_mut() else {
-            ui.colored_label(TEXT_MUTED, "Select a scene to manage sources");
-            return;
-        };
-
+        let sources = self.project.preview_sources();
         let num_sources = sources.len();
         let sel_idx = self
             .selected_source_id
@@ -506,8 +607,12 @@ impl<'a> StudioTabViewer<'a> {
             .clicked()
             {
                 if let Some(i) = sel_idx {
-                    sources.swap(i, i + 1);
-                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if i + 1 < srcs.len() {
+                            srcs.swap(i, i + 1);
+                            *self.trigger_sync_source_order = Some(sc_id.clone());
+                        }
+                    }
                 }
             }
 
@@ -520,8 +625,12 @@ impl<'a> StudioTabViewer<'a> {
             .clicked()
             {
                 if let Some(i) = sel_idx {
-                    sources.swap(i, i - 1);
-                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if i > 0 && i < srcs.len() {
+                            srcs.swap(i, i - 1);
+                            *self.trigger_sync_source_order = Some(sc_id.clone());
+                        }
+                    }
                 }
             }
         });
@@ -542,34 +651,37 @@ impl<'a> StudioTabViewer<'a> {
         }
 
         // Keyboard shortcuts for layer reordering
-        let (key_front, key_fwd, key_bwd, key_back) = ui.input(|i| {
-            let ctrl = i.modifiers.command || i.modifiers.ctrl;
-            let shift = i.modifiers.shift;
-            let close_br = i.key_pressed(egui::Key::CloseBracket);
-            let open_br = i.key_pressed(egui::Key::OpenBracket);
-            (
-                ctrl && shift && close_br,
-                ctrl && !shift && close_br,
-                ctrl && !shift && open_br,
-                ctrl && shift && open_br,
-            )
-        });
+        let (key_front, key_fwd, key_bwd, key_back) = if !ui.ctx().wants_keyboard_input() {
+            ui.input(|i| {
+                let reg = &self.project.settings.hotkeys.registry;
+                (
+                    reg.action_triggered(crate::hotkey_registry::ActionId::BringToFront, i),
+                    reg.action_triggered(crate::hotkey_registry::ActionId::BringForward, i),
+                    reg.action_triggered(crate::hotkey_registry::ActionId::SendBackward, i),
+                    reg.action_triggered(crate::hotkey_registry::ActionId::SendToBack, i),
+                )
+            })
+        } else {
+            (false, false, false, false)
+        };
 
         if let Some(i) = sel_idx {
-            if key_front && i + 1 < num_sources {
-                let s = sources.remove(i);
-                sources.push(s);
-                *self.trigger_sync_source_order = Some(sc_id.clone());
-            } else if key_fwd && i + 1 < num_sources {
-                sources.swap(i, i + 1);
-                *self.trigger_sync_source_order = Some(sc_id.clone());
-            } else if key_bwd && i > 0 {
-                sources.swap(i, i - 1);
-                *self.trigger_sync_source_order = Some(sc_id.clone());
-            } else if key_back && i > 0 {
-                let s = sources.remove(i);
-                sources.insert(0, s);
-                *self.trigger_sync_source_order = Some(sc_id.clone());
+            if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if key_front && i + 1 < srcs.len() {
+                    let s = srcs.remove(i);
+                    srcs.push(s);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                } else if key_fwd && i + 1 < srcs.len() {
+                    srcs.swap(i, i + 1);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                } else if key_bwd && i > 0 && i < srcs.len() {
+                    srcs.swap(i, i - 1);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                } else if key_back && i > 0 && i < srcs.len() {
+                    let s = srcs.remove(i);
+                    srcs.insert(0, s);
+                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                }
             }
         }
 
@@ -732,14 +844,188 @@ impl<'a> StudioTabViewer<'a> {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("Properties").clicked() {
+                    let prop_acc =
+                        self.project.settings.hotkeys.registry.accelerator_text(
+                            crate::hotkey_registry::ActionId::OpenSourceProperties,
+                        );
+                    let prop_btn = if prop_acc.is_empty() {
+                        egui::Button::new("Properties")
+                    } else {
+                        egui::Button::new("Properties").shortcut_text(&prop_acc)
+                    };
+                    if ui.add(prop_btn).clicked() {
                         *self.trigger_open_edit_source = Some(src_id.clone());
                         ui.close_menu();
                     }
-                    if ui.button("Remove Source").clicked() {
+
+                    let vis_acc =
+                        self.project.settings.hotkeys.registry.accelerator_text(
+                            crate::hotkey_registry::ActionId::ToggleSourceVisibility,
+                        );
+                    let vis_btn = if vis_acc.is_empty() {
+                        egui::Button::new("Toggle Visibility")
+                    } else {
+                        egui::Button::new("Toggle Visibility").shortcut_text(&vis_acc)
+                    };
+                    if ui.add(vis_btn).clicked() {
+                        *self.trigger_toggle_source_visibility = Some(src_id.clone());
+                        ui.close_menu();
+                    }
+
+                    let lock_acc = self
+                        .project
+                        .settings
+                        .hotkeys
+                        .registry
+                        .accelerator_text(crate::hotkey_registry::ActionId::ToggleSourceLock);
+                    let lock_btn = if lock_acc.is_empty() {
+                        egui::Button::new("Toggle Lock")
+                    } else {
+                        egui::Button::new("Toggle Lock").shortcut_text(&lock_acc)
+                    };
+                    if ui.add(lock_btn).clicked() {
+                        *self.trigger_toggle_source_lock = Some(src_id.clone());
+                        ui.close_menu();
+                    }
+
+                    let del_acc = self
+                        .project
+                        .settings
+                        .hotkeys
+                        .registry
+                        .accelerator_text(crate::hotkey_registry::ActionId::DeleteSelected);
+                    let del_btn = if del_acc.is_empty() {
+                        egui::Button::new("Remove Source")
+                    } else {
+                        egui::Button::new("Remove Source").shortcut_text(&del_acc)
+                    };
+                    if ui.add(del_btn).clicked() {
                         *self.trigger_remove_source = Some(src_id.clone());
                         ui.close_menu();
                     }
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("Source Hotkeys (OBS Parity)").strong());
+                    let src_hk = self
+                        .project
+                        .settings
+                        .hotkeys
+                        .registry
+                        .source_hotkeys
+                        .get(&src_id)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    // Mute/Unmute
+                    let mute_str = src_hk.mute.unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        ui.label("Mute/Unmute:");
+                        let btn_text = if mute_str.is_empty() {
+                            egui::RichText::new("None").color(TEXT_MUTED)
+                        } else {
+                            egui::RichText::new(&mute_str).color(TEXT)
+                        };
+                        if ui.button(btn_text).clicked() {
+                            *self.rebinding_target = Some(
+                                crate::hotkey_registry::RebindTarget::SourceMute(src_id.clone()),
+                            );
+                            ui.close_menu();
+                        }
+                        if !mute_str.is_empty() && ui.small_button("✖").clicked() {
+                            self.project
+                                .settings
+                                .hotkeys
+                                .registry
+                                .source_hotkeys
+                                .entry(src_id.clone())
+                                .or_default()
+                                .mute = None;
+                        }
+                    });
+
+                    // Push-to-Mute
+                    let ptm_str = src_hk.push_to_mute.unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        ui.label("Push-to-Mute:");
+                        let btn_text = if ptm_str.is_empty() {
+                            egui::RichText::new("None").color(TEXT_MUTED)
+                        } else {
+                            egui::RichText::new(&ptm_str).color(TEXT)
+                        };
+                        if ui.button(btn_text).clicked() {
+                            *self.rebinding_target =
+                                Some(crate::hotkey_registry::RebindTarget::SourcePushToMute(
+                                    src_id.clone(),
+                                ));
+                            ui.close_menu();
+                        }
+                        if !ptm_str.is_empty() && ui.small_button("✖").clicked() {
+                            self.project
+                                .settings
+                                .hotkeys
+                                .registry
+                                .source_hotkeys
+                                .entry(src_id.clone())
+                                .or_default()
+                                .push_to_mute = None;
+                        }
+                    });
+
+                    // Push-to-Talk
+                    let ptt_str = src_hk.push_to_talk.unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        ui.label("Push-to-Talk:");
+                        let btn_text = if ptt_str.is_empty() {
+                            egui::RichText::new("None").color(TEXT_MUTED)
+                        } else {
+                            egui::RichText::new(&ptt_str).color(TEXT)
+                        };
+                        if ui.button(btn_text).clicked() {
+                            *self.rebinding_target =
+                                Some(crate::hotkey_registry::RebindTarget::SourcePushToTalk(
+                                    src_id.clone(),
+                                ));
+                            ui.close_menu();
+                        }
+                        if !ptt_str.is_empty() && ui.small_button("✖").clicked() {
+                            self.project
+                                .settings
+                                .hotkeys
+                                .registry
+                                .source_hotkeys
+                                .entry(src_id.clone())
+                                .or_default()
+                                .push_to_talk = None;
+                        }
+                    });
+
+                    // Show/Hide
+                    let sh_str = src_hk.show_hide.unwrap_or_default();
+                    ui.horizontal(|ui| {
+                        ui.label("Show/Hide:");
+                        let btn_text = if sh_str.is_empty() {
+                            egui::RichText::new("None").color(TEXT_MUTED)
+                        } else {
+                            egui::RichText::new(&sh_str).color(TEXT)
+                        };
+                        if ui.button(btn_text).clicked() {
+                            *self.rebinding_target =
+                                Some(crate::hotkey_registry::RebindTarget::SourceShowHide(
+                                    src_id.clone(),
+                                ));
+                            ui.close_menu();
+                        }
+                        if !sh_str.is_empty() && ui.small_button("✖").clicked() {
+                            self.project
+                                .settings
+                                .hotkeys
+                                .registry
+                                .source_hotkeys
+                                .entry(src_id.clone())
+                                .or_default()
+                                .show_hide = None;
+                        }
+                    });
                 });
             }
         });
@@ -804,9 +1090,13 @@ impl<'a> StudioTabViewer<'a> {
                                 };
                                 let from_idx = num_sources - 1 - from_r;
                                 let to_idx = num_sources - 1 - new_row;
-                                let item = sources.remove(from_idx);
-                                sources.insert(to_idx, item);
-                                *self.trigger_sync_source_order = Some(sc_id.clone());
+                                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                    if from_idx < srcs.len() && to_idx < srcs.len() {
+                                        let item = srcs.remove(from_idx);
+                                        srcs.insert(to_idx, item);
+                                        *self.trigger_sync_source_order = Some(sc_id.clone());
+                                    }
+                                }
                             }
                         }
                         ui.ctx()
@@ -820,88 +1110,97 @@ impl<'a> StudioTabViewer<'a> {
         }
 
         // Apply context menu row actions
-        for (i, action) in row_actions {
-            match action {
-                RowOrderAction::BringToFront => {
-                    let s = sources.remove(i);
-                    sources.push(s);
-                    *self.trigger_sync_source_order = Some(sc_id.clone());
-                }
-                RowOrderAction::BringForward => {
-                    if i + 1 < sources.len() {
-                        sources.swap(i, i + 1);
-                        *self.trigger_sync_source_order = Some(sc_id.clone());
+        if let Some(srcs) = self.project.preview_working_sources_mut() {
+            for (i, action) in row_actions {
+                match action {
+                    RowOrderAction::BringToFront => {
+                        if i < srcs.len() {
+                            let s = srcs.remove(i);
+                            srcs.push(s);
+                            *self.trigger_sync_source_order = Some(sc_id.clone());
+                        }
                     }
-                }
-                RowOrderAction::SendBackward => {
-                    if i > 0 {
-                        sources.swap(i, i - 1);
-                        *self.trigger_sync_source_order = Some(sc_id.clone());
+                    RowOrderAction::BringForward => {
+                        if i + 1 < srcs.len() {
+                            srcs.swap(i, i + 1);
+                            *self.trigger_sync_source_order = Some(sc_id.clone());
+                        }
                     }
-                }
-                RowOrderAction::SendToBack => {
-                    let s = sources.remove(i);
-                    sources.insert(0, s);
-                    *self.trigger_sync_source_order = Some(sc_id.clone());
+                    RowOrderAction::SendBackward => {
+                        if i > 0 && i < srcs.len() {
+                            srcs.swap(i, i - 1);
+                            *self.trigger_sync_source_order = Some(sc_id.clone());
+                        }
+                    }
+                    RowOrderAction::SendToBack => {
+                        if i < srcs.len() {
+                            let s = srcs.remove(i);
+                            srcs.insert(0, s);
+                            *self.trigger_sync_source_order = Some(sc_id.clone());
+                        }
+                    }
                 }
             }
         }
 
         if let Some(ref sel_id) = *self.selected_source_id {
-            if let Some(src) = sources.iter_mut().find(|s| &s.id == sel_id) {
-                ui.separator();
-                ui.collapsing("Transform", |ui| {
-                    let mut changed = false;
-                    ui.horizontal(|ui| {
-                        ui.label("X:");
-                        changed |= ui
-                            .add(egui::DragValue::new(&mut src.x).speed(1.0))
-                            .changed();
-                        ui.label("Y:");
-                        changed |= ui
-                            .add(egui::DragValue::new(&mut src.y).speed(1.0))
-                            .changed();
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Width:");
-                        changed |= ui
-                            .add(
-                                egui::DragValue::new(&mut src.width)
-                                    .speed(1.0)
-                                    .range(1.0..=7680.0),
-                            )
-                            .changed();
-                        ui.label("Height:");
-                        changed |= ui
-                            .add(
-                                egui::DragValue::new(&mut src.height)
-                                    .speed(1.0)
-                                    .range(1.0..=4320.0),
-                            )
-                            .changed();
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Rotation (deg):");
-                        changed |= ui
-                            .add(egui::DragValue::new(&mut src.rotation).speed(0.5))
-                            .changed();
-                        if icon_button(ui, IconKind::RotateCcw, "Reset Rotation to 0 deg").clicked()
-                        {
-                            src.rotation = 0.0;
-                            changed = true;
+            if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(src) = srcs.iter_mut().find(|s| &s.id == sel_id) {
+                    ui.separator();
+                    ui.collapsing("Transform", |ui| {
+                        let mut changed = false;
+                        ui.horizontal(|ui| {
+                            ui.label("X:");
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut src.x).speed(1.0))
+                                .changed();
+                            ui.label("Y:");
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut src.y).speed(1.0))
+                                .changed();
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Width:");
+                            changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut src.width)
+                                        .speed(1.0)
+                                        .range(1.0..=7680.0),
+                                )
+                                .changed();
+                            ui.label("Height:");
+                            changed |= ui
+                                .add(
+                                    egui::DragValue::new(&mut src.height)
+                                        .speed(1.0)
+                                        .range(1.0..=4320.0),
+                                )
+                                .changed();
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("Rotation (deg):");
+                            changed |= ui
+                                .add(egui::DragValue::new(&mut src.rotation).speed(0.5))
+                                .changed();
+                            if icon_button(ui, IconKind::RotateCcw, "Reset Rotation to 0 deg")
+                                .clicked()
+                            {
+                                src.rotation = 0.0;
+                                changed = true;
+                            }
+                        });
+                        if changed {
+                            *self.trigger_transform_source = Some((
+                                src.id.clone(),
+                                src.x,
+                                src.y,
+                                src.width,
+                                src.height,
+                                src.rotation,
+                            ));
                         }
                     });
-                    if changed {
-                        *self.trigger_transform_source = Some((
-                            src.id.clone(),
-                            src.x,
-                            src.y,
-                            src.width,
-                            src.height,
-                            src.rotation,
-                        ));
-                    }
-                });
+                }
             }
         }
     }

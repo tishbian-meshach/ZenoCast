@@ -183,6 +183,16 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // 1. Initial State Check
@@ -428,6 +438,16 @@ pub fn test_independent_preview_and_program_buses() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // 1. Move and scale source in Preview only
@@ -625,6 +645,16 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     };
 
     // Initial state: 1 source

@@ -78,30 +78,30 @@ impl Default for OutputSettings {
     }
 }
 
-/// Operator keybindings for live studio actions.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HotkeySettings {
-    pub cut_transition: String,
-    pub auto_transition: String,
-    pub start_streaming: String,
-    pub stop_streaming: String,
-    pub start_recording: String,
-    pub stop_recording: String,
-    pub mute_master: String,
-}
+use crate::hotkey_registry::HotkeyRegistry;
 
-impl Default for HotkeySettings {
-    fn default() -> Self {
-        Self {
-            cut_transition: "Space".into(),
-            auto_transition: "Enter".into(),
-            start_streaming: "F9".into(),
-            stop_streaming: "Shift+F9".into(),
-            start_recording: "F10".into(),
-            stop_recording: "Shift+F10".into(),
-            mute_master: "M".into(),
-        }
-    }
+/// Operator keybindings for live studio actions, overlay editing, and per-item bindings.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HotkeySettings {
+    /// Comprehensive registry containing custom overrides, global flags, and per-item bindings.
+    #[serde(default)]
+    pub registry: HotkeyRegistry,
+
+    // Legacy fields preserved for serialization backward-compatibility
+    #[serde(default)]
+    pub cut_transition: String,
+    #[serde(default)]
+    pub auto_transition: String,
+    #[serde(default)]
+    pub start_streaming: String,
+    #[serde(default)]
+    pub stop_streaming: String,
+    #[serde(default)]
+    pub start_recording: String,
+    #[serde(default)]
+    pub stop_recording: String,
+    #[serde(default)]
+    pub mute_master: String,
 }
 
 /// Root studio settings collection.

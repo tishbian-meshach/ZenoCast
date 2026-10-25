@@ -7,6 +7,7 @@ pub mod app;
 pub mod data_panel;
 pub mod dock;
 pub mod editor;
+pub mod hotkey_registry;
 pub mod icon;
 pub mod import_dialog;
 pub mod log_viewer;
@@ -19,6 +20,11 @@ pub mod spreadsheet_panel;
 pub mod theme;
 pub mod transform_gizmo;
 pub mod wizard;
+
+pub use hotkey_registry::{
+    generate_shortcuts_markdown, ActionCategory, ActionId, ConflictWarning, HotkeyRegistry,
+    KeyCombo, SceneHotkeys, SourceHotkeys, MASTER_ACTION_DEFINITIONS,
+};
 
 pub use app::ZenocastApp;
 /// Type alias representing the long-lived studio state owned by the host application.

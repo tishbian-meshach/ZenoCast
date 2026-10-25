@@ -268,6 +268,11 @@ impl Default for SourceDialogState {
 }
 
 impl SourceDialogState {
+    /// Returns true if the dialog is currently open in either picker or properties mode.
+    pub fn is_open(&self) -> bool {
+        self.mode != SourceDialogMode::Closed
+    }
+
     /// Opens the modal in TypePicker mode to add a new source.
     pub fn open_add(&mut self) {
         *self = Self::default();
@@ -379,6 +384,18 @@ impl SourceDialogState {
 
     /// Renders the source modal (either type picker or properties dialog).
     pub fn ui(&mut self, ctx: &egui::Context) -> Option<SourceDialogAction> {
+        let mut dummy_reg = crate::hotkey_registry::HotkeyRegistry::default();
+        let mut dummy_target = None;
+        self.ui_with_hotkeys(ctx, &mut dummy_reg, &mut dummy_target)
+    }
+
+    /// Renders the source modal with support for per-source hotkeys binding.
+    pub fn ui_with_hotkeys(
+        &mut self,
+        ctx: &egui::Context,
+        registry: &mut crate::hotkey_registry::HotkeyRegistry,
+        rebinding_target: &mut Option<crate::hotkey_registry::RebindTarget>,
+    ) -> Option<SourceDialogAction> {
         let mut action = None;
 
         match self.mode.clone() {
@@ -987,6 +1004,82 @@ impl SourceDialogState {
                                     }
                                 });
                             }
+                        }
+
+                        if let Some(ref src_id) = edit_source_id {
+                            ui.add_space(GRID_UNIT);
+                            ui.separator();
+                            ui.collapsing("Hotkeys (OBS Parity)", |ui| {
+                                let src_hk = registry.source_hotkeys.get(src_id).cloned().unwrap_or_default();
+
+                                // Mute / Unmute
+                                let mute_str = src_hk.mute.unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    ui.label("Mute / Unmute:");
+                                    let btn_text = if mute_str.is_empty() {
+                                        egui::RichText::new("None").color(TEXT_MUTED)
+                                    } else {
+                                        egui::RichText::new(&mute_str).color(TEXT)
+                                    };
+                                    if ui.button(btn_text).clicked() {
+                                        *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourceMute(src_id.clone()));
+                                    }
+                                    if !mute_str.is_empty() && ui.small_button("✖").clicked() {
+                                        registry.source_hotkeys.entry(src_id.clone()).or_default().mute = None;
+                                    }
+                                });
+
+                                // Push-to-Mute
+                                let ptm_str = src_hk.push_to_mute.unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    ui.label("Push-to-Mute:");
+                                    let btn_text = if ptm_str.is_empty() {
+                                        egui::RichText::new("None").color(TEXT_MUTED)
+                                    } else {
+                                        egui::RichText::new(&ptm_str).color(TEXT)
+                                    };
+                                    if ui.button(btn_text).clicked() {
+                                        *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourcePushToMute(src_id.clone()));
+                                    }
+                                    if !ptm_str.is_empty() && ui.small_button("✖").clicked() {
+                                        registry.source_hotkeys.entry(src_id.clone()).or_default().push_to_mute = None;
+                                    }
+                                });
+
+                                // Push-to-Talk
+                                let ptt_str = src_hk.push_to_talk.unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    ui.label("Push-to-Talk:");
+                                    let btn_text = if ptt_str.is_empty() {
+                                        egui::RichText::new("None").color(TEXT_MUTED)
+                                    } else {
+                                        egui::RichText::new(&ptt_str).color(TEXT)
+                                    };
+                                    if ui.button(btn_text).clicked() {
+                                        *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourcePushToTalk(src_id.clone()));
+                                    }
+                                    if !ptt_str.is_empty() && ui.small_button("✖").clicked() {
+                                        registry.source_hotkeys.entry(src_id.clone()).or_default().push_to_talk = None;
+                                    }
+                                });
+
+                                // Show / Hide
+                                let sh_str = src_hk.show_hide.unwrap_or_default();
+                                ui.horizontal(|ui| {
+                                    ui.label("Show / Hide:");
+                                    let btn_text = if sh_str.is_empty() {
+                                        egui::RichText::new("None").color(TEXT_MUTED)
+                                    } else {
+                                        egui::RichText::new(&sh_str).color(TEXT)
+                                    };
+                                    if ui.button(btn_text).clicked() {
+                                        *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourceShowHide(src_id.clone()));
+                                    }
+                                    if !sh_str.is_empty() && ui.small_button("✖").clicked() {
+                                        registry.source_hotkeys.entry(src_id.clone()).or_default().show_hide = None;
+                                    }
+                                });
+                            });
                         }
 
                         ui.add_space(GRID_UNIT * 2.0);

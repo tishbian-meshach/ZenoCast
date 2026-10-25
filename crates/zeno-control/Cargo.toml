@@ -17,6 +17,7 @@ parking_lot = { workspace = true }
 tracing = { workspace = true }
 uuid = { workspace = true }
 thiserror = { workspace = true }
+global-hotkey = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

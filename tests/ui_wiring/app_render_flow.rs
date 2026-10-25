@@ -81,6 +81,16 @@ fn create_test_app() -> ZenocastApp {
         rename_scene_id: None,
         rename_scene_buffer: String::new(),
         live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
     }
 }
 
