@@ -15,7 +15,7 @@ use egui::{
     pos2, vec2, CornerRadius, CursorIcon, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
 
-use crate::theme::{ACCENT, AMBER_WARN, TEXT};
+use crate::theme::{ACCENT, AMBER_WARN, TEXT, TEXT_MUTED};
 
 /// Represents an item on the canvas that can be transformed.
 #[derive(Debug, Clone, PartialEq)]
@@ -339,13 +339,15 @@ impl TransformGizmoState {
                         } else {
                             events.push(TransformGizmoEvent::SelectOnly(hit_item.id.clone()));
                         }
-                        // Start dragging body immediately
-                        self.active_drag = Some(ActiveGizmoDrag {
-                            handle: GizmoHandle::Body,
-                            initial_pointer_logical: ptr_log,
-                            initial_items: vec![(hit_item.id.clone(), hit_item)],
-                        });
-                        events.push(TransformGizmoEvent::DragStarted);
+                        // Start dragging body immediately only if unlocked
+                        if !hit_item.locked {
+                            self.active_drag = Some(ActiveGizmoDrag {
+                                handle: GizmoHandle::Body,
+                                initial_pointer_logical: ptr_log,
+                                initial_items: vec![(hit_item.id.clone(), hit_item)],
+                            });
+                            events.push(TransformGizmoEvent::DragStarted);
+                        }
                     } else {
                         // Clicked empty canvas: start marquee drag
                         if !ctrl_held {
@@ -594,44 +596,47 @@ impl TransformGizmoState {
                 let p_bl = rotate_local(-half_w, half_h);
 
                 // Bounding box border
-                let stroke = Stroke::new(1.5_f32, ACCENT);
+                let stroke = Stroke::new(1.5_f32, if item.locked { TEXT_MUTED } else { ACCENT });
                 painter.line_segment([p_tl, p_tr], stroke);
                 painter.line_segment([p_tr, p_br], stroke);
                 painter.line_segment([p_br, p_bl], stroke);
                 painter.line_segment([p_bl, p_tl], stroke);
 
-                // Rotate handle & stem
-                let p_tm = rotate_local(0.0, -half_h);
-                let p_rot = rotate_local(0.0, -half_h - 24.0);
-                painter.line_segment([p_tm, p_rot], Stroke::new(1.0_f32, ACCENT));
-                painter.circle_filled(p_rot, 5.0, ACCENT);
-                painter.circle_stroke(p_rot, 5.0, Stroke::new(1.0_f32, TEXT));
+                // Locked sources show bounding box but drag handles are hidden/disabled (OBS parity)
+                if !item.locked {
+                    // Rotate handle & stem
+                    let p_tm = rotate_local(0.0, -half_h);
+                    let p_rot = rotate_local(0.0, -half_h - 24.0);
+                    painter.line_segment([p_tm, p_rot], Stroke::new(1.0_f32, ACCENT));
+                    painter.circle_filled(p_rot, 5.0, ACCENT);
+                    painter.circle_stroke(p_rot, 5.0, Stroke::new(1.0_f32, TEXT));
 
-                // 8 Resize handle squares
-                let h_size = vec2(handle_radius_screen * 2.0, handle_radius_screen * 2.0);
-                let handles = [
-                    p_tl,
-                    p_tm,
-                    p_tr,
-                    rotate_local(half_w, 0.0),
-                    p_br,
-                    rotate_local(0.0, half_h),
-                    p_bl,
-                    rotate_local(-half_w, 0.0),
-                ];
+                    // 8 Resize handle squares
+                    let h_size = vec2(handle_radius_screen * 2.0, handle_radius_screen * 2.0);
+                    let handles = [
+                        p_tl,
+                        p_tm,
+                        p_tr,
+                        rotate_local(half_w, 0.0),
+                        p_br,
+                        rotate_local(0.0, half_h),
+                        p_bl,
+                        rotate_local(-half_w, 0.0),
+                    ];
 
-                for h_pos in handles {
-                    painter.rect(
-                        Rect::from_center_size(h_pos, h_size),
-                        CornerRadius::same(1),
-                        TEXT,
-                        Stroke::new(1.0_f32, ACCENT),
-                        StrokeKind::Inside,
-                    );
+                    for h_pos in handles {
+                        painter.rect(
+                            Rect::from_center_size(h_pos, h_size),
+                            CornerRadius::same(1),
+                            TEXT,
+                            Stroke::new(1.0_f32, ACCENT),
+                            StrokeKind::Inside,
+                        );
+                    }
+
+                    // Center pivot anchor indicator
+                    painter.circle_filled(center_screen, 3.5, AMBER_WARN);
                 }
-
-                // Center pivot anchor indicator
-                painter.circle_filled(center_screen, 3.5, AMBER_WARN);
             }
         }
 

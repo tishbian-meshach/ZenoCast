@@ -147,6 +147,9 @@ pub struct SceneItem {
     pub crop: Crop,
     /// Visibility toggle.
     pub visible: bool,
+    /// Lock toggle preventing canvas manipulation and deletion.
+    #[serde(default)]
+    pub locked: bool,
     /// Layer opacity [0.0..1.0].
     pub opacity: f32,
     /// Blending mode against underlying items.
@@ -165,6 +168,7 @@ impl SceneItem {
             transform: ItemTransform::default(),
             crop: Crop::default(),
             visible: true,
+            locked: false,
             opacity: 1.0,
             blend_mode: BlendMode::Normal,
             filters: Vec::new(),

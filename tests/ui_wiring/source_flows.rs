@@ -71,6 +71,7 @@ fn setup_test_app(
         program_texture_id: None,
         wgpu_device: Some(device),
         wgpu_queue: Some(queue),
+        source_warning_message: None,
         app_mode: zeno_ui::app::AppMode::LiveStudio,
         overlay_editor: zeno_ui::OverlayEditor::default(),
         timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,

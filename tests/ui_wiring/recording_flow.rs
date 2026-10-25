@@ -66,6 +66,7 @@ pub fn test_start_stop_local_recording_creates_valid_file_on_disk() {
         program_texture_id: None,
         wgpu_device: None,
         wgpu_queue: None,
+        source_warning_message: None,
         app_mode: zeno_ui::app::AppMode::LiveStudio,
         overlay_editor: zeno_ui::OverlayEditor::default(),
         timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,

@@ -121,6 +121,7 @@ pub struct StudioTabViewer<'a> {
     pub trigger_sync_source_order: &'a mut Option<String>,
     pub trigger_snapshot_undo: &'a mut bool,
     pub rebinding_target: &'a mut Option<crate::hotkey_registry::RebindTarget>,
+    pub source_warning_message: &'a mut Option<(String, std::time::Instant)>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -475,13 +476,29 @@ impl<'a> StudioTabViewer<'a> {
                             .hotkeys
                             .registry
                             .accelerator_text(crate::hotkey_registry::ActionId::DeleteSelected);
-                        let del_btn = if del_acc.is_empty() {
+                        let is_locked = self
+                            .project
+                            .preview_sources()
+                            .iter()
+                            .find(|s| &s.id == sel_id)
+                            .map(|s| s.locked)
+                            .unwrap_or(false);
+                        let del_btn = if is_locked {
+                            egui::Button::new("Remove Source (Locked)")
+                        } else if del_acc.is_empty() {
                             egui::Button::new("Remove Source")
                         } else {
                             egui::Button::new("Remove Source").shortcut_text(&del_acc)
                         };
                         if ui.add(del_btn).clicked() {
-                            *self.trigger_remove_source = Some(sel_id.clone());
+                            if is_locked {
+                                *self.source_warning_message = Some((
+                                    "Unlock to delete".to_string(),
+                                    std::time::Instant::now(),
+                                ));
+                            } else {
+                                *self.trigger_remove_source = Some(sel_id.clone());
+                            }
                             ui.close_menu();
                         }
 
@@ -740,6 +757,11 @@ impl<'a> StudioTabViewer<'a> {
         ui.separator();
 
         egui::ScrollArea::vertical().show(ui, |ui| {
+            let mut scene_clicked: Option<(String, Vec<crate::project::SourceDefinition>)> = None;
+            let mut scene_double_clicked: Option<String> = None;
+            let mut clear_scene_switch_to: Option<String> = None;
+            let mut clear_scene_switch_back: Option<String> = None;
+
             if self.project.scenes.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(24.0);
@@ -761,13 +783,10 @@ impl<'a> StudioTabViewer<'a> {
 
                     let response = ui.selectable_label(is_selected, label_text);
                     if response.clicked() {
-                        *self.selected_scene_id = Some(scene.id.clone());
-                        self.project.preview_scene_id = Some(scene.id.clone());
-                        self.project.preview_working_sources =
-                            Some((scene.id.clone(), scene.sources.clone()));
+                        scene_clicked = Some((scene.id.clone(), scene.sources.clone()));
                     }
                     if response.double_clicked() {
-                        self.project.active_scene_id = Some(scene.id.clone());
+                        scene_double_clicked = Some(scene.id.clone());
                     }
 
                     let scene_id = scene.id.clone();
@@ -784,7 +803,7 @@ impl<'a> StudioTabViewer<'a> {
 
                     response.context_menu(|ui| {
                         if ui.button("Switch to Scene").clicked() {
-                            self.project.active_scene_id = Some(scene_id.clone());
+                            scene_double_clicked = Some(scene_id.clone());
                             ui.close_menu();
                         }
                         if ui.button("Rename (F2)").clicked() {
@@ -812,14 +831,7 @@ impl<'a> StudioTabViewer<'a> {
                                 ui.close_menu();
                             }
                             if !switch_to_str.is_empty() && ui.small_button("✖").clicked() {
-                                self.project
-                                    .settings
-                                    .hotkeys
-                                    .registry
-                                    .scene_hotkeys
-                                    .entry(scene_id.clone())
-                                    .or_default()
-                                    .switch_to = None;
+                                clear_scene_switch_to = Some(scene_id.clone());
                             }
                         });
 
@@ -840,18 +852,41 @@ impl<'a> StudioTabViewer<'a> {
                                 ui.close_menu();
                             }
                             if !switch_back_str.is_empty() && ui.small_button("✖").clicked() {
-                                self.project
-                                    .settings
-                                    .hotkeys
-                                    .registry
-                                    .scene_hotkeys
-                                    .entry(scene_id.clone())
-                                    .or_default()
-                                    .switch_back = None;
+                                clear_scene_switch_back = Some(scene_id.clone());
                             }
                         });
                     });
                 }
+            }
+
+            if let Some((sc_id, sc_sources)) = scene_clicked {
+                self.project.commit_preview_working_sources();
+                *self.selected_scene_id = Some(sc_id.clone());
+                self.project.preview_scene_id = Some(sc_id.clone());
+                self.project.preview_working_sources = Some((sc_id, sc_sources));
+            }
+            if let Some(sc_id) = scene_double_clicked {
+                self.project.active_scene_id = Some(sc_id);
+            }
+            if let Some(sc_id) = clear_scene_switch_to {
+                self.project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .scene_hotkeys
+                    .entry(sc_id)
+                    .or_default()
+                    .switch_to = None;
+            }
+            if let Some(sc_id) = clear_scene_switch_back {
+                self.project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .scene_hotkeys
+                    .entry(sc_id)
+                    .or_default()
+                    .switch_back = None;
             }
         });
     }
@@ -882,9 +917,28 @@ impl<'a> StudioTabViewer<'a> {
             }
 
             let has_sel = self.selected_source_id.is_some();
-            if icon_button_enabled(ui, has_sel, IconKind::Trash, "Remove Source").clicked() {
+            let is_sel_locked = sel_idx.map(|i| sources[i].locked).unwrap_or(false);
+            if icon_button_enabled(
+                ui,
+                has_sel,
+                IconKind::Trash,
+                if is_sel_locked {
+                    "Unlock to delete (Ctrl+Shift+L)"
+                } else {
+                    "Remove Source (Delete)"
+                },
+            )
+            .clicked()
+            {
                 if let Some(ref sel_id) = *self.selected_source_id {
-                    *self.trigger_remove_source = Some(sel_id.clone());
+                    if is_sel_locked {
+                        *self.source_warning_message = Some((
+                            "Unlock to delete".to_string(),
+                            std::time::Instant::now(),
+                        ));
+                    } else {
+                        *self.trigger_remove_source = Some(sel_id.clone());
+                    }
                 }
             }
 
@@ -939,6 +993,13 @@ impl<'a> StudioTabViewer<'a> {
                             *self.trigger_sync_source_order = Some(sc_id.clone());
                         }
                     }
+                }
+            }
+
+            if let Some((msg, time)) = self.source_warning_message.as_ref() {
+                if time.elapsed().as_secs_f32() < 3.0 {
+                    ui.separator();
+                    ui.colored_label(AMBER_WARN, msg);
                 }
             }
         });
@@ -1019,7 +1080,11 @@ impl<'a> StudioTabViewer<'a> {
                 let bg_color = if is_dragged {
                     SURFACE_2
                 } else if is_sel {
-                    SURFACE_3
+                    if src_visible {
+                        SURFACE_3
+                    } else {
+                        SURFACE_3.linear_multiply(0.6)
+                    }
                 } else {
                     crate::theme::TRANSPARENT
                 };
@@ -1033,8 +1098,13 @@ impl<'a> StudioTabViewer<'a> {
                     ui.set_width(list_width);
                     ui.horizontal(|ui| {
                         // Drag handle grip
+                        let grip_color = if src_visible {
+                            TEXT_MUTED
+                        } else {
+                            TEXT_MUTED.linear_multiply(0.6)
+                        };
                         let grip_resp = ui
-                            .colored_label(TEXT_MUTED, "::")
+                            .colored_label(grip_color, "::")
                             .on_hover_text("Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
@@ -1047,9 +1117,9 @@ impl<'a> StudioTabViewer<'a> {
                             IconKind::Eye,
                             IconKind::EyeOff,
                             if src_visible {
-                                "Hide Source"
+                                "Hide Source (Ctrl+Shift+H)"
                             } else {
-                                "Show Source"
+                                "Show Source (Ctrl+Shift+H)"
                             },
                         )
                         .clicked()
@@ -1064,9 +1134,9 @@ impl<'a> StudioTabViewer<'a> {
                             IconKind::Lock,
                             IconKind::Unlock,
                             if src_locked {
-                                "Unlock Source"
+                                "Unlock Source (Ctrl+Shift+L)"
                             } else {
-                                "Lock Source"
+                                "Lock Source (Ctrl+Shift+L)"
                             },
                         )
                         .clicked()
@@ -1074,8 +1144,18 @@ impl<'a> StudioTabViewer<'a> {
                             *self.trigger_toggle_source_lock = Some(src_id.clone());
                         }
 
-                        // Source name
-                        let text_color = if is_sel { ACCENT } else { TEXT };
+                        // Source name (dimmed when hidden, matching OBS)
+                        let text_color = if is_sel {
+                            if src_visible {
+                                ACCENT
+                            } else {
+                                ACCENT.linear_multiply(0.7)
+                            }
+                        } else if src_visible {
+                            TEXT
+                        } else {
+                            TEXT_MUTED
+                        };
                         ui.add(
                             egui::Label::new(egui::RichText::new(&src_name).color(text_color))
                                 .truncate(),
@@ -1198,13 +1278,22 @@ impl<'a> StudioTabViewer<'a> {
                         .hotkeys
                         .registry
                         .accelerator_text(crate::hotkey_registry::ActionId::DeleteSelected);
-                    let del_btn = if del_acc.is_empty() {
+                    let del_btn = if src_locked {
+                        egui::Button::new("Remove Source (Locked)")
+                    } else if del_acc.is_empty() {
                         egui::Button::new("Remove Source")
                     } else {
                         egui::Button::new("Remove Source").shortcut_text(&del_acc)
                     };
                     if ui.add(del_btn).clicked() {
-                        *self.trigger_remove_source = Some(src_id.clone());
+                        if src_locked {
+                            *self.source_warning_message = Some((
+                                "Unlock to delete".to_string(),
+                                std::time::Instant::now(),
+                            ));
+                        } else {
+                            *self.trigger_remove_source = Some(src_id.clone());
+                        }
                         ui.close_menu();
                     }
 

@@ -137,6 +137,8 @@ pub struct ZenocastApp {
     pub wgpu_device: Option<Arc<wgpu::Device>>,
     /// Reference to WGPU queue
     pub wgpu_queue: Option<Arc<wgpu::Queue>>,
+    /// Transient inline warning message for sources (e.g. "Unlock to delete")
+    pub source_warning_message: Option<(String, Instant)>,
     /// Motion graphics overlay editor state (Edit Overlay mode)
     pub overlay_editor: OverlayEditor,
     /// Timeline mode (DopeSheet vs CurveEditor)
@@ -274,12 +276,14 @@ impl ZenocastApp {
 
                     let canvas_w = comp.width() as f32;
                     let canvas_h = comp.height() as f32;
-                    let item = SceneItem::new(&src_def.name, SceneItemSource::Source(s_id))
+                    let mut item = SceneItem::new(&src_def.name, SceneItemSource::Source(s_id))
                         .with_position(
                             src_def.x + src_def.width / 2.0,
                             src_def.y + src_def.height / 2.0,
                         )
                         .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
+                    item.visible = src_def.visible;
+                    item.locked = src_def.locked;
                     scene.add_item(item);
                 }
 
@@ -331,6 +335,7 @@ impl ZenocastApp {
             program_texture_id,
             wgpu_device,
             wgpu_queue,
+            source_warning_message: None,
             app_mode: AppMode::LiveStudio,
             overlay_editor: OverlayEditor::default(),
             timeline_mode: TimelineMode::DopeSheet,
@@ -435,6 +440,7 @@ impl ZenocastApp {
             program_texture_id: None,
             wgpu_device: None,
             wgpu_queue: None,
+            source_warning_message: None,
             app_mode: AppMode::LiveStudio,
             overlay_editor: OverlayEditor::default(),
             timeline_mode: TimelineMode::DopeSheet,
@@ -519,9 +525,11 @@ impl ZenocastApp {
                 scene.id = sc_id;
                 for src_def in &scene_def.sources {
                     let src_id = string_to_source_id(&src_def.id);
-                    let item = SceneItem::new(&src_def.name, SceneItemSource::Source(src_id))
+                    let mut item = SceneItem::new(&src_def.name, SceneItemSource::Source(src_id))
                         .with_position(canvas_w / 2.0, canvas_h / 2.0)
                         .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
+                    item.visible = src_def.visible;
+                    item.locked = src_def.locked;
                     scene.add_item(item);
                 }
                 comp.add_scene(scene);
@@ -564,6 +572,7 @@ impl ZenocastApp {
                         .with_position(canvas_w / 2.0, canvas_h / 2.0)
                         .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
                     item.visible = src_def.visible;
+                    item.locked = src_def.locked;
                     scene.add_item(item);
                 }
                 comp.add_scene(scene);
@@ -1047,6 +1056,19 @@ impl ZenocastApp {
 
     /// Removes a source from project, compositor, and stops it in the registry.
     pub fn remove_source_by_id(&mut self, source_id_str: &str) {
+        let is_locked = self
+            .project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == source_id_str)
+            .map(|s| s.locked)
+            .unwrap_or(false);
+        if is_locked {
+            self.source_warning_message =
+                Some(("Unlock to delete".to_string(), Instant::now()));
+            return;
+        }
+
         let src_id = string_to_source_id(source_id_str);
         if let Some(ref sel_scene_id) = self.selected_scene_id {
             if let Some(scene) = self
@@ -1085,21 +1107,41 @@ impl ZenocastApp {
     /// Toggles visibility of a source in project and compositor.
     pub fn toggle_source_visibility(&mut self, source_id_str: &str) {
         let src_id = string_to_source_id(source_id_str);
-        let mut new_vis = true;
-        if let Some(ref sel_scene_id) = self.selected_scene_id {
-            if let Some(scene) = self
-                .project
-                .scenes
-                .iter_mut()
-                .find(|s| &s.id == sel_scene_id)
-            {
-                if let Some(src) = scene.sources.iter_mut().find(|s| s.id == source_id_str) {
-                    src.visible = !src.visible;
-                    new_vis = src.visible;
-                }
+        let current_vis = self
+            .project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == source_id_str)
+            .map(|s| s.visible)
+            .unwrap_or_else(|| {
+                self.project
+                    .scenes
+                    .iter()
+                    .flat_map(|sc| &sc.sources)
+                    .find(|s| s.id == source_id_str)
+                    .map(|s| s.visible)
+                    .unwrap_or(true)
+            });
+        let new_vis = !current_vis;
+
+        // 1. Update project saved scenes
+        for scene in &mut self.project.scenes {
+            if let Some(src) = scene.sources.iter_mut().find(|s| s.id == source_id_str) {
+                src.visible = new_vis;
             }
-            if let Some(ref mut comp) = *self.compositor.write() {
-                let sc_id = string_to_scene_id(sel_scene_id);
+        }
+
+        // 2. Update preview working sources if active
+        if let Some(sources) = self.project.preview_working_sources_mut() {
+            if let Some(src) = sources.iter_mut().find(|s| s.id == source_id_str) {
+                src.visible = new_vis;
+            }
+        }
+
+        // 3. Update compositor scenes (immediately affects Program output)
+        if let Some(ref mut comp) = *self.compositor.write() {
+            for scene_def in &self.project.scenes {
+                let sc_id = string_to_scene_id(&scene_def.id);
                 if let Some(scene) = comp.get_scene_mut(sc_id) {
                     for item in &mut scene.items {
                         if let SceneItemSource::Source(id) = item.source {
@@ -1110,43 +1152,61 @@ impl ZenocastApp {
                     }
                 }
             }
+            // 4. Update preview working scene (immediately affects Preview output)
+            comp.update_preview_item_visibility(src_id, new_vis);
         }
-        if let Some(sources) = self.project.preview_working_sources_mut() {
-            if let Some(src) = sources.iter_mut().find(|s| s.id == source_id_str) {
-                src.visible = new_vis;
+    }
+
+    /// Toggles lock state of a source in project and compositor.
+    pub fn toggle_source_lock(&mut self, source_id_str: &str) {
+        let src_id = string_to_source_id(source_id_str);
+        let current_lock = self
+            .project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == source_id_str)
+            .map(|s| s.locked)
+            .unwrap_or_else(|| {
+                self.project
+                    .scenes
+                    .iter()
+                    .flat_map(|sc| &sc.sources)
+                    .find(|s| s.id == source_id_str)
+                    .map(|s| s.locked)
+                    .unwrap_or(false)
+            });
+        let new_lock = !current_lock;
+
+        // 1. Update project saved scenes
+        for scene in &mut self.project.scenes {
+            if let Some(src) = scene.sources.iter_mut().find(|s| s.id == source_id_str) {
+                src.locked = new_lock;
             }
         }
+
+        // 2. Update preview working sources if active
+        if let Some(sources) = self.project.preview_working_sources_mut() {
+            if let Some(src) = sources.iter_mut().find(|s| s.id == source_id_str) {
+                src.locked = new_lock;
+            }
+        }
+
+        // 3. Update compositor scenes
         if let Some(ref mut comp) = *self.compositor.write() {
-            if let Some(scene) = comp.preview_working_scene_mut() {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(id) = item.source {
-                        if id == src_id {
-                            item.visible = new_vis;
+            for scene_def in &self.project.scenes {
+                let sc_id = string_to_scene_id(&scene_def.id);
+                if let Some(scene) = comp.get_scene_mut(sc_id) {
+                    for item in &mut scene.items {
+                        if let SceneItemSource::Source(id) = item.source {
+                            if id == src_id {
+                                item.locked = new_lock;
+                            }
                         }
                     }
                 }
             }
-        }
-    }
-
-    /// Toggles lock state of a source.
-    pub fn toggle_source_lock(&mut self, source_id_str: &str) {
-        if let Some(ref sel_scene_id) = self.selected_scene_id {
-            if let Some(scene) = self
-                .project
-                .scenes
-                .iter_mut()
-                .find(|s| &s.id == sel_scene_id)
-            {
-                if let Some(src) = scene.sources.iter_mut().find(|s| s.id == source_id_str) {
-                    src.locked = !src.locked;
-                }
-            }
-        }
-        if let Some(sources) = self.project.preview_working_sources_mut() {
-            if let Some(src) = sources.iter_mut().find(|s| s.id == source_id_str) {
-                src.locked = !src.locked;
-            }
+            // 4. Update preview working scene
+            comp.update_preview_item_lock(src_id, new_lock);
         }
     }
 
@@ -1520,6 +1580,18 @@ impl ZenocastApp {
     /// Deletes currently selected source or overlay layer.
     pub fn delete_selected_source(&mut self) {
         if let Some(ref sel_id) = self.selected_source_id.clone() {
+            let is_locked = self
+                .project
+                .preview_sources()
+                .iter()
+                .find(|s| &s.id == sel_id)
+                .map(|s| s.locked)
+                .unwrap_or(false);
+            if is_locked {
+                self.source_warning_message =
+                    Some(("Unlock to delete".to_string(), Instant::now()));
+                return;
+            }
             self.studio_snapshot_for_undo();
             self.remove_source_by_id(sel_id);
             self.selected_source_id = None;
@@ -2635,6 +2707,12 @@ impl ZenocastApp {
                     ui.separator();
                     ui.colored_label(crate::theme::ACCENT, format!("UI reloaded {}", reload_time));
                 }
+                if let Some((msg, time)) = &self.source_warning_message {
+                    if time.elapsed().as_secs_f32() < 3.0 {
+                        ui.separator();
+                        ui.colored_label(crate::theme::AMBER_WARN, msg);
+                    }
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.colored_label(TEXT_MUTED, "Hardware NVENC/AMF Ready");
                 });
@@ -2719,6 +2797,7 @@ impl ZenocastApp {
                     trigger_transform_source: &mut trigger_transform_source,
                     trigger_sync_source_order: &mut trigger_sync_source_order,
                     trigger_snapshot_undo: &mut trigger_snapshot_undo,
+                    source_warning_message: &mut self.source_warning_message,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -2867,8 +2946,20 @@ impl ZenocastApp {
             self.studio_snapshot_for_undo();
         }
         if let Some(ref rem_id) = trigger_remove_source {
-            self.studio_snapshot_for_undo();
-            self.remove_source_by_id(rem_id);
+            let is_locked = self
+                .project
+                .preview_sources()
+                .iter()
+                .find(|s| &s.id == rem_id)
+                .map(|s| s.locked)
+                .unwrap_or(false);
+            if is_locked {
+                self.source_warning_message =
+                    Some(("Unlock to delete".to_string(), Instant::now()));
+            } else {
+                self.studio_snapshot_for_undo();
+                self.remove_source_by_id(rem_id);
+            }
         }
         if let Some(ref vis_id) = trigger_toggle_source_visibility {
             self.studio_snapshot_for_undo();

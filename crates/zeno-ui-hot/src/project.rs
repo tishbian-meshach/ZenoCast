@@ -200,6 +200,7 @@ impl Project {
 
     /// Saves the project to disk as pretty JSON.
     pub fn save_to_file(&mut self, path: &Path) -> Result<(), ProjectError> {
+        self.commit_preview_working_sources();
         self.last_modified = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()

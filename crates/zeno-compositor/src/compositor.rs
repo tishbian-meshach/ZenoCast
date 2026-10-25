@@ -265,6 +265,32 @@ impl SceneCompositor {
         }
     }
 
+    /// Updates visibility of an item in the Preview working scene.
+    pub fn update_preview_item_visibility(&mut self, source_id: SourceId, visible: bool) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id {
+                        item.visible = visible;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Updates lock state of an item in the Preview working scene.
+    pub fn update_preview_item_lock(&mut self, source_id: SourceId, locked: bool) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id {
+                        item.locked = locked;
+                    }
+                }
+            }
+        }
+    }
+
     /// Reorders items in the Preview working scene.
     pub fn sync_preview_items_order(&mut self, item_source_ids: &[SourceId]) {
         if let Some(scene) = self.preview_working_scene_mut() {
