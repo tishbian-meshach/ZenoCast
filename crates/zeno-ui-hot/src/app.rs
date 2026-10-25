@@ -191,7 +191,10 @@ impl ZenocastApp {
         apply_theme(&cc.egui_ctx);
 
         let project = Project::default();
-        let selected_scene_id = project.active_scene_id.clone();
+        let selected_scene_id = project
+            .preview_scene_id
+            .clone()
+            .or_else(|| project.active_scene_id.clone());
         let dock_state = create_default_live_layout();
 
         let v_settings = zeno_output::encoder::VideoEncoderSettings {
@@ -372,7 +375,10 @@ impl ZenocastApp {
     /// Initializes a headless studio instance without GPU surface bindings.
     pub fn new_headless() -> Self {
         let project = Project::default();
-        let selected_scene_id = project.active_scene_id.clone();
+        let selected_scene_id = project
+            .preview_scene_id
+            .clone()
+            .or_else(|| project.active_scene_id.clone());
         let dock_state = create_default_live_layout();
 
         let v_settings = zeno_output::encoder::VideoEncoderSettings {
@@ -497,7 +503,11 @@ impl ZenocastApp {
     pub fn reset_to_new_project(&mut self) {
         self.project = Project::default();
         self.project_path = None;
-        self.selected_scene_id = self.project.active_scene_id.clone();
+        self.selected_scene_id = self
+            .project
+            .preview_scene_id
+            .clone()
+            .or_else(|| self.project.active_scene_id.clone());
         self.source_registry.write().clear();
 
         if let Some(ref mut comp) = *self.compositor.write() {
@@ -534,7 +544,11 @@ impl ZenocastApp {
         let loaded = Project::load_from_file(&path)?;
         self.project = loaded;
         self.project_path = Some(path.clone());
-        self.selected_scene_id = self.project.active_scene_id.clone();
+        self.selected_scene_id = self
+            .project
+            .preview_scene_id
+            .clone()
+            .or_else(|| self.project.active_scene_id.clone());
         self.source_registry.write().clear();
 
         if let Some(ref mut comp) = *self.compositor.write() {

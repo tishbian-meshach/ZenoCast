@@ -671,6 +671,15 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders Scenes list with Add, Duplicate, Remove, and Switch operations.
     fn ui_scenes(&mut self, ui: &mut Ui) {
+        // Ensure selected_scene_id always tracks project.preview_scene_id in Studio mode
+        if self.selected_scene_id.as_ref() != self.project.preview_scene_id.as_ref() {
+            if self.project.preview_scene_id.is_some() {
+                *self.selected_scene_id = self.project.preview_scene_id.clone();
+            } else if self.selected_scene_id.is_some() {
+                self.project.preview_scene_id = self.selected_scene_id.clone();
+            }
+        }
+
         ui.horizontal(|ui| {
             if icon_button(ui, IconKind::Plus, "Add Scene").clicked() {
                 *self.trigger_add_scene = true;
