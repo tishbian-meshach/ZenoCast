@@ -2218,6 +2218,17 @@ impl ZenocastApp {
                     || self.source_dialog.is_open())
                     && ctx.wants_keyboard_input());
 
+            #[cfg(debug_assertions)]
+            if !text_editing_active {
+                let ctrl_r = ctx.input(|i| {
+                    (i.modifiers.ctrl || i.modifiers.command) && i.key_pressed(egui::Key::R)
+                });
+                if ctrl_r {
+                    info!("[dev-watch] Ctrl+R triggered: closing window for rebuild and relaunch");
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            }
+
             let mut triggered_action: Option<ActionId> = None;
             let mut triggered_target: Option<RebindTarget> = None;
 

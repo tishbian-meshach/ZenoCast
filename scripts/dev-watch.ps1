@@ -157,7 +157,7 @@ if ($Release) {
 } else {
     Write-Host "  Mode: DEBUG (zeno-ui-hot dylib hot reload active)" -ForegroundColor Green
 }
-Write-Host "  Polling every ${PollSeconds}s. Press Ctrl+C to stop." -ForegroundColor DarkGray
+Write-Host "  Polling every ${PollSeconds}s. Press Ctrl+R to reload/relaunch. Press Ctrl+C to stop." -ForegroundColor DarkGray
 Write-Host "================================================================" -ForegroundColor Magenta
 Write-Host ""
 
@@ -166,8 +166,51 @@ $proc = Start-HostApp
 
 try {
     while ($true) {
-        Start-Sleep -Seconds $PollSeconds
+        $manualReload = $false
 
+        # Responsive sleep loop with console key detection (every 100ms)
+        $subIntervals = [math]::Max(1, [int]($PollSeconds * 10))
+        for ($step = 0; $step -lt $subIntervals; $step++) {
+            try {
+                if ([System.Console]::KeyAvailable) {
+                    $key = [System.Console]::ReadKey($true)
+                    $isCtrlR = ($key.Key -eq [System.ConsoleKey]::R -and ($key.Modifiers -band [System.ConsoleModifiers]::Control))
+                    $isPlainR = ($key.Key -eq [System.ConsoleKey]::R -and ($key.Modifiers -eq 0))
+                    if ($isCtrlR -or $isPlainR) {
+                        $manualReload = $true
+                        break
+                    }
+                }
+            } catch {
+                # Non-interactive / redirected console
+            }
+            Start-Sleep -Milliseconds 100
+        }
+
+        # 1. Manual reload requested via console keypress
+        if ($manualReload) {
+            Write-Host ""
+            Write-Host "[dev-watch] Manual reload requested (Ctrl+R) -- rebuilding and relaunching..." -ForegroundColor Yellow
+            if ($proc -and -not $proc.HasExited) {
+                Write-Host "[dev-watch] Stopping previous host instance (PID $($proc.Id))..." -ForegroundColor DarkGray
+                Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
+                Start-Sleep -Milliseconds 500
+            }
+            $proc = Start-HostApp
+            $lastSnapshot = Get-SourceSnapshot
+            continue
+        }
+
+        # 2. Host process exited on its own (or via Ctrl+R in app window)
+        if ($null -ne $proc -and $proc.HasExited) {
+            Write-Host ""
+            Write-Host "[dev-watch] Host process exited, relaunching..." -ForegroundColor Yellow
+            $proc = Start-HostApp
+            $lastSnapshot = Get-SourceSnapshot
+            continue
+        }
+
+        # 3. File change detection
         $currentSnapshot = Get-SourceSnapshot
         $changedFiles = @()
 
