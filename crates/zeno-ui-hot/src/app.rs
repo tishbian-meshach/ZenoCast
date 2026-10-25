@@ -2892,12 +2892,20 @@ impl ZenocastApp {
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
+                    let mut dock_style = egui_dock::Style::from_egui(ui.style().as_ref());
+                    dock_style.separator.width = 3.0;
+                    dock_style.separator.extra_interact_width = 4.0;
+                    dock_style.separator.extra = 100.0;
+                    dock_style.separator.color_idle = crate::theme::SURFACE_3;
+                    dock_style.separator.color_hovered = crate::theme::ACCENT;
+                    dock_style.separator.color_dragged = crate::theme::ACCENT;
+
                     DockArea::new(&mut self.dock_state)
                         .show_close_buttons(false)
                         .show_add_buttons(false)
                         .show_leaf_close_all_buttons(false)
                         .show_leaf_collapse_buttons(false)
-                        .style(egui_dock::Style::from_egui(ui.style().as_ref()))
+                        .style(dock_style)
                         .show_inside(ui, &mut viewer);
                 }
             }

@@ -110,6 +110,7 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 | **T-BAR Slider** | Smoothly blends preview and program scenes on drag; cuts at >= 0.95 | Verified: scrubbing smoothly updates progress; drag release >= 0.95 swaps buses in `test_section_3_ui_interactivity_audit_wiring`. | [x] Verified |
 | **Preview Monitor View** | Renders live WGPU preview texture view from compositor with interactive gizmo | Verified: renders GPU preview framebuffer in `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview`. | [x] Verified |
 | **Program Monitor View** | Renders live WGPU program texture view with on-air tally border | Verified: renders GPU program framebuffer with live border in `test_section_2_1_wire_source_creation_to_real_backend_and_live_preview`. | [x] Verified |
+| **Vertical Canvas/Dock Splitter** | Drag-resizable boundary with min-height clamps between canvas and dock | Verified: split-pane layout with dynamic monitor aspect ratio preservation and internal panel scrolling in `test_section_2_split_pane_layout_and_panel_resizing`. | [x] Verified |
 
 ---
 

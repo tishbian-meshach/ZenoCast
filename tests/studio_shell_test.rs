@@ -1791,3 +1791,129 @@ fn test_section_1_normal_mode_default_and_studio_mode_toggle() {
         "Program scene must be preserved when returning to Normal Mode"
     );
 }
+
+#[test]
+fn test_section_2_split_pane_layout_and_panel_resizing() {
+    let dock_state = zeno_ui::create_default_live_layout();
+    let surface = dock_state.main_surface();
+    assert_eq!(surface.num_tabs(), 6);
+
+    // Verify root is split with top node for PreviewProgram and bottom node for control panels
+    assert!(surface[egui_dock::NodeIndex::root()].is_parent());
+
+    let project = Project::default();
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state,
+        selected_scene_id: Some("scene_gameplay".into()),
+        selected_source_id: None,
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(None)),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: None,
+        wgpu_queue: None,
+        source_warning_message: None,
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
+    };
+
+    let ctx = egui::Context::default();
+
+    // Render at normal 1080p resolution
+    let input_1080p = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1920.0, 1080.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(input_1080p, |ctx| {
+        app.update_ui(ctx);
+    });
+
+    // Render at compact 720p resolution
+    let input_720p = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1280.0, 720.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(input_720p, |ctx| {
+        app.update_ui(ctx);
+    });
+
+    // Render in Studio Mode as well at smaller size (800x600)
+    app.studio_mode = true;
+    let input_small = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 600.0),
+        )),
+        ..Default::default()
+    };
+    let _ = ctx.run(input_small, |ctx| {
+        app.update_ui(ctx);
+    });
+}

@@ -176,10 +176,27 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders dual Preview and Program monitors with T-Bar and Quick Action bus.
     fn ui_studio_mode_monitors(&mut self, ui: &mut Ui) {
+        let avail_w = ui.available_width().max(320.0);
+        let avail_h = (ui.available_height() - 28.0).max(90.0);
+
+        const CONTROLS_COL_WIDTH: f32 = 90.0;
+        let max_w_per_monitor = ((avail_w - CONTROLS_COL_WIDTH) * 0.5).max(120.0);
+        let max_h_per_monitor = avail_h;
+
+        let (monitor_width, monitor_height) = if max_w_per_monitor * 9.0 / 16.0 <= max_h_per_monitor
+        {
+            (max_w_per_monitor, max_w_per_monitor * 9.0 / 16.0)
+        } else {
+            (max_h_per_monitor * 16.0 / 9.0, max_h_per_monitor)
+        };
+
+        let total_content_w = 2.0 * monitor_width + CONTROLS_COL_WIDTH;
+        let x_pad = ((avail_w - total_content_w) * 0.5).max(0.0);
+
         ui.horizontal(|ui| {
-            let available_width = ui.available_width();
-            let monitor_width = ((available_width - 120.0) / 2.0).max(160.0);
-            let monitor_height = (monitor_width * 9.0 / 16.0).max(90.0);
+            if x_pad > 0.0 {
+                ui.add_space(x_pad);
+            }
 
             // Left: Preview Monitor
             ui.vertical(|ui| {
@@ -714,7 +731,7 @@ impl<'a> StudioTabViewer<'a> {
             });
 
             let avail_w = ui.available_width().max(160.0);
-            let avail_h = (ui.available_height() - 8.0).max(90.0);
+            let avail_h = (ui.available_height() - 28.0).max(90.0);
             let (monitor_w, monitor_h) = if avail_w * 9.0 / 16.0 <= avail_h {
                 (avail_w, avail_w * 9.0 / 16.0)
             } else {
@@ -1901,144 +1918,150 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders live transition controls (kind, duration, trigger).
     fn ui_transitions(&mut self, ui: &mut Ui) {
-        ui.vertical(|ui| {
-            ui.label("Active Transition");
-            egui::ComboBox::from_label("")
-                .selected_text(self.active_transition_kind.as_str())
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(self.active_transition_kind, "Cut".into(), "Cut");
-                    ui.selectable_value(
-                        self.active_transition_kind,
-                        "Fade".into(),
-                        "Fade (Dissolve)",
-                    );
-                    ui.selectable_value(
-                        self.active_transition_kind,
-                        "Slide".into(),
-                        "Slide (Left-to-Right)",
-                    );
-                    ui.selectable_value(
-                        self.active_transition_kind,
-                        "Wipe".into(),
-                        "Wipe (Horizontal Soft)",
-                    );
-                    ui.selectable_value(
-                        self.active_transition_kind,
-                        "Stinger".into(),
-                        "Stinger Video (.arx)",
-                    );
-                });
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.vertical(|ui| {
+                ui.label("Active Transition");
+                egui::ComboBox::from_label("")
+                    .selected_text(self.active_transition_kind.as_str())
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(self.active_transition_kind, "Cut".into(), "Cut");
+                        ui.selectable_value(
+                            self.active_transition_kind,
+                            "Fade".into(),
+                            "Fade (Dissolve)",
+                        );
+                        ui.selectable_value(
+                            self.active_transition_kind,
+                            "Slide".into(),
+                            "Slide (Left-to-Right)",
+                        );
+                        ui.selectable_value(
+                            self.active_transition_kind,
+                            "Wipe".into(),
+                            "Wipe (Horizontal Soft)",
+                        );
+                        ui.selectable_value(
+                            self.active_transition_kind,
+                            "Stinger".into(),
+                            "Stinger Video (.arx)",
+                        );
+                    });
 
-            ui.add_space(GRID_UNIT);
-            ui.label("Duration (ms)");
-            ui.add(egui::Slider::new(self.transition_duration_ms, 50..=2000).suffix(" ms"));
+                ui.add_space(GRID_UNIT);
+                ui.label("Duration (ms)");
+                ui.add(egui::Slider::new(self.transition_duration_ms, 50..=2000).suffix(" ms"));
 
-            ui.add_space(GRID_UNIT);
-            if ui.button("Trigger Transition (Auto)").clicked() {
-                *self.trigger_auto = true;
-            }
+                ui.add_space(GRID_UNIT);
+                if ui.button("Trigger Transition (Auto)").clicked() {
+                    *self.trigger_auto = true;
+                }
+            });
         });
     }
 
     /// Renders streaming and recording toggles and real-time broadcast statistics.
     fn ui_stream_controls(&mut self, ui: &mut Ui) {
-        ui.vertical(|ui| {
-            // Stream button
-            let stream_text = if self.is_streaming {
-                "STOP STREAMING"
-            } else {
-                "START STREAMING"
-            };
-            let stream_btn = ui.add_sized(
-                vec2(ui.available_width(), BUTTON_HEIGHT),
-                egui::Button::new(stream_text).fill(if self.is_streaming {
-                    RED_LIVE
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.vertical(|ui| {
+                // Stream button
+                let stream_text = if self.is_streaming {
+                    "STOP STREAMING"
                 } else {
-                    ACCENT
-                }),
-            );
-            if stream_btn.clicked() {
-                *self.trigger_toggle_stream = true;
-            }
-
-            ui.add_space(GRID_UNIT);
-
-            // Record button
-            let record_text = if self.is_recording {
-                "STOP RECORDING"
-            } else {
-                "START RECORDING"
-            };
-            let record_btn = ui.add_sized(
-                vec2(ui.available_width(), BUTTON_HEIGHT),
-                egui::Button::new(record_text).fill(if self.is_recording {
-                    RED_LIVE
-                } else {
-                    SURFACE_3
-                }),
-            );
-            if record_btn.clicked() {
-                *self.trigger_toggle_record = true;
-            }
-
-            ui.add_space(GRID_UNIT);
-
-            // Studio Mode toggle button (OBS Parity)
-            let studio_mode_text = if self.studio_mode {
-                "Studio Mode (Active)"
-            } else {
-                "Studio Mode"
-            };
-            let studio_mode_btn = ui.add_sized(
-                vec2(ui.available_width(), BUTTON_HEIGHT),
-                egui::Button::new(studio_mode_text).fill(if self.studio_mode {
-                    ACCENT
-                } else {
-                    SURFACE_3
-                }),
-            );
-            if studio_mode_btn
-                .on_hover_text("Toggle between Normal Mode (single monitor) and Studio Mode (Preview / Program split)")
-                .clicked()
-            {
-                *self.trigger_toggle_studio_mode = true;
-            }
-
-            ui.separator();
-
-            // Real-Time Output Statistics
-            ui.horizontal(|ui| {
-                ui.colored_label(TEXT_MUTED, "Status:");
-                if self.is_streaming {
-                    ui.colored_label(RED_LIVE, "LIVE");
-                } else {
-                    ui.colored_label(TEXT, "OFFLINE");
-                }
-            });
-
-            ui.horizontal(|ui| {
-                ui.colored_label(TEXT_MUTED, "FPS:");
-                ui.colored_label(TEXT, format!("{:.1}", self.fps));
-            });
-
-            ui.horizontal(|ui| {
-                ui.colored_label(TEXT_MUTED, "Dropped:");
-                let drop_color = if self.dropped_percent > 0.1 {
-                    AMBER_WARN
-                } else {
-                    TEXT
+                    "START STREAMING"
                 };
-                ui.colored_label(drop_color, format!("{:.2}%", self.dropped_percent));
-            });
+                let stream_btn = ui.add_sized(
+                    vec2(ui.available_width(), BUTTON_HEIGHT),
+                    egui::Button::new(stream_text).fill(if self.is_streaming {
+                        RED_LIVE
+                    } else {
+                        ACCENT
+                    }),
+                );
+                if stream_btn.clicked() {
+                    *self.trigger_toggle_stream = true;
+                }
 
-            ui.horizontal(|ui| {
-                ui.colored_label(TEXT_MUTED, "Bitrate:");
-                ui.colored_label(TEXT, format!("{} kbps", self.bitrate_kbps));
-            });
+                ui.add_space(GRID_UNIT);
 
-            ui.horizontal(|ui| {
-                ui.colored_label(TEXT_MUTED, "Duration:");
-                ui.colored_label(TEXT, &self.stream_time);
+                // Record button
+                let record_text = if self.is_recording {
+                    "STOP RECORDING"
+                } else {
+                    "START RECORDING"
+                };
+                let record_btn = ui.add_sized(
+                    vec2(ui.available_width(), BUTTON_HEIGHT),
+                    egui::Button::new(record_text).fill(if self.is_recording {
+                        RED_LIVE
+                    } else {
+                        SURFACE_3
+                    }),
+                );
+                if record_btn.clicked() {
+                    *self.trigger_toggle_record = true;
+                }
+
+                ui.add_space(GRID_UNIT);
+
+                // Studio Mode toggle button (OBS Parity)
+                let studio_mode_text = if self.studio_mode {
+                    "Studio Mode (Active)"
+                } else {
+                    "Studio Mode"
+                };
+                let studio_mode_btn = ui.add_sized(
+                    vec2(ui.available_width(), BUTTON_HEIGHT),
+                    egui::Button::new(studio_mode_text).fill(if self.studio_mode {
+                        ACCENT
+                    } else {
+                        SURFACE_3
+                    }),
+                );
+                if studio_mode_btn
+                    .on_hover_text(
+                        "Toggle between Normal Mode (single monitor) and Studio Mode (Preview / Program split)",
+                    )
+                    .clicked()
+                {
+                    *self.trigger_toggle_studio_mode = true;
+                }
+
+                ui.separator();
+
+                // Real-Time Output Statistics
+                ui.horizontal(|ui| {
+                    ui.colored_label(TEXT_MUTED, "Status:");
+                    if self.is_streaming {
+                        ui.colored_label(RED_LIVE, "LIVE");
+                    } else {
+                        ui.colored_label(TEXT, "OFFLINE");
+                    }
+                });
+
+                ui.horizontal(|ui| {
+                    ui.colored_label(TEXT_MUTED, "FPS:");
+                    ui.colored_label(TEXT, format!("{:.1}", self.fps));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.colored_label(TEXT_MUTED, "Dropped:");
+                    let drop_color = if self.dropped_percent > 0.1 {
+                        AMBER_WARN
+                    } else {
+                        TEXT
+                    };
+                    ui.colored_label(drop_color, format!("{:.2}%", self.dropped_percent));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.colored_label(TEXT_MUTED, "Bitrate:");
+                    ui.colored_label(TEXT, format!("{} kbps", self.bitrate_kbps));
+                });
+
+                ui.horizontal(|ui| {
+                    ui.colored_label(TEXT_MUTED, "Duration:");
+                    ui.colored_label(TEXT, &self.stream_time);
+                });
             });
         });
     }
