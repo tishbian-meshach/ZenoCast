@@ -986,4 +986,21 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
 - **Timestamp Invariance**:
   - Frame timestamps are generated strictly from the compositor's monotonic master presentation clock, ensuring deterministic A/V lip-sync across RTMP and SRT outputs.
 
+---
+
+### 7. Filter Architecture: `FilterChain` on `Source` vs. `SceneItem` and Complementation with `Layer::effects`
+
+- **Ownership on `SourceDefinition` (Propagated to `SceneItem`)**:
+  - In broadcast video and audio architecture, inputs (cameras, screen capture, microphones, video assets) represent physical or logical ingest channels.
+  - Attaching `FilterChain` to `SourceDefinition` ensures that signal conditioners (chroma keying green screen cameras, color balance, noise suppression, audio compression, EQ) are owned by the ingest source itself.
+  - When an operator uses **Paste Reference**, multiple `SceneItem`s in different scenes point to the same underlying `source_id`. All scenes referencing this source immediately and synchronously share the active filter chain, avoiding drift or redundant configuration.
+  - When an operator uses **Paste Duplicate**, a deep copy of the source is registered with a unique `SourceId` and cloned `FilterChain`, allowing divergent filter parameters when explicitly needed.
+  - When rendering, `SceneItem` retains independent canvas geometry (position, scale, rotation, crop insets), visibility toggle, lock flag, `BlendMode`, and `BlendingMethod`, while executing the source's `FilterChain` offscreen prior to final canvas compositing.
+
+- **Complementation with `Layer::effects`**:
+  - `Layer::effects` exists within `zeno-engine`'s `.arx` motion-graphics scene graph. It handles intra-composition vector layer styling (drop shadows, blurs, layer glows, bevels) applied directly to shapes, text, and vector groups during timeline evaluation.
+  - `FilterChain` (in `zeno-core`, `zeno-compositor`, and `zeno-audio`) handles broadcast stream processing (live camera chroma keying, LUT grading, sharpness, WASAPI noise suppression, multiband compression) across live inputs before scene compositing and multiplexing.
+  - Rather than subsuming one another, the two systems complement each other: `.arx` container packages remain self-contained motion graphics assets using `Layer::effects`, while `FilterChain` provides real-time broadcast conditioning for live streaming and recording.
+
+
 
