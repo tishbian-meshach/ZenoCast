@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::button::Button;
 use crate::icon::{
-    grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon,
-    IconButton, IconKind,
+    grip_handle_colored, icon_button, icon_button_enabled, icon_toggle_button_colored,
+    paint_lucide_icon, IconButton, IconKind,
 };
 use crate::project::Project;
 use crate::theme::{
@@ -1915,8 +1915,15 @@ impl<'a> StudioTabViewer<'a> {
                 );
                 child_ui.add_space(4.0);
 
+                // Text and icon color (dimmed when hidden, matching OBS)
+                let text_color = if is_sel || src_visible {
+                    TEXT
+                } else {
+                    TEXT_MUTED
+                };
+
                 // Drag handle grip
-                let grip_resp = grip_handle(&mut child_ui, "Drag to reorder");
+                let grip_resp = grip_handle_colored(&mut child_ui, text_color, "Drag to reorder");
                 if grip_resp.hovered() {
                     child_ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 }
@@ -1925,8 +1932,9 @@ impl<'a> StudioTabViewer<'a> {
                 }
 
                 // Visibility toggle
-                let eye_resp = icon_toggle_button(
+                let eye_resp = icon_toggle_button_colored(
                     &mut child_ui,
+                    text_color,
                     src_visible,
                     IconKind::Eye,
                     IconKind::EyeOff,
@@ -1942,8 +1950,9 @@ impl<'a> StudioTabViewer<'a> {
                 }
 
                 // Lock toggle
-                let lock_resp = icon_toggle_button(
+                let lock_resp = icon_toggle_button_colored(
                     &mut child_ui,
+                    text_color,
                     src_locked,
                     IconKind::Lock,
                     IconKind::Unlock,
@@ -1958,12 +1967,6 @@ impl<'a> StudioTabViewer<'a> {
                     *self.selected_source_id = Some(src_id.clone());
                 }
 
-                // Source name (dimmed when hidden, matching OBS)
-                let text_color = if is_sel || src_visible {
-                    TEXT
-                } else {
-                    TEXT_MUTED
-                };
                 child_ui.add(
                     egui::Label::new(egui::RichText::new(&src_name).color(text_color)).truncate(),
                 );

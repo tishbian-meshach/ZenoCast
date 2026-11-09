@@ -30,6 +30,10 @@ pub const AMBER_WARN: Color32 = Color32::from_rgb(0xF5, 0xA5, 0x24);
 pub const TINT_NONE: Color32 = Color32::from_rgb(0xFF, 0xFF, 0xFF);
 pub const TRANSPARENT: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 0);
 
+// Interaction Overlays (translucent highlight overlays adapting to dark surfaces and ACCENT blue rows)
+pub const HOVER_OVERLAY: Color32 = Color32::from_rgba_premultiplied(25, 25, 25, 25);
+pub const PRESS_OVERLAY: Color32 = Color32::from_rgba_premultiplied(50, 50, 50, 50);
+
 // Status indicator alias mapped to standard neutral text
 pub const GREEN_OK: Color32 = TEXT;
 

@@ -8,12 +8,14 @@
 //! - Fully DPI-aware: razor-sharp at 100%, 150%, and 200% scaling.
 
 use egui::{
-    pos2, vec2, CornerRadius, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
+    pos2, vec2, Color32, CornerRadius, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind,
+    Ui, Vec2,
 };
 use usvg::TreeParsing;
 
 use crate::theme::{
-    ACCENT, BORDER_WIDTH, CORNER_RADIUS, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED, TRANSPARENT,
+    ACCENT, BORDER_WIDTH, CORNER_RADIUS, HOVER_OVERLAY, PRESS_OVERLAY, SURFACE_2, SURFACE_3, TEXT,
+    TEXT_MUTED, TRANSPARENT,
 };
 
 /// Enumeration of vector Lucide icons used across broadcast toolbars.
@@ -154,6 +156,7 @@ pub struct IconButton {
     size: egui::Vec2,
     icon_size: egui::Vec2,
     ghost: bool,
+    color: Option<Color32>,
     sense: Sense,
 }
 
@@ -168,6 +171,7 @@ impl IconButton {
             size: vec2(26.0, 26.0),
             icon_size: vec2(16.0, 16.0),
             ghost: false,
+            color: None,
             sense: Sense::click(),
         }
     }
@@ -208,6 +212,12 @@ impl IconButton {
         self
     }
 
+    /// Sets an explicit icon tint color (e.g. matching row text or dimmed status).
+    pub fn color(mut self, color: Color32) -> Self {
+        self.color = Some(color);
+        self
+    }
+
     /// Sets interaction sense (e.g. `Sense::click()`, `Sense::click_and_drag()`).
     pub fn sense(mut self, sense: Sense) -> Self {
         self.sense = sense;
@@ -230,14 +240,14 @@ impl IconButton {
 
         let (bg_color, border_color) = if self.ghost {
             if is_down {
-                (SURFACE_3, TRANSPARENT)
+                (PRESS_OVERLAY, TRANSPARENT)
             } else if is_hovered {
-                (SURFACE_2, TRANSPARENT)
+                (HOVER_OVERLAY, TRANSPARENT)
             } else {
                 (TRANSPARENT, TRANSPARENT)
             }
         } else {
-            let bg = if is_down || self.selected {
+            let bg = if is_down || self.selected || is_hovered {
                 SURFACE_3
             } else {
                 SURFACE_2
@@ -254,6 +264,8 @@ impl IconButton {
             TEXT_MUTED.linear_multiply(0.6)
         } else if is_down || is_hovered {
             TEXT
+        } else if let Some(c) = self.color {
+            c
         } else if self.selected {
             if self.ghost {
                 TEXT
@@ -261,7 +273,7 @@ impl IconButton {
                 ACCENT
             }
         } else {
-            TEXT_MUTED
+            TEXT
         };
 
         if bg_color != TRANSPARENT || border_color != TRANSPARENT {
@@ -378,6 +390,18 @@ pub fn icon_toggle_button(
     icon_unselected: IconKind,
     tooltip: &str,
 ) -> Response {
+    icon_toggle_button_colored(ui, TEXT, selected, icon_selected, icon_unselected, tooltip)
+}
+
+/// Convenience helper: renders an icon toggle button with custom tint color.
+pub fn icon_toggle_button_colored(
+    ui: &mut Ui,
+    color: Color32,
+    selected: bool,
+    icon_selected: IconKind,
+    icon_unselected: IconKind,
+    tooltip: &str,
+) -> Response {
     let icon = if selected {
         icon_selected
     } else {
@@ -385,6 +409,7 @@ pub fn icon_toggle_button(
     };
     IconButton::new(icon)
         .selected(selected)
+        .color(color)
         .ghost(true)
         .size(vec2(22.0, 22.0))
         .icon_size(vec2(16.0, 16.0))
@@ -392,9 +417,16 @@ pub fn icon_toggle_button(
         .show(ui)
 }
 
+/// Convenience helper: renders a drag grip handle with default text color.
 pub fn grip_handle(ui: &mut Ui, tooltip: &str) -> Response {
+    grip_handle_colored(ui, TEXT, tooltip)
+}
+
+/// Convenience helper: renders a drag grip handle with custom tint color.
+pub fn grip_handle_colored(ui: &mut Ui, color: Color32, tooltip: &str) -> Response {
     IconButton::new(IconKind::GripVertical)
         .ghost(true)
+        .color(color)
         .size(vec2(16.0, 22.0))
         .icon_size(vec2(16.0, 16.0))
         .sense(Sense::click_and_drag())

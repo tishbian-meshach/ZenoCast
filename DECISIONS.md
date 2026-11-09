@@ -1123,6 +1123,21 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - Replaced `SelectableLabel` (which centered text by default) with `ui.allocate_exact_size(vec2(row_w, ROW_HEIGHT_LIST), Sense::click())` and painted left-aligned text at `pos2(row_rect.min.x + 8.0, row_rect.center().y)` using `Align2::LEFT_CENTER`.
   - Preserved full-width `ACCENT` on selection, `SURFACE_2` on hover, and all click/double-click/context-menu interactions.
 
+---
+
+## 2026-11-09: Icon Color & Icon Hover Background Alignment Pass
+
+- **Ghost Button Hover Background Overrides**:
+  - Ghost icon buttons inside list rows previously mapped hover to `SURFACE_2` (`#1D2024` solid dark gray).
+  - When hovering over an icon on an `ACCENT` blue selected row (`#4C8DFF`), this drew a solid dark gray box over the blue row, punching an unsightly dark hole into the selection.
+  - Replaced opaque `SURFACE_2` with translucent `HOVER_OVERLAY` (`Color32::from_rgba_premultiplied(25, 25, 25, 25)`) and `PRESS_OVERLAY` (`Color32::from_rgba_premultiplied(50, 50, 50, 50)`).
+  - Over `ACCENT` blue rows, this blends into a luminous sky-blue highlight pill (`#65A6FF`). Over dark neutral surfaces, it provides a clean, subtle highlight pill.
+- **Icon Color Synchronization**:
+  - Unlocked lock icons and grip handles had `self.selected = false`, which defaulted their stroke to `TEXT_MUTED` (`#8E959D` dull gray) while the visible eye icon had `self.selected = true` (`TEXT` white `#E7E9EC`), creating mismatched colors on the exact same row and low contrast on blue selections.
+  - Added `color: Option<Color32>` to `IconButton` with `.color(color)` builder method, defaulting enabled buttons to `TEXT` (crisp white).
+  - Introduced `grip_handle_colored` and `icon_toggle_button_colored` synchronized with the row's `text_color`: all icons and text on visible and selected rows are crisp white (`TEXT`), and hidden sources dim all icons and text together to `TEXT_MUTED`.
+
+
 
 
 

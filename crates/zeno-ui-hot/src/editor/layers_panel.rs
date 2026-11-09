@@ -5,7 +5,8 @@ use zeno_core::{Color, LayerId, Vec2};
 
 use crate::editor::state::OverlayEditor;
 use crate::icon::{
-    grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon, IconKind,
+    grip_handle_colored, icon_button, icon_button_enabled, icon_toggle_button_colored,
+    paint_lucide_icon, IconKind,
 };
 use crate::theme::{
     ACCENT, CORNER_RADIUS, ROW_HEIGHT_LIST, SURFACE_2, TEXT, TEXT_MUTED, TRANSPARENT,
@@ -183,8 +184,15 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 );
                 child_ui.add_space(4.0);
 
+                // Layer text and icon color
+                let text_color = if is_selected || layer_visible {
+                    TEXT
+                } else {
+                    TEXT_MUTED
+                };
+
                 // Drag handle grip
-                let grip_resp = grip_handle(&mut child_ui, "Drag to reorder");
+                let grip_resp = grip_handle_colored(&mut child_ui, text_color, "Drag to reorder");
                 if grip_resp.hovered() {
                     child_ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                 }
@@ -193,8 +201,9 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 }
 
                 // Eye visibility toggle
-                let eye_resp = icon_toggle_button(
+                let eye_resp = icon_toggle_button_colored(
                     &mut child_ui,
+                    text_color,
                     layer_visible,
                     IconKind::Eye,
                     IconKind::EyeOff,
@@ -216,11 +225,6 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 }
 
                 // Layer Name
-                let text_color = if is_selected || layer_visible {
-                    TEXT
-                } else {
-                    TEXT_MUTED
-                };
                 child_ui.add(
                     egui::Label::new(egui::RichText::new(&layer_name).color(text_color)).truncate(),
                 );
