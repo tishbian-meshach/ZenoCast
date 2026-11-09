@@ -3,6 +3,15 @@
 use crate::id::FilterId;
 use serde::{Deserialize, Serialize};
 
+/// Color blending method (Linear vs SrgbOff gamma bypass).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+pub enum BlendingMethod {
+    #[default]
+    #[serde(alias = "Default")]
+    Linear,
+    SrgbOff,
+}
+
 /// High-level categorization of a processing filter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FilterCategory {

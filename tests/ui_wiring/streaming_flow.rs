@@ -132,6 +132,8 @@ pub fn test_streaming_against_local_test_server() {
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
         clipboard_source: None,
+        clipboard_filters: None,
+        filter_dialog: Default::default(),
         preview_locked: false,
         preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };

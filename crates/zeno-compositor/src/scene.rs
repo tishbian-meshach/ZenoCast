@@ -3,7 +3,7 @@
 use glam::{Mat4, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use zeno_core::{Color, SceneId, SourceId, TransitionId};
+use zeno_core::{BlendingMethod, Color, FilterChain, SceneId, SourceId, TransitionId};
 use zeno_engine::BlendMode;
 
 /// Policy controlling how entering and exiting overlays are scheduled during scene transitions.
@@ -154,8 +154,12 @@ pub struct SceneItem {
     pub opacity: f32,
     /// Blending mode against underlying items.
     pub blend_mode: BlendMode,
+    /// Blending method (Linear vs SrgbOff gamma calculation).
+    #[serde(default)]
+    pub blending_method: BlendingMethod,
     /// Chain of GPU shaders/filters applied to this item.
-    pub filters: Vec<ItemFilter>,
+    #[serde(default)]
+    pub filters: FilterChain,
 }
 
 impl SceneItem {
@@ -171,7 +175,8 @@ impl SceneItem {
             locked: false,
             opacity: 1.0,
             blend_mode: BlendMode::Normal,
-            filters: Vec::new(),
+            blending_method: BlendingMethod::Linear,
+            filters: FilterChain::default(),
         }
     }
 

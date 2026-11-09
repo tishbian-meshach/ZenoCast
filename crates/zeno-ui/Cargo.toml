@@ -60,3 +60,7 @@ path = "../../tests/ui_wiring/mod.rs"
 [[test]]
 name = "obs_parity_v1_4_test"
 path = "../../tests/obs_parity_v1_4_test.rs"
+
+[[test]]
+name = "filters_test"
+path = "../../tests/filters_test.rs"

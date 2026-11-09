@@ -189,6 +189,10 @@ pub struct ZenocastApp {
     pub push_to_talk_active: HashMap<String, bool>,
     /// Internal clipboard for copied scene source item (OBS Copy / Paste Reference / Paste Duplicate)
     pub clipboard_source: Option<SourceDefinition>,
+    /// Internal clipboard for copied filter chain (OBS Copy / Paste Filters)
+    pub clipboard_filters: Option<zeno_core::FilterChain>,
+    /// Filter modal dialog state
+    pub filter_dialog: crate::filter_dialog::FilterDialogState,
     /// Whether Preview monitor interaction is locked (OBS Lock Preview)
     pub preview_locked: bool,
     /// Preview scaling mode (OBS Preview Scaling)
@@ -354,6 +358,8 @@ impl ZenocastApp {
             source_warning_message: None,
             studio_mode,
             clipboard_source: None,
+            clipboard_filters: None,
+            filter_dialog: crate::filter_dialog::FilterDialogState::default(),
             preview_locked: false,
             preview_scaling_mode: crate::project::PreviewScalingMode::ScaleToWindow,
             app_mode: AppMode::LiveStudio,
@@ -463,6 +469,8 @@ impl ZenocastApp {
             source_warning_message: None,
             studio_mode: false,
             clipboard_source: None,
+            clipboard_filters: None,
+            filter_dialog: crate::filter_dialog::FilterDialogState::default(),
             preview_locked: false,
             preview_scaling_mode: crate::project::PreviewScalingMode::ScaleToWindow,
             app_mode: AppMode::LiveStudio,
@@ -1150,6 +1158,9 @@ impl ZenocastApp {
                     }
                 }
             }
+            SourceDialogAction::OpenFilters { id } => {
+                self.open_source_filters(&id);
+            }
         }
     }
 
@@ -1520,6 +1531,77 @@ impl ZenocastApp {
                     std::time::Instant::now(),
                 ));
             }
+        }
+    }
+
+    /// Opens the filter dialog modal for the given source ID.
+    pub fn open_source_filters(&mut self, source_id_str: &str) {
+        if let Some(src) = self
+            .project
+            .preview_sources()
+            .into_iter()
+            .find(|s| s.id == source_id_str)
+        {
+            self.filter_dialog
+                .open(src.id.clone(), src.name.clone(), src.filters.clone());
+        }
+    }
+
+    /// Copies the filters of the specified source to the internal clipboard.
+    pub fn copy_source_filters(&mut self, source_id_str: &str) {
+        if let Some(src) = self
+            .project
+            .preview_sources()
+            .into_iter()
+            .find(|s| s.id == source_id_str)
+        {
+            self.clipboard_filters = Some(src.filters.clone());
+            self.source_warning_message = Some((
+                "Filters copied to clipboard".to_string(),
+                std::time::Instant::now(),
+            ));
+        }
+    }
+
+    /// Pastes the clipboard filters onto the specified source.
+    pub fn paste_source_filters(&mut self, source_id_str: &str) {
+        let clip_opt = self.clipboard_filters.clone();
+        if let Some(clip) = clip_opt {
+            self.studio_snapshot_for_undo();
+            let filters = clip.clone();
+            self.sync_source_filters(source_id_str, filters.clone());
+            if self.filter_dialog.is_open()
+                && self.filter_dialog.source_id.as_deref() == Some(source_id_str)
+            {
+                self.filter_dialog.filters = filters;
+            }
+            self.source_warning_message = Some((
+                "Filters pasted successfully".to_string(),
+                std::time::Instant::now(),
+            ));
+        }
+    }
+
+    /// Synchronizes a modified filter chain to project data and live compositor SceneItems.
+    pub fn sync_source_filters(&mut self, source_id_str: &str, filters: zeno_core::FilterChain) {
+        // 1. Update in preview working sources
+        if let Some(srcs) = self.project.preview_working_sources_mut() {
+            if let Some(s) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                s.filters = filters.clone();
+            }
+        }
+
+        // 2. Update in project canonical scenes
+        for sc in &mut self.project.scenes {
+            if let Some(s) = sc.sources.iter_mut().find(|s| s.id == source_id_str) {
+                s.filters = filters.clone();
+            }
+        }
+
+        // 3. Update in SceneCompositor preview & program scene items
+        let s_id = string_to_source_id(source_id_str);
+        if let Some(ref mut comp) = *self.compositor.write() {
+            comp.update_item_filters(s_id, filters);
         }
     }
 
@@ -3045,6 +3127,9 @@ impl ZenocastApp {
         let mut trigger_paste_duplicate = false;
         let mut trigger_save_screenshot: Option<(Option<String>, bool)> = None;
         let mut trigger_resize_output_to_source: Option<String> = None;
+        let mut trigger_open_filters: Option<String> = None;
+        let mut trigger_copy_filters: Option<String> = None;
+        let mut trigger_paste_filters: Option<String> = None;
 
         let stats = self.output_manager.stats();
         let fps = if stats.encode_time_ms > 0.0 {
@@ -3114,6 +3199,10 @@ impl ZenocastApp {
                     trigger_paste_duplicate: &mut trigger_paste_duplicate,
                     trigger_save_screenshot: &mut trigger_save_screenshot,
                     trigger_resize_output_to_source: &mut trigger_resize_output_to_source,
+                    trigger_open_filters: &mut trigger_open_filters,
+                    trigger_copy_filters: &mut trigger_copy_filters,
+                    trigger_paste_filters: &mut trigger_paste_filters,
+                    has_clipboard_filters: self.clipboard_filters.is_some(),
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -3337,6 +3426,15 @@ impl ZenocastApp {
         if let Some(ref s_id) = trigger_resize_output_to_source {
             self.resize_output_to_source(s_id);
         }
+        if let Some(ref s_id) = trigger_open_filters {
+            self.open_source_filters(s_id);
+        }
+        if let Some(ref s_id) = trigger_copy_filters {
+            self.copy_source_filters(s_id);
+        }
+        if let Some(ref s_id) = trigger_paste_filters {
+            self.paste_source_filters(s_id);
+        }
         if trigger_audio_change {
             if let Some(ref act_id) = self.project.active_scene_id {
                 if let Some(scene) = self.project.scenes.iter().find(|s| &s.id == act_id) {
@@ -3470,6 +3568,21 @@ impl ZenocastApp {
             &mut self.rebinding_target,
         ) {
             self.create_and_add_source(action);
+        }
+
+        // Render Filter Modal Dialog if open
+        if let Some(action) = self.filter_dialog.ui(ctx, self.clipboard_filters.is_some()) {
+            match action {
+                crate::filter_dialog::FilterDialogAction::Update { source_id, filters } => {
+                    self.sync_source_filters(&source_id, filters);
+                }
+                crate::filter_dialog::FilterDialogAction::CopyFilters { filters } => {
+                    self.clipboard_filters = Some(filters);
+                }
+                crate::filter_dialog::FilterDialogAction::PasteFilters { source_id } => {
+                    self.paste_source_filters(&source_id);
+                }
+            }
         }
 
         // Settings Dialog Window (OBS-style tabbed preferences)

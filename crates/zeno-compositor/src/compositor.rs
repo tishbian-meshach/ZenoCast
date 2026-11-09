@@ -2,7 +2,7 @@
 
 use crate::bus::{BusManager, StudioMode};
 use crate::error::CompositorError;
-use crate::pipeline::{CompositorGpuPipeline, ItemUniforms, TransitionUniforms};
+use crate::pipeline::{CompositorGpuPipeline, FilterUniforms, ItemUniforms, TransitionUniforms};
 use crate::scene::{Scene, SceneItemSource};
 use crate::transition::{
     ActiveTransition, SlideDirection, TransitionDefinition, TransitionKind, TransitionRule,
@@ -13,7 +13,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 use wgpu::*;
-use zeno_core::{SceneId, SourceId};
+use zeno_core::{
+    BlendingMethod, FilterCategory, FilterChain, FilterDefinition, FilterSettings, SceneId,
+    SourceId,
+};
 
 /// Live GPU scene compositor executing real-time 1080p60 mixing between broadcast scenes.
 pub struct SceneCompositor {
@@ -38,6 +41,10 @@ pub struct SceneCompositor {
     intermediate_view_a: Arc<TextureView>,
     intermediate_b: Arc<Texture>,
     intermediate_view_b: Arc<TextureView>,
+    filter_texture_a: Arc<Texture>,
+    filter_view_a: Arc<TextureView>,
+    filter_texture_b: Arc<Texture>,
+    filter_view_b: Arc<TextureView>,
     transition_uniform_buf: Buffer,
     ortho_projection: Mat4,
 }
@@ -89,6 +96,18 @@ impl SceneCompositor {
         }));
         let int_view_b = Arc::new(int_b.create_view(&TextureViewDescriptor::default()));
 
+        let filter_a = Arc::new(device.create_texture(&TextureDescriptor {
+            label: Some("FilterIntermediateA"),
+            ..target_desc
+        }));
+        let filter_view_a = Arc::new(filter_a.create_view(&TextureViewDescriptor::default()));
+
+        let filter_b = Arc::new(device.create_texture(&TextureDescriptor {
+            label: Some("FilterIntermediateB"),
+            ..target_desc
+        }));
+        let filter_view_b = Arc::new(filter_b.create_view(&TextureViewDescriptor::default()));
+
         let dummy_trans_uniforms = TransitionUniforms {
             progress: 0.0,
             kind: 0,
@@ -134,6 +153,10 @@ impl SceneCompositor {
             intermediate_view_a: int_view_a,
             intermediate_b: int_b,
             intermediate_view_b: int_view_b,
+            filter_texture_a: filter_a,
+            filter_view_a,
+            filter_texture_b: filter_b,
+            filter_view_b,
             transition_uniform_buf,
             ortho_projection,
         }
@@ -208,6 +231,28 @@ impl SceneCompositor {
     /// Retrieves a mutable reference to a scene by ID.
     pub fn get_scene_mut(&mut self, id: SceneId) -> Option<&mut Scene> {
         self.scenes.get_mut(&id)
+    }
+
+    /// Updates filter chain for any scene item referencing `source_id` in working preview or canonical scenes.
+    pub fn update_item_filters(&mut self, source_id: SourceId, filters: FilterChain) {
+        if let Some(ref mut working) = self.preview_working_scene {
+            for item in &mut working.items {
+                if let SceneItemSource::Source(sid) = item.source {
+                    if sid == source_id || item.id == source_id.0 {
+                        item.filters = filters.clone();
+                    }
+                }
+            }
+        }
+        for scene in self.scenes.values_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(sid) = item.source {
+                    if sid == source_id || item.id == source_id.0 {
+                        item.filters = filters.clone();
+                    }
+                }
+            }
+        }
     }
 
     /// Returns a mutable reference to the Preview working scene (initializing it if needed).
@@ -537,6 +582,16 @@ impl SceneCompositor {
     /// Returns intermediate render target B texture.
     pub fn intermediate_texture_b(&self) -> &Arc<Texture> {
         &self.intermediate_b
+    }
+
+    /// Returns filter intermediate texture A.
+    pub fn filter_texture_a(&self) -> &Arc<Texture> {
+        &self.filter_texture_a
+    }
+
+    /// Returns filter intermediate texture B.
+    pub fn filter_texture_b(&self) -> &Arc<Texture> {
+        &self.filter_texture_b
     }
 
     /// Renders a full frame at the given timestamp delta.
@@ -888,6 +943,211 @@ impl SceneCompositor {
         self.render_scene_object(scene, target_view, sources, encoder, depth)
     }
 
+    /// Executes sequential offscreen video filter passes (M5c).
+    pub fn render_video_filters<'a>(
+        &'a self,
+        source_view: &'a TextureView,
+        item_filters: &'a FilterChain,
+        encoder: &mut CommandEncoder,
+    ) -> &'a TextureView {
+        let active_filters: Vec<&FilterDefinition> = item_filters
+            .filters
+            .iter()
+            .filter(|f| f.enabled && f.kind.category() == FilterCategory::Video)
+            .collect();
+
+        if active_filters.is_empty() {
+            return source_view;
+        }
+
+        let mut current_input = source_view;
+        let mut current_is_a = true;
+
+        for filter in active_filters {
+            let target_view = if current_is_a {
+                &self.filter_view_a
+            } else {
+                &self.filter_view_b
+            };
+
+            let uniforms = match &filter.settings {
+                FilterSettings::ColorCorrection {
+                    brightness,
+                    contrast,
+                    saturation,
+                    hue_shift,
+                    gamma,
+                    opacity,
+                } => FilterUniforms {
+                    filter_type: 0,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: *brightness,
+                    param1: *contrast,
+                    param2: *saturation,
+                    param3: *hue_shift,
+                    param4: *gamma,
+                    param5: *opacity,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: [0.0; 4],
+                },
+                FilterSettings::ChromaKey {
+                    key_color,
+                    similarity,
+                    smoothness,
+                    spill_reduction,
+                } => FilterUniforms {
+                    filter_type: 1,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: *similarity,
+                    param1: *smoothness,
+                    param2: *spill_reduction,
+                    param3: 0.0,
+                    param4: 0.0,
+                    param5: 0.0,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: *key_color,
+                },
+                FilterSettings::Blur { radius } => FilterUniforms {
+                    filter_type: 2,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: *radius,
+                    param1: 0.0,
+                    param2: 0.0,
+                    param3: 0.0,
+                    param4: 0.0,
+                    param5: 0.0,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: [0.0; 4],
+                },
+                FilterSettings::Sharpen { sharpness } => FilterUniforms {
+                    filter_type: 3,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: *sharpness,
+                    param1: 0.0,
+                    param2: 0.0,
+                    param3: 0.0,
+                    param4: 0.0,
+                    param5: 0.0,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: [0.0; 4],
+                },
+                FilterSettings::CropPad {
+                    left,
+                    top,
+                    right,
+                    bottom,
+                } => FilterUniforms {
+                    filter_type: 4,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: *left,
+                    param1: *top,
+                    param2: *right,
+                    param3: *bottom,
+                    param4: 0.0,
+                    param5: 0.0,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: [0.0; 4],
+                },
+                FilterSettings::Mask { invert, .. } => FilterUniforms {
+                    filter_type: 5,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: if *invert { 1.0 } else { 0.0 },
+                    param1: 0.0,
+                    param2: 0.0,
+                    param3: 0.0,
+                    param4: 0.0,
+                    param5: 0.0,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: [0.0; 4],
+                },
+                _ => FilterUniforms {
+                    filter_type: 999,
+                    width: self.width as f32,
+                    height: self.height as f32,
+                    param0: 0.0,
+                    param1: 0.0,
+                    param2: 0.0,
+                    param3: 0.0,
+                    param4: 0.0,
+                    param5: 0.0,
+                    param6: 0.0,
+                    _pad0: 0.0,
+                    _pad1: 0.0,
+                    color_param: [0.0; 4],
+                },
+            };
+
+            let u_buf = self.device.create_buffer_init(&util::BufferInitDescriptor {
+                label: Some("FilterUniformBuffer"),
+                contents: bytemuck::bytes_of(&uniforms),
+                usage: BufferUsages::UNIFORM,
+            });
+
+            let bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+                label: Some("FilterPassBindGroup"),
+                layout: &self.pipeline.filter_bind_group_layout,
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: u_buf.as_entire_binding(),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::TextureView(current_input),
+                    },
+                    BindGroupEntry {
+                        binding: 2,
+                        resource: BindingResource::Sampler(&self.pipeline.sampler),
+                    },
+                ],
+            });
+
+            {
+                let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+                    label: Some("FilterRenderPass"),
+                    color_attachments: &[Some(RenderPassColorAttachment {
+                        view: target_view,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                            store: StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+
+                rpass.set_pipeline(&self.pipeline.filter_pipeline);
+                rpass.set_bind_group(0, &bind_group, &[]);
+                rpass.draw(0..3, 0..1);
+            }
+
+            current_input = target_view;
+            current_is_a = !current_is_a;
+        }
+
+        current_input
+    }
+
     /// Renders a concrete scene object to a target texture view.
     fn render_scene_object(
         &self,
@@ -904,9 +1164,9 @@ impl SceneCompositor {
             a: scene.background.a as f64,
         };
 
-        // Render pass clearing the target with scene background
+        // 1. Clear target with scene background
         {
-            let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+            let _clear_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("SceneClearPass"),
                 color_attachments: &[Some(RenderPassColorAttachment {
                     view: target_view,
@@ -920,79 +1180,98 @@ impl SceneCompositor {
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
+        }
 
-            // Draw all visible items from bottom to top
-            for item in &scene.items {
-                if !item.visible || item.opacity <= 0.0 {
-                    continue;
-                }
+        // 2. Composite all visible items from bottom to top
+        for item in &scene.items {
+            if !item.visible || item.opacity <= 0.0 {
+                continue;
+            }
 
-                match &item.source {
-                    SceneItemSource::Source(source_id) => {
-                        if let Some(source_view) = sources.get(source_id) {
-                            let item_w = self.width as f32;
-                            let item_h = self.height as f32;
+            match &item.source {
+                SceneItemSource::Source(source_id) => {
+                    if let Some(source_view) = sources.get(source_id) {
+                        // Apply video effect filters via offscreen render passes
+                        let filtered_view =
+                            self.render_video_filters(source_view, &item.filters, encoder);
 
-                            // Model matrix in canvas pixels
-                            let model_mat = item.transform.to_model_matrix(item_w, item_h);
-                            // Combine with orthographic projection
-                            let mvp = self.ortho_projection * model_mat;
+                        let item_w = self.width as f32;
+                        let item_h = self.height as f32;
 
-                            let crop_insets = [
-                                (item.crop.left / item_w).clamp(0.0, 1.0),
-                                (item.crop.top / item_h).clamp(0.0, 1.0),
-                                (item.crop.right / item_w).clamp(0.0, 1.0),
-                                (item.crop.bottom / item_h).clamp(0.0, 1.0),
-                            ];
+                        // Model matrix in canvas pixels
+                        let model_mat = item.transform.to_model_matrix(item_w, item_h);
+                        // Combine with orthographic projection
+                        let mvp = self.ortho_projection * model_mat;
 
-                            let uniforms = ItemUniforms {
-                                mvp: mvp.to_cols_array_2d(),
-                                crop_insets,
-                                opacity: item.opacity.clamp(0.0, 1.0),
-                                blend_mode: 0,
-                                _padding: [0.0; 2],
-                            };
+                        let crop_insets = [
+                            (item.crop.left / item_w).clamp(0.0, 1.0),
+                            (item.crop.top / item_h).clamp(0.0, 1.0),
+                            (item.crop.right / item_w).clamp(0.0, 1.0),
+                            (item.crop.bottom / item_h).clamp(0.0, 1.0),
+                        ];
 
-                            let item_buf =
-                                self.device.create_buffer_init(&util::BufferInitDescriptor {
-                                    label: Some("ItemUniformBuffer"),
-                                    contents: bytemuck::bytes_of(&uniforms),
-                                    usage: BufferUsages::UNIFORM,
-                                });
+                        let uniforms = ItemUniforms {
+                            mvp: mvp.to_cols_array_2d(),
+                            crop_insets,
+                            opacity: item.opacity.clamp(0.0, 1.0),
+                            blend_mode: item.blend_mode as u32,
+                            blending_method: match item.blending_method {
+                                BlendingMethod::Linear => 0,
+                                BlendingMethod::SrgbOff => 1,
+                            },
+                            _padding: 0.0,
+                        };
 
-                            let item_bind_group =
-                                self.device.create_bind_group(&BindGroupDescriptor {
-                                    label: Some("ItemBindGroup"),
-                                    layout: &self.pipeline.item_bind_group_layout,
-                                    entries: &[
-                                        BindGroupEntry {
-                                            binding: 0,
-                                            resource: item_buf.as_entire_binding(),
-                                        },
-                                        BindGroupEntry {
-                                            binding: 1,
-                                            resource: BindingResource::TextureView(source_view),
-                                        },
-                                        BindGroupEntry {
-                                            binding: 2,
-                                            resource: BindingResource::Sampler(
-                                                &self.pipeline.sampler,
-                                            ),
-                                        },
-                                    ],
-                                });
+                        let item_buf =
+                            self.device.create_buffer_init(&util::BufferInitDescriptor {
+                                label: Some("ItemUniformBuffer"),
+                                contents: bytemuck::bytes_of(&uniforms),
+                                usage: BufferUsages::UNIFORM,
+                            });
 
-                            rpass.set_pipeline(&self.pipeline.item_pipeline);
-                            rpass.set_bind_group(0, &item_bind_group, &[]);
-                            rpass.draw(0..4, 0..1); // Unit quad triangle strip
-                        }
+                        let item_bind_group = self.device.create_bind_group(&BindGroupDescriptor {
+                            label: Some("ItemBindGroup"),
+                            layout: &self.pipeline.item_bind_group_layout,
+                            entries: &[
+                                BindGroupEntry {
+                                    binding: 0,
+                                    resource: item_buf.as_entire_binding(),
+                                },
+                                BindGroupEntry {
+                                    binding: 1,
+                                    resource: BindingResource::TextureView(filtered_view),
+                                },
+                                BindGroupEntry {
+                                    binding: 2,
+                                    resource: BindingResource::Sampler(&self.pipeline.sampler),
+                                },
+                            ],
+                        });
+
+                        let mut rpass = encoder.begin_render_pass(&RenderPassDescriptor {
+                            label: Some("ItemCompositePass"),
+                            color_attachments: &[Some(RenderPassColorAttachment {
+                                view: target_view,
+                                resolve_target: None,
+                                ops: Operations {
+                                    load: LoadOp::Load,
+                                    store: StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        });
+
+                        rpass.set_pipeline(self.pipeline.get_item_pipeline(item.blend_mode));
+                        rpass.set_bind_group(0, &item_bind_group, &[]);
+                        rpass.draw(0..4, 0..1); // Unit quad triangle strip
                     }
-                    SceneItemSource::NestedScene(nested_scene_id) => {
-                        // Recursively render nested scene if not self
-                        if nested_scene_id != &scene.id {
-                            // Render nested scene onto intermediate target, then composite
-                            // Cycles are guarded by depth > 8
-                        }
+                }
+                SceneItemSource::NestedScene(nested_scene_id) => {
+                    // Recursively render nested scene if not self
+                    if nested_scene_id != &scene.id {
+                        // Cycles are guarded by depth > 8
                     }
                 }
             }

@@ -124,6 +124,10 @@ pub struct StudioTabViewer<'a> {
     pub trigger_paste_duplicate: &'a mut bool,
     pub trigger_save_screenshot: &'a mut Option<(Option<String>, bool)>,
     pub trigger_resize_output_to_source: &'a mut Option<String>,
+    pub trigger_open_filters: &'a mut Option<String>,
+    pub trigger_copy_filters: &'a mut Option<String>,
+    pub trigger_paste_filters: &'a mut Option<String>,
+    pub has_clipboard_filters: bool,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -568,7 +572,7 @@ impl<'a> StudioTabViewer<'a> {
                 .map(|s| s.blend_method)
                 .unwrap_or_default();
             for &(method, label) in &[
-                (crate::project::BlendingMethod::Default, "Default"),
+                (crate::project::BlendingMethod::Linear, "Default"),
                 (crate::project::BlendingMethod::SrgbOff, "SRGB Off (Linear)"),
             ] {
                 let is_cur = cur_method == method;
@@ -889,6 +893,21 @@ impl<'a> StudioTabViewer<'a> {
             ui.close_menu();
         }
 
+        if ui.button("Copy Filters").clicked() {
+            *self.trigger_copy_filters = Some(sel_id.to_string());
+            ui.close_menu();
+        }
+        if ui
+            .add_enabled(
+                self.has_clipboard_filters,
+                egui::Button::new("Paste Filters"),
+            )
+            .clicked()
+        {
+            *self.trigger_paste_filters = Some(sel_id.to_string());
+            ui.close_menu();
+        }
+
         ui.separator();
 
         // 15. Toggle Visibility & Lock
@@ -936,7 +955,11 @@ impl<'a> StudioTabViewer<'a> {
 
         ui.separator();
 
-        // 18. Properties
+        // 18. Filters & Properties
+        if ui.button("Filters...").clicked() {
+            *self.trigger_open_filters = Some(sel_id.to_string());
+            ui.close_menu();
+        }
         if ui.button("Properties...").clicked() {
             *self.trigger_open_edit_source = Some(sel_id.to_string());
             ui.close_menu();
@@ -1617,6 +1640,16 @@ impl<'a> StudioTabViewer<'a> {
             {
                 if let Some(ref sel_id) = *self.selected_source_id {
                     *self.trigger_open_edit_source = Some(sel_id.clone());
+                }
+            }
+
+            if ui
+                .add_enabled(has_sel, egui::Button::new("Filters..."))
+                .on_hover_text("Configure Video/Audio filter chain")
+                .clicked()
+            {
+                if let Some(ref sel_id) = *self.selected_source_id {
+                    *self.trigger_open_filters = Some(sel_id.clone());
                 }
             }
 

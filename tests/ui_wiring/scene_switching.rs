@@ -198,6 +198,8 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
         clipboard_source: None,
+        clipboard_filters: None,
+        filter_dialog: Default::default(),
         preview_locked: false,
         preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
@@ -459,6 +461,8 @@ pub fn test_independent_preview_and_program_buses() {
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
         clipboard_source: None,
+        clipboard_filters: None,
+        filter_dialog: Default::default(),
         preview_locked: false,
         preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
@@ -672,6 +676,8 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
         clipboard_source: None,
+        clipboard_filters: None,
+        filter_dialog: Default::default(),
         preview_locked: false,
         preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };

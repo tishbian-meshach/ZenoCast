@@ -7,6 +7,7 @@ pub mod app;
 pub mod data_panel;
 pub mod dock;
 pub mod editor;
+pub mod filter_dialog;
 pub mod hotkey_registry;
 pub mod icon;
 pub mod import_dialog;

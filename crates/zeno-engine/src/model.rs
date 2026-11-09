@@ -65,6 +65,8 @@ pub enum BlendMode {
     Normal,
     /// Additive blending (linear dodge).
     Add,
+    /// Subtractive blending (reverse subtract).
+    Subtract,
     /// Multiply blending.
     Multiply,
     /// Screen blending.

@@ -58,6 +58,9 @@ pub enum SourceDialogAction {
         volume: f32,
         muted: bool,
     },
+    OpenFilters {
+        id: String,
+    },
 }
 
 #[cfg(windows)]
@@ -1178,6 +1181,14 @@ impl SourceDialogState {
                                 }
 
                                 self.close();
+                            }
+
+                            if let Some(ref edit_id) = edit_source_id {
+                                if ui.button("Filters...").on_hover_text("Open filter chain for this source").clicked() {
+                                    action = Some(SourceDialogAction::OpenFilters {
+                                        id: edit_id.clone(),
+                                    });
+                                }
                             }
 
                             if ui.button("Cancel").clicked() {

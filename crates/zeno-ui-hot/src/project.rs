@@ -49,12 +49,7 @@ pub enum ScaleFilter {
 }
 
 /// Blending method for color space math.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-pub enum BlendingMethod {
-    #[default]
-    Default,
-    SrgbOff,
-}
+pub use zeno_core::BlendingMethod;
 
 /// Preview monitor scaling mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -96,6 +91,8 @@ pub struct SourceDefinition {
     pub show_transition: Option<String>,
     #[serde(default)]
     pub hide_transition: Option<String>,
+    #[serde(default)]
+    pub filters: zeno_core::FilterChain,
 }
 
 impl SourceDefinition {
@@ -124,9 +121,10 @@ impl Default for SourceDefinition {
             rotation: 0.0,
             blend_mode: zeno_engine::BlendMode::Normal,
             scale_filter: ScaleFilter::Bilinear,
-            blend_method: BlendingMethod::Default,
+            blend_method: BlendingMethod::Linear,
             show_transition: None,
             hide_transition: None,
+            filters: zeno_core::FilterChain::default(),
         }
     }
 }

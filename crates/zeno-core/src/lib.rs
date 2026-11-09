@@ -16,7 +16,9 @@ pub mod variable;
 pub use color::Color;
 pub use crash_recovery::{CrashRecoveryManager, CrashRecoveryReport, SessionLockData};
 pub use error::CoreError;
-pub use filter::{FilterCategory, FilterChain, FilterDefinition, FilterKind, FilterSettings};
+pub use filter::{
+    BlendingMethod, FilterCategory, FilterChain, FilterDefinition, FilterKind, FilterSettings,
+};
 pub use id::{AssetId, CompositionId, FilterId, LayerId, LinkId, SceneId, SourceId, TransitionId};
 pub use lifecycle::{InterruptBehavior, Lifecycle, LifecyclePhase};
 pub use property::{evaluate_keyframes, Easing, Interpolate, Keyframe, Property};
