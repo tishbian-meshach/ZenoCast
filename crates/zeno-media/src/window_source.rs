@@ -5,7 +5,7 @@ use crate::source::{Source, SourceKind, VideoFrame};
 use crate::texture_buffer::DoubleBufferedTexture;
 use wgpu::{Device, Queue};
 use zeno_core::SourceId;
-use zeno_platform::capture_window_raw;
+use zeno_platform::{capture_window_raw, WgcCaptureSession};
 
 /// Window capture source capturing top-level application windows.
 pub struct WindowCaptureSource {
@@ -21,6 +21,7 @@ pub struct WindowCaptureSource {
     offline_rendered: bool,
     texture_buffer: DoubleBufferedTexture,
     raw_buffer: Vec<u8>,
+    wgc_session: Option<WgcCaptureSession>,
 }
 
 impl WindowCaptureSource {
@@ -39,6 +40,7 @@ impl WindowCaptureSource {
             offline_rendered: false,
             texture_buffer: DoubleBufferedTexture::new(),
             raw_buffer: Vec::new(),
+            wgc_session: None,
         }
     }
 
@@ -143,11 +145,17 @@ impl Source for WindowCaptureSource {
                 self.name = window_title.clone();
                 let windows = zeno_platform::enumerate_windows();
                 if let Some(win) = windows.into_iter().find(|w| &w.title == window_title) {
+                    let old_hwnd = self.hwnd;
                     self.hwnd = win.hwnd;
                     self.target_found = true;
+                    if self.active && old_hwnd != self.hwnd {
+                        self.wgc_session =
+                            WgcCaptureSession::new(self.hwnd, self.capture_cursor).ok();
+                    }
                 } else {
                     self.hwnd = 0;
                     self.target_found = false;
+                    self.wgc_session = None;
                 }
             }
             Ok(())
@@ -162,6 +170,26 @@ impl Source for WindowCaptureSource {
         self.active = true;
         self.last_capture_time = -1.0;
 
+        // Initialize hardware-accelerated Windows Graphics Capture (WGC) session if valid HWND
+        if self.hwnd != 0 {
+            match WgcCaptureSession::new(self.hwnd, self.capture_cursor) {
+                Ok(session) => {
+                    self.wgc_session = Some(session);
+                    self.target_found = true;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[WindowCapture] WGC initialization failed for HWND 0x{:x} (falling back to GDI): {}",
+                        self.hwnd,
+                        e
+                    );
+                    self.wgc_session = None;
+                }
+            }
+        } else {
+            self.wgc_session = None;
+        }
+
         // Pre-render synthetic fallback window once at startup
         let w = 1280u32;
         let h = 720u32;
@@ -172,6 +200,7 @@ impl Source for WindowCaptureSource {
 
     fn stop(&mut self) {
         self.active = false;
+        self.wgc_session = None;
     }
 
     fn get_frame(&mut self) -> Option<&VideoFrame> {
@@ -188,6 +217,27 @@ impl Source for WindowCaptureSource {
             return;
         }
 
+        // 1. Check for hardware-accelerated WGC frame first
+        if let Some(ref session) = self.wgc_session {
+            if let Some(frame) = session.get_latest_frame() {
+                if frame.width > 0 && frame.height > 0 {
+                    self.target_found = true;
+                    self.offline_rendered = false;
+                    self.texture_buffer.upload(
+                        device,
+                        queue,
+                        frame.width,
+                        frame.height,
+                        &frame.rgba,
+                        current_time,
+                    );
+                    self.last_capture_time = current_time;
+                    return;
+                }
+            }
+        }
+
+        // 2. Fallback to GDI PrintWindow (PW_RENDERFULLCONTENT) capture
         let mut width = 0u32;
         let mut height = 0u32;
 
@@ -286,4 +336,40 @@ impl WindowCaptureSource {
 #[inline]
 fn x_is_border(y: u32, h: u32) -> bool {
     y == 36 || y >= h - 4
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_window_source_properties_and_state() {
+        let mut src = WindowCaptureSource::new(0, "Test Window");
+        assert_eq!(src.name(), "Test Window");
+        assert_eq!(src.kind(), SourceKind::WindowCapture);
+        assert!(!src.is_active());
+        assert!(!src.is_healthy());
+
+        src.set_capture_cursor(false);
+        assert!(!src.capture_cursor);
+
+        src.set_target_fps(30.0);
+        assert_eq!(src.target_fps, 30.0);
+    }
+
+    #[test]
+    fn test_wgc_session_handles_invalid_hwnd() {
+        // Attempting to create a WGC session on an invalid HWND (0) must fail gracefully with Err
+        let res = zeno_platform::WgcCaptureSession::new(0, true);
+        assert!(res.is_err(), "WGC on invalid HWND 0 must return Err");
+    }
+
+    #[test]
+    fn test_capture_window_raw_fails_safely_on_invalid_hwnd() {
+        let mut width = 0;
+        let mut height = 0;
+        let mut buffer = Vec::new();
+        let res = zeno_platform::capture_window_raw(0, true, &mut width, &mut height, &mut buffer);
+        assert!(res.is_err(), "capture_window_raw must fail on HWND 0");
+    }
 }
