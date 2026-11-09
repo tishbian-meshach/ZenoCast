@@ -742,6 +742,62 @@ impl TransformGizmoState {
             painter.galley(badge_pos + pad, galley, TEXT);
         }
 
+        // 8. Modifier hint badge while dragging (Section 2.5)
+        if let Some(ref drag) = self.active_drag {
+            let hint_text = match drag.handle {
+                GizmoHandle::Rotate => {
+                    if shift_held {
+                        "Shift: 15° snap (Active)"
+                    } else {
+                        "Shift: Snap to 15°"
+                    }
+                }
+                GizmoHandle::BottomRight
+                | GizmoHandle::BottomLeft
+                | GizmoHandle::TopRight
+                | GizmoHandle::TopLeft => {
+                    if shift_held && alt_held {
+                        "Shift: Constrain aspect (Active) | Alt: Center scale (Active)"
+                    } else if shift_held {
+                        "Shift: Constrain aspect (Active) | Alt: Scale from center"
+                    } else if alt_held {
+                        "Shift: Constrain aspect | Alt: Center scale (Active)"
+                    } else {
+                        "Shift: Constrain aspect | Alt: Scale from center"
+                    }
+                }
+                GizmoHandle::RightMid
+                | GizmoHandle::LeftMid
+                | GizmoHandle::TopMid
+                | GizmoHandle::BottomMid => {
+                    if alt_held {
+                        "Alt: Scale from center (Active)"
+                    } else {
+                        "Alt: Scale from center"
+                    }
+                }
+                GizmoHandle::Body => "Shift / Arrow keys: Nudge (10px)",
+            };
+
+            let galley =
+                painter.layout_no_wrap(hint_text.to_string(), FontId::proportional(12.0), TEXT);
+            let pad = vec2(8.0, 4.0);
+            let badge_size = galley.size() + pad * 2.0;
+            let badge_pos = pos2(
+                viewport_rect.center().x - badge_size.x * 0.5,
+                (viewport_rect.bottom() - 32.0).max(viewport_rect.top() + 8.0),
+            );
+            let badge_rect = Rect::from_min_size(badge_pos, badge_size);
+            painter.rect(
+                badge_rect,
+                CornerRadius::same(4),
+                SURFACE_0,
+                Stroke::new(BORDER_WIDTH, SURFACE_3),
+                StrokeKind::Inside,
+            );
+            painter.galley(badge_pos + pad, galley, TEXT);
+        }
+
         (response, events)
     }
 }
