@@ -100,3 +100,7 @@ define_id!(
     SourceId,
     "Unique identifier for an active media or capture source."
 );
+define_id!(
+    FilterId,
+    "Unique identifier for an audio or video processing filter."
+);

@@ -16,6 +16,7 @@ pub use drift::DriftCorrector;
 pub use error::AudioError;
 pub use filters::{
     AudioFilter, CompressorFilter, EqualizerFilter, GainFilter, LimiterFilter, NoiseGateFilter,
+    NoiseSuppressionFilter,
 };
 pub use meter::AudioMeter;
 pub use mixer::{AudioMixResult, AudioMixer};
@@ -123,5 +124,84 @@ mod tests {
 
         // Track 0 (Master) should sum both sources (0.2 + 0.3 = 0.5)
         assert!((result.master_samples[0] - 0.5).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_noise_suppression_attenuates_background_noise_and_preserves_voice() {
+        let mut suppressor = NoiseSuppressionFilter::new(-24.0); // -24 dB attenuation
+
+        // 1. Feed steady low-level background noise (0.02 amplitude, approx -34 dBFS)
+        let noise_samples_per_frame = 960 * 2;
+        let noise_val = 0.02f32;
+        let mut noise_chunk = vec![noise_val; noise_samples_per_frame];
+
+        for _ in 0..10 {
+            suppressor.process(&mut noise_chunk, 48000);
+        }
+
+        // Measure noise attenuation after convergence
+        let final_noise = noise_chunk[0].abs();
+        let attenuation_db = 20.0 * (noise_val / final_noise.max(1e-6)).log10();
+        assert!(
+            attenuation_db >= 12.0,
+            "Noise suppression must attenuate steady background noise by at least 12 dB (got {:.1} dB)",
+            attenuation_db
+        );
+
+        // 2. Feed voice utterance (0.6 amplitude, approx -4.4 dBFS)
+        let voice_val = 0.6f32;
+        let mut voice_chunk = vec![voice_val; noise_samples_per_frame];
+        for _ in 0..5 {
+            suppressor.process(&mut voice_chunk, 48000);
+        }
+
+        // Voice must pass through without voice distortion (< 1.5 dB attenuation)
+        let voice_out = voice_chunk[voice_chunk.len() - 1].abs();
+        let voice_loss_db = 20.0 * (voice_val / voice_out.max(1e-6)).log10();
+        assert!(
+            voice_loss_db < 1.5,
+            "Voice must pass through with negligible loss (loss was {:.2} dB)",
+            voice_loss_db
+        );
+
+        // 3. Verify bypass toggle
+        suppressor.set_enabled(false);
+        assert!(!suppressor.is_enabled());
+        let mut test_chunk = vec![0.02f32; noise_samples_per_frame];
+        suppressor.process(&mut test_chunk, 48000);
+        assert_eq!(
+            test_chunk[0], 0.02f32,
+            "Bypassed filter must not alter audio"
+        );
+    }
+
+    #[test]
+    fn test_source_filter_chain_reorder_and_bypass() {
+        let src_id = SourceId::new();
+        let mut src = AudioSource::new(src_id, "Filter Mic", 48000);
+
+        // Add Gain (+6 dB) and Noise Suppression
+        src.add_filter(Box::new(GainFilter::new(6.0)));
+        src.add_filter(Box::new(NoiseSuppressionFilter::new(-20.0)));
+        assert_eq!(src.filter_count(), 2);
+        assert_eq!(src.filters[0].name(), "Gain");
+        assert_eq!(src.filters[1].name(), "Noise Suppression");
+
+        // Reorder filters
+        src.move_filter(0, 1);
+        assert_eq!(src.filters[0].name(), "Noise Suppression");
+        assert_eq!(src.filters[1].name(), "Gain");
+
+        // Toggle bypass on first filter
+        src.set_filter_enabled(0, false);
+        assert!(!src.filters[0].is_enabled());
+
+        // Process a chunk and verify no panic or audio glitch
+        let samples = vec![0.1f32; 1920];
+        src.ingest_samples(&samples, 0.0);
+        let processed = src.pull_processed_chunk(960, 0.02);
+        assert_eq!(processed.len(), 1920);
+        // Gain is second (enabled, +6 dB = ~2x multiplier)
+        assert!((processed[0] - 0.2).abs() < 0.02);
     }
 }

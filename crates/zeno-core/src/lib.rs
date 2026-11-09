@@ -5,6 +5,7 @@
 pub mod color;
 pub mod crash_recovery;
 pub mod error;
+pub mod filter;
 pub mod id;
 pub mod lifecycle;
 pub mod property;
@@ -15,7 +16,8 @@ pub mod variable;
 pub use color::Color;
 pub use crash_recovery::{CrashRecoveryManager, CrashRecoveryReport, SessionLockData};
 pub use error::CoreError;
-pub use id::{AssetId, CompositionId, LayerId, LinkId, SceneId, SourceId, TransitionId};
+pub use filter::{FilterCategory, FilterChain, FilterDefinition, FilterKind, FilterSettings};
+pub use id::{AssetId, CompositionId, FilterId, LayerId, LinkId, SceneId, SourceId, TransitionId};
 pub use lifecycle::{InterruptBehavior, Lifecycle, LifecyclePhase};
 pub use property::{evaluate_keyframes, Easing, Interpolate, Keyframe, Property};
 pub use time::{TimeRange, Timecode};

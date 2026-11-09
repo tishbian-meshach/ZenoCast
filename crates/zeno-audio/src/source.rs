@@ -154,7 +154,9 @@ impl AudioSource {
 
         // Apply DSP filter chain
         for filter in &mut self.filters {
-            filter.process(&mut chunk, Self::TARGET_SAMPLE_RATE);
+            if filter.is_enabled() {
+                filter.process(&mut chunk, Self::TARGET_SAMPLE_RATE);
+            }
         }
 
         // Apply fader gain
@@ -169,5 +171,34 @@ impl AudioSource {
         self.meter.update(&chunk, dt);
 
         chunk
+    }
+
+    /// Removes an audio filter at the specified index.
+    pub fn remove_filter(&mut self, index: usize) -> Option<Box<dyn AudioFilter>> {
+        if index < self.filters.len() {
+            Some(self.filters.remove(index))
+        } else {
+            None
+        }
+    }
+
+    /// Moves a filter from index `from` to index `to` in the chain.
+    pub fn move_filter(&mut self, from: usize, to: usize) {
+        if from < self.filters.len() && to < self.filters.len() && from != to {
+            let item = self.filters.remove(from);
+            self.filters.insert(to, item);
+        }
+    }
+
+    /// Sets the enabled state of a filter at `index`.
+    pub fn set_filter_enabled(&mut self, index: usize, enabled: bool) {
+        if let Some(f) = self.filters.get_mut(index) {
+            f.set_enabled(enabled);
+        }
+    }
+
+    /// Returns the number of filters in the chain.
+    pub fn filter_count(&self) -> usize {
+        self.filters.len()
     }
 }
