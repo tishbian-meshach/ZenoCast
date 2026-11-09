@@ -33,6 +33,7 @@ pub fn test_start_stop_local_recording_creates_valid_file_on_disk() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,

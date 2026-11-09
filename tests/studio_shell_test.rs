@@ -120,6 +120,7 @@ fn test_m8_preview_to_program_transition_switching() {
         preset: zeno_output::encoder::EncoderPreset::VeryFast,
         profile: zeno_output::encoder::EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,
@@ -227,6 +228,7 @@ fn test_m8_one_click_live_streaming_and_recording() {
         preset: zeno_output::encoder::EncoderPreset::VeryFast,
         profile: zeno_output::encoder::EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,
@@ -419,6 +421,7 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,
@@ -655,6 +658,7 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,
@@ -937,6 +941,7 @@ fn test_section_3_ui_interactivity_audit_wiring() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,
@@ -1225,6 +1230,7 @@ fn test_source_reordering_live_studio() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,
@@ -1560,6 +1566,7 @@ fn test_section_4_eye_lock_visibility_and_safety_controls() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,
@@ -1733,6 +1740,7 @@ fn test_section_1_normal_mode_default_and_studio_mode_toggle() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,
@@ -1858,6 +1866,7 @@ fn test_section_2_split_pane_layout_and_panel_resizing() {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: Default::default(),
         },
         zeno_output::encoder::AudioEncoderSettings {
             sample_rate: 48000,

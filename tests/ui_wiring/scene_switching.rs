@@ -136,6 +136,7 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,
@@ -399,6 +400,7 @@ pub fn test_independent_preview_and_program_buses() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,
@@ -614,6 +616,7 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,

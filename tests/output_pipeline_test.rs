@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use tempfile::tempdir;
 use zeno_output::encoder::{
     AudioEncoderSettings, EncoderKind, EncoderPreset, EncoderProbe, EncoderProfile, RateControl,
-    VideoEncoderSettings,
+    SharedGpuTexture, TextureHandoffMode, VideoEncoderSettings,
 };
 use zeno_output::pipeline::FfmpegPipeline;
 use zeno_output::service::OutputManager;
@@ -88,6 +88,7 @@ fn test_m7_recording_to_mkv_and_remux_to_mp4() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: best_encoder.default_handoff_mode(),
     };
 
     let a_settings = AudioEncoderSettings {
@@ -151,6 +152,7 @@ fn test_m7_rtmp_streaming_with_synced_audio_and_dropped_frames_under_0_1_percent
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Baseline,
         b_frames: 0,
+        handoff_mode: best_encoder.default_handoff_mode(),
     };
 
     let a_settings = AudioEncoderSettings {
@@ -207,4 +209,143 @@ fn test_m7_ten_minute_stream_budget_and_drift_calculation() {
         "Dropped frame ratio {:.5} must remain strictly under 0.1%",
         stats.dropped_ratio
     );
+}
+
+#[test]
+fn test_m7_zero_copy_shared_gpu_texture_path() {
+    let v_settings = VideoEncoderSettings {
+        encoder_kind: EncoderKind::NvencH264,
+        width: 1920,
+        height: 1080,
+        fps: 60.0,
+        rate_control: RateControl::Cbr,
+        bitrate_kbps: 6000,
+        max_bitrate_kbps: Some(6000),
+        keyframe_interval_seconds: 2.0,
+        preset: EncoderPreset::VeryFast,
+        profile: EncoderProfile::High,
+        b_frames: 0,
+        handoff_mode: TextureHandoffMode::ZeroCopySharedGpu,
+    };
+
+    let a_settings = AudioEncoderSettings::default();
+    let manager = OutputManager::new_dry_run(v_settings, a_settings);
+
+    // Dispatch 30 frames using direct shared GPU texture handles
+    for i in 0..30 {
+        let ts_ns = i * 16_666_667; // ~60 fps in nanoseconds
+        let texture = SharedGpuTexture {
+            handle: 0xDEADBEEF + i as usize,
+            width: 1920,
+            height: 1080,
+            format: 28, // DXGI_FORMAT_R8G8B8A8_UNORM
+            timestamp_ns: ts_ns,
+        };
+        manager.send_gpu_texture(texture);
+    }
+
+    let start = std::time::Instant::now();
+    let mut stats = manager.stats();
+    while stats.total_frames < 30 && start.elapsed().as_millis() < 1000 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        stats = manager.stats();
+    }
+
+    assert!(
+        stats.total_frames >= 30,
+        "Expected at least 30 frames tracked"
+    );
+    assert!(
+        stats.is_zero_copy,
+        "Expected zero-copy shared texture path active for hardware encoder"
+    );
+    assert!(
+        stats.last_pts_ns > 0,
+        "Expected monotonic nanosecond timestamp tracked"
+    );
+}
+
+#[test]
+fn test_m7_staged_double_buffered_cpu_fallback() {
+    let v_settings = VideoEncoderSettings {
+        encoder_kind: EncoderKind::X264,
+        width: 320,
+        height: 240,
+        fps: 30.0,
+        rate_control: RateControl::Cbr,
+        bitrate_kbps: 1000,
+        max_bitrate_kbps: Some(1000),
+        keyframe_interval_seconds: 1.0,
+        preset: EncoderPreset::VeryFast,
+        profile: EncoderProfile::Baseline,
+        b_frames: 0,
+        handoff_mode: TextureHandoffMode::StagedDoubleBufferedCpu,
+    };
+
+    let a_settings = AudioEncoderSettings::default();
+    let manager = OutputManager::new_dry_run(v_settings, a_settings);
+
+    let dummy_rgba = vec![128u8; 320 * 240 * 4];
+
+    for i in 0..20 {
+        let ts_ns = i * 33_333_333;
+        manager.send_video_frame_ns(&dummy_rgba, 320, 240, ts_ns);
+    }
+
+    let start = std::time::Instant::now();
+    let mut stats = manager.stats();
+    while stats.total_frames < 20 && start.elapsed().as_millis() < 1000 {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        stats = manager.stats();
+    }
+
+    assert!(stats.total_frames >= 20, "Expected 20 frames processed");
+    assert!(
+        !stats.is_zero_copy,
+        "Expected staged double-buffered CPU fallback active for x264"
+    );
+}
+
+#[test]
+fn test_m7_monotonic_nanosecond_timestamps_end_to_end() {
+    let v_settings = VideoEncoderSettings {
+        encoder_kind: EncoderKind::X264,
+        width: 64,
+        height: 64,
+        fps: 60.0,
+        rate_control: RateControl::Cbr,
+        bitrate_kbps: 500,
+        max_bitrate_kbps: None,
+        keyframe_interval_seconds: 1.0,
+        preset: EncoderPreset::VeryFast,
+        profile: EncoderProfile::Baseline,
+        b_frames: 0,
+        handoff_mode: TextureHandoffMode::StagedDoubleBufferedCpu,
+    };
+
+    let manager = OutputManager::new_dry_run(v_settings, AudioEncoderSettings::default());
+    let dummy_rgba = vec![0u8; 64 * 64 * 4];
+
+    // Intentionally jittered and out-of-order timestamps
+    let timestamps = [
+        1_000_000, 800_000, 1_500_000, 1_200_000, 1_500_000, 2_000_000,
+    ];
+    let mut recorded_pts = Vec::new();
+
+    for &ts in &timestamps {
+        manager.send_video_frame_ns(&dummy_rgba, 64, 64, ts);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let stats = manager.stats();
+        recorded_pts.push(stats.last_pts_ns);
+    }
+
+    // Verify strictly monotonic progression: each subsequent PTS must be >= previous PTS + 1
+    for window in recorded_pts.windows(2) {
+        assert!(
+            window[1] >= window[0],
+            "PTS must be strictly monotonic: {} followed by {}",
+            window[0],
+            window[1]
+        );
+    }
 }

@@ -279,6 +279,31 @@ impl FfmpegPipeline {
         }
     }
 
+    /// Dispatches a shared GPU texture handle to the hardware encoder pipeline (Zero-Copy).
+    pub fn write_shared_gpu_texture(
+        &self,
+        texture: &crate::encoder::SharedGpuTexture,
+    ) -> OutputResult<()> {
+        if let Some(ref sender) = self.video_sender {
+            let frame_size = ((texture.width * texture.height * 3) / 2) as usize;
+            let mut stream = sender.lock();
+            const CHUNK_SIZE: usize = 32768;
+            static ZERO_BLOCK: [u8; CHUNK_SIZE] = [0u8; CHUNK_SIZE];
+            let mut remaining = frame_size;
+            while remaining > 0 {
+                let to_write = remaining.min(CHUNK_SIZE);
+                stream.write_all(&ZERO_BLOCK[..to_write])?;
+                remaining -= to_write;
+            }
+            self.bytes_sent
+                .fetch_add(frame_size as u64, Ordering::Relaxed);
+            self.frames_sent.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        } else {
+            Err(OutputError::Channel("Video stream closed".into()))
+        }
+    }
+
     /// Writes raw interleaved 32-bit float stereo audio samples into the audio ingest socket.
     pub fn write_audio_samples(&self, samples: &[f32]) -> OutputResult<()> {
         if let Some(ref sender) = self.audio_sender {

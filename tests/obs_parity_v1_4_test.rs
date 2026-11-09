@@ -87,6 +87,7 @@ fn create_test_app() -> ZenocastApp {
         preset: zeno_output::encoder::EncoderPreset::VeryFast,
         profile: zeno_output::encoder::EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,

@@ -16,10 +16,10 @@ pub mod srt;
 pub mod stats;
 pub mod youtube;
 
-pub use color_convert::{ColorConverter, Nv12Buffer};
+pub use color_convert::{ColorConverter, Nv12Buffer, StagedDoubleBuffer};
 pub use encoder::{
     create_hidden_command, AudioEncoderSettings, EncoderKind, EncoderPreset, EncoderProbe,
-    EncoderProfile, RateControl, VideoEncoderSettings,
+    EncoderProfile, RateControl, SharedGpuTexture, TextureHandoffMode, VideoEncoderSettings,
 };
 pub use error::{OutputError, OutputResult};
 pub use multi_stream::{MultiStreamManager, StreamDestination};

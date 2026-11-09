@@ -231,6 +231,7 @@ impl ZenocastApp {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: zeno_output::encoder::TextureHandoffMode::default(),
         };
 
         let a_settings = zeno_output::encoder::AudioEncoderSettings {
@@ -424,6 +425,7 @@ impl ZenocastApp {
             preset: zeno_output::encoder::EncoderPreset::VeryFast,
             profile: zeno_output::encoder::EncoderProfile::Main,
             b_frames: 0,
+            handoff_mode: zeno_output::encoder::TextureHandoffMode::default(),
         };
 
         let a_settings = zeno_output::encoder::AudioEncoderSettings {

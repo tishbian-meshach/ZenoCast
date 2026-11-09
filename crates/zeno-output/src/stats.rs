@@ -35,6 +35,10 @@ pub struct LiveOutputStats {
     pub is_recording: bool,
     /// Reconnect attempt count if stream experienced disconnection.
     pub reconnect_attempts: u32,
+    /// Whether the zero-copy shared GPU texture path is active for hardware encoding.
+    pub is_zero_copy: bool,
+    /// Last processed presentation timestamp in nanoseconds matching Section 10 master clock.
+    pub last_pts_ns: u64,
 }
 
 impl Default for LiveOutputStats {
@@ -55,6 +59,8 @@ impl Default for LiveOutputStats {
             is_streaming: false,
             is_recording: false,
             reconnect_attempts: 0,
+            is_zero_copy: false,
+            last_pts_ns: 0,
         }
     }
 }

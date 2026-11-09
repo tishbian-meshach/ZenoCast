@@ -70,6 +70,7 @@ fn test_youtube_bitrate_table_and_preflight() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
 
     let a_settings = AudioEncoderSettings {
@@ -188,6 +189,7 @@ fn test_manual_stream_key_fallback() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,
@@ -330,6 +332,7 @@ fn test_one_click_go_live_lifecycle_mocked() {
         preset: EncoderPreset::VeryFast,
         profile: EncoderProfile::Main,
         b_frames: 0,
+        handoff_mode: Default::default(),
     };
     let a_settings = AudioEncoderSettings {
         sample_rate: 48000,

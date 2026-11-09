@@ -10,7 +10,7 @@ use crossbeam_channel::{bounded, Receiver, Sender};
 use parking_lot::Mutex;
 use tracing::{info, warn};
 
-use crate::color_convert::{ColorConverter, Nv12Buffer};
+use crate::color_convert::ColorConverter;
 use crate::encoder::{AudioEncoderSettings, VideoEncoderSettings};
 use crate::error::OutputResult;
 use crate::pipeline::{FfmpegPipeline, OutputDestination};
@@ -31,6 +31,10 @@ pub struct QueuedVideoFrame {
     pub height: u32,
     /// Master presentation timestamp in seconds.
     pub timestamp_seconds: f64,
+    /// Monotonic master presentation timestamp in nanoseconds matching Section 10 clock.
+    pub timestamp_ns: u64,
+    /// Optional zero-copy shared GPU texture handle for hardware encoders.
+    pub shared_gpu_texture: Option<crate::encoder::SharedGpuTexture>,
 }
 
 /// An audio chunk submitted from the audio mixer.
@@ -39,6 +43,8 @@ pub struct QueuedAudioChunk {
     pub samples: Vec<f32>,
     /// Master presentation timestamp in seconds.
     pub timestamp_seconds: f64,
+    /// Monotonic master presentation timestamp in nanoseconds matching Section 10 clock.
+    pub timestamp_ns: u64,
 }
 
 /// Central production output manager with dedicated concurrent video and audio dispatch threads.
@@ -57,6 +63,8 @@ pub struct OutputManager {
     video_settings: Arc<Mutex<VideoEncoderSettings>>,
     audio_settings: Arc<Mutex<AudioEncoderSettings>>,
     reconnect_attempts: Arc<AtomicU64>,
+    last_video_pts_ns: Arc<AtomicU64>,
+    last_audio_pts_ns: Arc<AtomicU64>,
     dry_run: bool,
 }
 
@@ -92,6 +100,8 @@ impl OutputManager {
         let v_settings = Arc::new(Mutex::new(video_settings));
         let a_settings = Arc::new(Mutex::new(audio_settings));
         let reconnect_attempts = Arc::new(AtomicU64::new(0));
+        let last_video_pts_ns = Arc::new(AtomicU64::new(0));
+        let last_audio_pts_ns = Arc::new(AtomicU64::new(0));
 
         // Video Worker Thread
         let v_stats = Arc::clone(&stats);
@@ -100,6 +110,7 @@ impl OutputManager {
         let v_reconnects = Arc::clone(&reconnect_attempts);
         let v_streaming = Arc::clone(&is_streaming);
         let v_recording = Arc::clone(&is_recording);
+        let v_cfg = Arc::clone(&v_settings);
 
         let video_worker_handle = thread::spawn(move || {
             Self::video_worker_loop(
@@ -110,6 +121,7 @@ impl OutputManager {
                 v_streaming,
                 v_recording,
                 v_reconnects,
+                v_cfg,
             );
         });
 
@@ -136,6 +148,8 @@ impl OutputManager {
             video_settings: v_settings,
             audio_settings: a_settings,
             reconnect_attempts,
+            last_video_pts_ns,
+            last_audio_pts_ns,
             dry_run,
         }
     }
@@ -165,8 +179,9 @@ impl OutputManager {
         is_streaming: Arc<AtomicBool>,
         is_recording: Arc<AtomicBool>,
         reconnects: Arc<AtomicU64>,
+        v_settings: Arc<Mutex<VideoEncoderSettings>>,
     ) {
-        let mut nv12_buf = Nv12Buffer::new(1920, 1080);
+        let mut double_buffer = crate::color_convert::StagedDoubleBuffer::new(1920, 1080);
         let mut last_stats_update = Instant::now();
         let mut bytes_since_last_stats = 0u64;
 
@@ -174,25 +189,46 @@ impl OutputManager {
             if let Ok(frame) = video_rx.recv_timeout(Duration::from_millis(5)) {
                 let encode_start = Instant::now();
 
-                // Convert RGBA to NV12 without per-frame allocation
-                ColorConverter::rgba_to_nv12(
-                    &frame.rgba_data,
-                    frame.width,
-                    frame.height,
-                    &mut nv12_buf,
-                );
+                let is_zero_copy = frame.shared_gpu_texture.is_some()
+                    && v_settings.lock().handoff_mode
+                        == crate::encoder::TextureHandoffMode::ZeroCopySharedGpu;
 
                 let mut write_err = false;
-                {
+                if is_zero_copy {
+                    let shared = frame.shared_gpu_texture.as_ref().unwrap();
                     let mut p_guard = pipeline.lock();
                     if let Some(ref mut p) = *p_guard {
                         if !p.is_alive() {
                             write_err = true;
-                        } else if let Err(e) = p.write_video_frame(nv12_buf.as_bytes()) {
+                        } else if let Err(e) = p.write_shared_gpu_texture(shared) {
+                            warn!("Zero-copy shared texture write failed: {}", e);
+                            write_err = true;
+                        } else {
+                            let frame_size = (frame.width * frame.height * 3) / 2;
+                            bytes_since_last_stats += frame_size as u64;
+                        }
+                    }
+                } else {
+                    let target_buf = double_buffer.next_write_buffer(frame.width, frame.height);
+                    ColorConverter::rgba_to_nv12(
+                        &frame.rgba_data,
+                        frame.width,
+                        frame.height,
+                        target_buf,
+                    );
+
+                    let mut p_guard = pipeline.lock();
+                    if let Some(ref mut p) = *p_guard {
+                        if !p.is_alive() {
+                            write_err = true;
+                        } else if let Err(e) =
+                            p.write_video_frame(double_buffer.current_read_buffer().as_bytes())
+                        {
                             warn!("Video write failed: {}", e);
                             write_err = true;
                         } else {
-                            bytes_since_last_stats += nv12_buf.as_bytes().len() as u64;
+                            bytes_since_last_stats +=
+                                double_buffer.current_read_buffer().as_bytes().len() as u64;
                         }
                     }
                 }
@@ -210,6 +246,8 @@ impl OutputManager {
                 let mut s = stats.lock();
                 s.record_frame(false);
                 s.encode_time_ms = encode_time;
+                s.is_zero_copy = is_zero_copy;
+                s.last_pts_ns = frame.timestamp_ns;
             }
 
             // Periodic stats update
@@ -226,6 +264,46 @@ impl OutputManager {
         }
     }
 
+    fn enforce_monotonic_video_pts(&self, requested_pts_ns: u64) -> u64 {
+        let mut current = self.last_video_pts_ns.load(Ordering::Relaxed);
+        loop {
+            let next = if requested_pts_ns > current {
+                requested_pts_ns
+            } else {
+                current.saturating_add(1)
+            };
+            match self.last_video_pts_ns.compare_exchange_weak(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return next,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+
+    fn enforce_monotonic_audio_pts(&self, requested_pts_ns: u64) -> u64 {
+        let mut current = self.last_audio_pts_ns.load(Ordering::Relaxed);
+        loop {
+            let next = if requested_pts_ns > current {
+                requested_pts_ns
+            } else {
+                current.saturating_add(1)
+            };
+            match self.last_audio_pts_ns.compare_exchange_weak(
+                current,
+                next,
+                Ordering::SeqCst,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => return next,
+                Err(actual) => current = actual,
+            }
+        }
+    }
+
     /// Submits an RGBA video frame from the compositor.
     ///
     /// Real-time guarantee: If the queue is congested, frames are shed instantly without blocking.
@@ -236,11 +314,28 @@ impl OutputManager {
         height: u32,
         timestamp_seconds: f64,
     ) {
+        let timestamp_ns = (timestamp_seconds * 1_000_000_000.0).round() as u64;
+        self.send_video_frame_ns(rgba_data, width, height, timestamp_ns);
+    }
+
+    /// Submits an RGBA video frame with an explicit nanosecond presentation timestamp.
+    pub fn send_video_frame_ns(
+        &self,
+        rgba_data: &[u8],
+        width: u32,
+        height: u32,
+        timestamp_ns: u64,
+    ) {
+        let monotonic_pts = self.enforce_monotonic_video_pts(timestamp_ns);
+        let timestamp_seconds = monotonic_pts as f64 / 1_000_000_000.0;
+
         let frame = QueuedVideoFrame {
             rgba_data: rgba_data.to_vec(),
             width,
             height,
             timestamp_seconds,
+            timestamp_ns: monotonic_pts,
+            shared_gpu_texture: None,
         };
 
         if self.video_sender.try_send(frame).is_err() {
@@ -250,11 +345,42 @@ impl OutputManager {
         }
     }
 
+    /// Submits a zero-copy shared GPU texture for hardware encoders (NVENC/AMF/QSV).
+    pub fn send_gpu_texture(&self, mut shared_texture: crate::encoder::SharedGpuTexture) {
+        let monotonic_pts = self.enforce_monotonic_video_pts(shared_texture.timestamp_ns);
+        shared_texture.timestamp_ns = monotonic_pts;
+        let timestamp_seconds = monotonic_pts as f64 / 1_000_000_000.0;
+
+        let frame = QueuedVideoFrame {
+            rgba_data: Vec::new(),
+            width: shared_texture.width,
+            height: shared_texture.height,
+            timestamp_seconds,
+            timestamp_ns: monotonic_pts,
+            shared_gpu_texture: Some(shared_texture),
+        };
+
+        if self.video_sender.try_send(frame).is_err() {
+            let mut s = self.stats.lock();
+            s.record_frame(true);
+        }
+    }
+
     /// Submits interleaved 32-bit float stereo audio samples from the mixer.
     pub fn send_audio_samples(&self, samples: &[f32], timestamp_seconds: f64) {
+        let timestamp_ns = (timestamp_seconds * 1_000_000_000.0).round() as u64;
+        self.send_audio_samples_ns(samples, timestamp_ns);
+    }
+
+    /// Submits interleaved 32-bit float stereo audio samples with an explicit nanosecond timestamp.
+    pub fn send_audio_samples_ns(&self, samples: &[f32], timestamp_ns: u64) {
+        let monotonic_pts = self.enforce_monotonic_audio_pts(timestamp_ns);
+        let timestamp_seconds = monotonic_pts as f64 / 1_000_000_000.0;
+
         let chunk = QueuedAudioChunk {
             samples: samples.to_vec(),
             timestamp_seconds,
+            timestamp_ns: monotonic_pts,
         };
         let _ = self.audio_sender.try_send(chunk);
     }

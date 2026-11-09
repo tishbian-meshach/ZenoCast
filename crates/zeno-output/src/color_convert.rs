@@ -51,6 +51,40 @@ impl Nv12Buffer {
     }
 }
 
+/// Double-buffered staging texture ring buffer for non-blocking CPU software encoding fallback.
+/// Decouples GPU render framerate from CPU memory readback and NV12 color conversion.
+#[derive(Debug)]
+pub struct StagedDoubleBuffer {
+    buffers: [Nv12Buffer; 2],
+    active_idx: usize,
+}
+
+impl StagedDoubleBuffer {
+    /// Creates a double-buffered staging surface initialized to the given dimensions.
+    pub fn new(width: u32, height: u32) -> Self {
+        Self {
+            buffers: [
+                Nv12Buffer::new(width, height),
+                Nv12Buffer::new(width, height),
+            ],
+            active_idx: 0,
+        }
+    }
+
+    /// Swaps the active and staging buffers and returns a mutable reference to the next write target.
+    pub fn next_write_buffer(&mut self, width: u32, height: u32) -> &mut Nv12Buffer {
+        self.active_idx = (self.active_idx + 1) % 2;
+        let buf = &mut self.buffers[self.active_idx];
+        buf.resize(width, height);
+        buf
+    }
+
+    /// Returns a reference to the active buffer ready for encoder transmission.
+    pub fn current_read_buffer(&self) -> &Nv12Buffer {
+        &self.buffers[self.active_idx]
+    }
+}
+
 /// WGSL compute shader for GPU-side RGBA to NV12 conversion.
 pub const RGBA_TO_NV12_WGSL: &str = r#"
 struct ConversionParams {

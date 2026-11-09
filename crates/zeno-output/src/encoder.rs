@@ -58,6 +58,17 @@ impl EncoderKind {
         !matches!(self, Self::X264 | Self::X265)
     }
 
+    /// Returns default texture handoff mode for this encoder kind:
+    /// ZeroCopySharedGpu for hardware encoders (NVENC/AMF/QSV),
+    /// StagedDoubleBufferedCpu for CPU software encoders (x264/x265).
+    pub fn default_handoff_mode(&self) -> TextureHandoffMode {
+        if self.is_hardware() {
+            TextureHandoffMode::ZeroCopySharedGpu
+        } else {
+            TextureHandoffMode::StagedDoubleBufferedCpu
+        }
+    }
+
     /// Returns human-readable label for user interface display.
     pub fn display_name(&self) -> &'static str {
         match self {
@@ -169,6 +180,33 @@ impl EncoderProfile {
     }
 }
 
+/// Execution path used for submitting frames to the video encoder.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum TextureHandoffMode {
+    /// Zero-copy GPU shared-texture path (promoted default requirement for NVENC/AMF/QSV hardware encoders).
+    /// Bypasses CPU RAM transfer by sharing GPU surfaces directly with the encoder.
+    #[default]
+    ZeroCopySharedGpu,
+    /// Double-buffered staging texture fallback for CPU software encoding (x264/x265)
+    /// or when GPU surface sharing is unsupported on host.
+    StagedDoubleBufferedCpu,
+}
+
+/// Reference to a shared GPU texture resource for zero-copy hardware encoding.
+#[derive(Debug, Clone)]
+pub struct SharedGpuTexture {
+    /// Raw OS/driver handle (e.g., Windows NT shared handle `HANDLE` or Vulkan handle).
+    pub handle: usize,
+    /// Width in pixels.
+    pub width: u32,
+    /// Height in pixels.
+    pub height: u32,
+    /// Pixel format identifier (e.g., DXGI_FORMAT_NV12 or R8G8B8A8_UNORM).
+    pub format: u32,
+    /// Invariant presentation timestamp in nanoseconds matching Section 10 master clock.
+    pub timestamp_ns: u64,
+}
+
 /// Comprehensive video encoder settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoEncoderSettings {
@@ -194,6 +232,10 @@ pub struct VideoEncoderSettings {
     pub profile: EncoderProfile,
     /// Number of consecutive B-frames (0 for low-latency live streaming)
     pub b_frames: u32,
+    /// Texture handoff mode: ZeroCopySharedGpu by default for hardware encoders,
+    /// StagedDoubleBufferedCpu fallback for software CPU x264/x265.
+    #[serde(default)]
+    pub handoff_mode: TextureHandoffMode,
 }
 
 impl Default for VideoEncoderSettings {
@@ -210,6 +252,7 @@ impl Default for VideoEncoderSettings {
             preset: EncoderPreset::VeryFast,
             profile: EncoderProfile::High,
             b_frames: 0,
+            handoff_mode: TextureHandoffMode::ZeroCopySharedGpu,
         }
     }
 }
@@ -218,6 +261,12 @@ impl VideoEncoderSettings {
     /// Total GOP keyframe interval in frame count.
     pub fn gop_size(&self) -> u32 {
         ((self.fps * self.keyframe_interval_seconds).round() as u32).max(1)
+    }
+
+    /// Sets optimal handoff mode based on whether the configured encoder is hardware-accelerated.
+    pub fn with_optimal_handoff_mode(mut self) -> Self {
+        self.handoff_mode = self.encoder_kind.default_handoff_mode();
+        self
     }
 }
 
@@ -349,17 +398,19 @@ impl EncoderProbe {
         let available = Self::probe_available_encoders();
 
         if available.contains(&EncoderKind::NvencH264) {
-            info!("Auto-selected NVIDIA NVENC H.264 hardware encoder");
+            info!(
+                "Auto-selected NVIDIA NVENC H.264 hardware encoder (Zero-Copy GPU path promoted)"
+            );
             (EncoderKind::NvencH264, None)
         } else if available.contains(&EncoderKind::AmfH264) {
-            info!("Auto-selected AMD AMF H.264 hardware encoder");
+            info!("Auto-selected AMD AMF H.264 hardware encoder (Zero-Copy GPU path promoted)");
             (EncoderKind::AmfH264, None)
         } else if available.contains(&EncoderKind::QsvH264) {
-            info!("Auto-selected Intel QuickSync H.264 hardware encoder");
+            info!("Auto-selected Intel QuickSync H.264 hardware encoder (Zero-Copy GPU path promoted)");
             (EncoderKind::QsvH264, None)
         } else {
             let notice =
-                "Hardware encoder missing. Falling back to libx264 software encoder.".to_string();
+                "Hardware encoder missing. Falling back to libx264 software encoder with double-buffered CPU staging.".to_string();
             warn!("{}", notice);
             (EncoderKind::X264, Some(notice))
         }
