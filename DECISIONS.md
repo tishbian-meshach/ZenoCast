@@ -1154,6 +1154,26 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - Added `init_windows_app_id()` in `crates/zeno-app/src/main.rs` calling `SetCurrentProcessExplicitAppUserModelID("Zenocast.Studio.App")` on startup.
   - Implemented `scripts/embed_icon.py` using Win32 `kernel32.dll` APIs (`BeginUpdateResourceW`, `UpdateResourceW`, `EndUpdateResourceW`) to embed `assets/icon.ico` directly into `target/debug/zenocast.exe` and release builds without requiring MSVC SDK resource compilers.
 
+---
+
+## 2026-11-10: Audio Mixer Responsive Channel Width & Scrollbar Optimization
+
+- **Problem**:
+  - `ui_audio_mixer` hardcoded `CHANNEL_WIDTH = 80.0 px`.
+  - In a standard dock split where Audio Mixer had ~220px of width, 3 channels (Master + 2 sources) required $3 \times 80 + 3 \times 18 = 294\text{ px}$, exceeding the panel by ~70px.
+  - This forced `ScrollArea::horizontal()` to show a horizontal scrollbar. When scrolled to the right, `Master` scrolled completely out of view, while leaving an awkward empty void and a trailing separator after the last source.
+- **Responsive Width Distribution**:
+  - Dynamically calculates `channel_width = (available_width - separators) / total_channels`, clamped to `[MIN_CHANNEL_WIDTH, MAX_CHANNEL_WIDTH]` (`[72.0, 130.0]`).
+  - When the available width accommodates all channels at $\ge 72\text{ px}$, each channel stretches evenly to fill 100% of the panel with zero overflow.
+  - `ScrollArea::horizontal()` no longer triggers or displays a horizontal scrollbar for normal channel counts, keeping `Master` and all sources visible simultaneously without empty space on the right.
+  - Horizontal scrolling now only engages gracefully when there are many channels that genuinely cannot fit at the 72px minimum width.
+- **Dock Split Proportions**:
+  - Rebalanced bottom dock splits: increased Audio Mixer from 20% to ~27% of the bottom strip, while reducing Transitions (which only holds a dropdown and button) from 20% to ~14%.
+- **Clean Inter-Track Separators**:
+  - Removed unconditional trailing separator after the last source: separators are now drawn strictly between tracks (`Master | Source 1 | Source 2`).
+
+
+
 
 
 
