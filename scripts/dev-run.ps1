@@ -31,7 +31,7 @@ $ErrorActionPreference = "Stop"
 # --- Resolve paths ---
 $ProjectRoot = (Resolve-Path "$PSScriptRoot\..").Path
 $DevToml     = Join-Path $ProjectRoot "dev.toml"
-$LogDir      = Join-Path $ProjectRoot "target" "dev-logs"
+$LogDir      = Join-Path $ProjectRoot "target\dev-logs"
 
 # --- Environment setup (same as CI) ---
 $env:PATH = "$env:USERPROFILE\.cargo\bin;C:\Program Files\LLVM\bin;C:\ffmpeg\bin;$env:PATH"
