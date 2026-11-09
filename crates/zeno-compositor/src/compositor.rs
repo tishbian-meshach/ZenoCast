@@ -17,6 +17,7 @@ use zeno_core::{
     BlendingMethod, FilterCategory, FilterChain, FilterDefinition, FilterSettings, SceneId,
     SourceId,
 };
+use zeno_engine::BlendMode;
 
 /// Live GPU scene compositor executing real-time 1080p60 mixing between broadcast scenes.
 pub struct SceneCompositor {
@@ -336,6 +337,36 @@ impl SceneCompositor {
         }
     }
 
+    /// Updates blend mode of an item on the Program scene (Live).
+    pub fn update_program_item_blend_mode(&mut self, source_id: SourceId, blend_mode: BlendMode) {
+        if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.blend_mode = blend_mode;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Updates blending method of an item on the Program scene (Live).
+    pub fn update_program_item_blending_method(
+        &mut self,
+        source_id: SourceId,
+        method: BlendingMethod,
+    ) {
+        if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.blending_method = method;
+                    }
+                }
+            }
+        }
+    }
+
     /// Updates transform of an item in the active editable scene:
     /// In Studio Mode: updates the Preview working scene.
     /// In Normal Mode: updates BOTH the live Program scene AND the Preview working copy.
@@ -378,6 +409,34 @@ impl SceneCompositor {
         } else {
             self.update_program_item_lock(source_id, locked);
             self.update_preview_item_lock(source_id, locked);
+        }
+    }
+
+    /// Updates blend mode of an item in the active editable scene:
+    /// In Studio Mode: updates the Preview working scene.
+    /// In Normal Mode: updates BOTH the live Program scene AND the Preview working copy.
+    pub fn update_editable_item_blend_mode(&mut self, source_id: SourceId, blend_mode: BlendMode) {
+        if self.bus.mode == StudioMode::Studio {
+            self.update_preview_item_blend_mode(source_id, blend_mode);
+        } else {
+            self.update_program_item_blend_mode(source_id, blend_mode);
+            self.update_preview_item_blend_mode(source_id, blend_mode);
+        }
+    }
+
+    /// Updates blending method of an item in the active editable scene:
+    /// In Studio Mode: updates the Preview working scene.
+    /// In Normal Mode: updates BOTH the live Program scene AND the Preview working copy.
+    pub fn update_editable_item_blending_method(
+        &mut self,
+        source_id: SourceId,
+        method: BlendingMethod,
+    ) {
+        if self.bus.mode == StudioMode::Studio {
+            self.update_preview_item_blending_method(source_id, method);
+        } else {
+            self.update_program_item_blending_method(source_id, method);
+            self.update_preview_item_blending_method(source_id, method);
         }
     }
 
@@ -424,6 +483,36 @@ impl SceneCompositor {
                 if let SceneItemSource::Source(s_id) = item.source {
                     if s_id == source_id || item.id == source_id.0 {
                         item.locked = locked;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Updates blend mode of an item in the Preview working scene.
+    pub fn update_preview_item_blend_mode(&mut self, source_id: SourceId, blend_mode: BlendMode) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.blend_mode = blend_mode;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Updates blending method of an item in the Preview working scene.
+    pub fn update_preview_item_blending_method(
+        &mut self,
+        source_id: SourceId,
+        method: BlendingMethod,
+    ) {
+        if let Some(scene) = self.preview_working_scene_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.blending_method = method;
                     }
                 }
             }

@@ -457,8 +457,12 @@ pub struct CompositorGpuPipeline {
     pub item_pipeline_subtract: RenderPipeline,
     pub item_pipeline_multiply: RenderPipeline,
     pub item_pipeline_screen: RenderPipeline,
+    pub item_pipeline_overlay: RenderPipeline,
     pub item_pipeline_lighten: RenderPipeline,
     pub item_pipeline_darken: RenderPipeline,
+    pub item_pipeline_color_dodge: RenderPipeline,
+    pub item_pipeline_color_burn: RenderPipeline,
+    pub item_pipeline_difference: RenderPipeline,
     pub item_bind_group_layout: BindGroupLayout,
     pub transition_pipeline: RenderPipeline,
     pub transition_bind_group_layout: BindGroupLayout,
@@ -476,9 +480,15 @@ impl CompositorGpuPipeline {
             BlendMode::Subtract => &self.item_pipeline_subtract,
             BlendMode::Multiply => &self.item_pipeline_multiply,
             BlendMode::Screen => &self.item_pipeline_screen,
-            BlendMode::Lighten => &self.item_pipeline_lighten,
+            BlendMode::Overlay => &self.item_pipeline_overlay,
             BlendMode::Darken => &self.item_pipeline_darken,
-            _ => &self.item_pipeline,
+            BlendMode::Lighten => &self.item_pipeline_lighten,
+            BlendMode::ColorDodge => &self.item_pipeline_color_dodge,
+            BlendMode::ColorBurn => &self.item_pipeline_color_burn,
+            BlendMode::Difference => &self.item_pipeline_difference,
+            BlendMode::Exclusion => &self.item_pipeline_difference,
+            BlendMode::HardLight => &self.item_pipeline_overlay,
+            BlendMode::SoftLight => &self.item_pipeline_overlay,
         }
     }
 
@@ -678,6 +688,70 @@ impl CompositorGpuPipeline {
             },
         );
 
+        let item_pipeline_overlay = make_item_pipeline(
+            "SceneItemPipelineOverlay",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::Dst,
+                    dst_factor: BlendFactor::Src,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            },
+        );
+
+        let item_pipeline_color_dodge = make_item_pipeline(
+            "SceneItemPipelineColorDodge",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::Dst,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            },
+        );
+
+        let item_pipeline_color_burn = make_item_pipeline(
+            "SceneItemPipelineColorBurn",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::OneMinusDst,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::ReverseSubtract,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            },
+        );
+
+        let item_pipeline_difference = make_item_pipeline(
+            "SceneItemPipelineDifference",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::OneMinusDst,
+                    dst_factor: BlendFactor::OneMinusSrc,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            },
+        );
+
         // Transition shader pipeline
         let transition_shader = device.create_shader_module(ShaderModuleDescriptor {
             label: Some("TransitionShader"),
@@ -852,8 +926,12 @@ impl CompositorGpuPipeline {
             item_pipeline_subtract,
             item_pipeline_multiply,
             item_pipeline_screen,
+            item_pipeline_overlay,
             item_pipeline_lighten,
             item_pipeline_darken,
+            item_pipeline_color_dodge,
+            item_pipeline_color_burn,
+            item_pipeline_difference,
             item_bind_group_layout,
             transition_pipeline,
             transition_bind_group_layout,

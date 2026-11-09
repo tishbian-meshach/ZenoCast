@@ -972,3 +972,446 @@ pub fn test_canvas_alpha_transparency_and_stacking() {
     }
     output_buffer2.unmap();
 }
+
+#[test]
+pub fn test_blend_modes_live_context_menu_sync_and_gpu_rendering() {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        compatible_surface: None,
+        force_fallback_adapter: true,
+    }))
+    .expect("WGPU test adapter");
+
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("BlendModesTestDevice"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .expect("WGPU test device");
+
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+
+    let mut comp = SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+    let mut reg = zeno_media::SourceRegistry::new();
+
+    let bg_source_id = SourceId::new();
+    let fg_source_id = SourceId::new();
+
+    // Background source: Solid Green (represents window capture or camera)
+    let mut bg_source = ColorSource::new("Background Green", [0.0, 1.0, 0.0, 1.0], 1920, 1080)
+        .with_id(bg_source_id);
+
+    // Foreground source: Media file with black background and white logo (matching Image 2)
+    // Left half: black [0, 0, 0, 255]; Right half: white [255, 255, 255, 255]
+    let mut fg_pixels = vec![0u8; 1920 * 1080 * 4];
+    for y in 0..1080 {
+        for x in 0..1920 {
+            let idx = (y * 1920 + x) * 4;
+            if x < 960 {
+                // Black background
+                fg_pixels[idx] = 0;
+                fg_pixels[idx + 1] = 0;
+                fg_pixels[idx + 2] = 0;
+                fg_pixels[idx + 3] = 255;
+            } else {
+                // White content
+                fg_pixels[idx] = 255;
+                fg_pixels[idx + 1] = 255;
+                fg_pixels[idx + 2] = 255;
+                fg_pixels[idx + 3] = 255;
+            }
+        }
+    }
+    let mut fg_source = zeno_media::DoubleBufferedTexture::new();
+    fg_source.upload(&device, &queue, 1920, 1080, &fg_pixels, 0.0);
+    let fg_frame = fg_source.current_frame().expect("Foreground frame");
+
+    bg_source.start(&device, &queue).unwrap();
+    reg.register(Box::new(bg_source));
+
+    // Construct Project
+    let scene_id_str = "main_scene".to_string();
+    let bg_id_str = bg_source_id.to_string();
+    let fg_id_str = fg_source_id.to_string();
+
+    let project = Project {
+        scenes: vec![SceneDefinition {
+            id: scene_id_str.clone(),
+            name: "Main Scene".into(),
+            sources: vec![
+                SourceDefinition {
+                    id: bg_id_str.clone(),
+                    name: "Green Background".into(),
+                    kind: SourceKind::Color,
+                    target: "rgba(0.0,1.0,0.0,1.0)".into(),
+                    visible: true,
+                    locked: false,
+                    volume: 1.0,
+                    muted: false,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1920.0,
+                    height: 1080.0,
+                    rotation: 0.0,
+                    blend_mode: zeno_engine::BlendMode::Normal,
+                    ..Default::default()
+                },
+                SourceDefinition {
+                    id: fg_id_str.clone(),
+                    name: "Media Logo (Black BG + White)".into(),
+                    kind: SourceKind::MediaFile,
+                    target: "logo.mp4".into(),
+                    visible: true,
+                    locked: false,
+                    volume: 1.0,
+                    muted: false,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1920.0,
+                    height: 1080.0,
+                    rotation: 0.0,
+                    blend_mode: zeno_engine::BlendMode::Normal,
+                    ..Default::default()
+                },
+            ],
+        }],
+        active_scene_id: Some(scene_id_str.clone()),
+        preview_scene_id: Some(scene_id_str.clone()),
+        preview_working_sources: Some((
+            scene_id_str.clone(),
+            vec![
+                SourceDefinition {
+                    id: bg_id_str.clone(),
+                    name: "Green Background".into(),
+                    kind: SourceKind::Color,
+                    target: "rgba(0.0,1.0,0.0,1.0)".into(),
+                    visible: true,
+                    locked: false,
+                    volume: 1.0,
+                    muted: false,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1920.0,
+                    height: 1080.0,
+                    rotation: 0.0,
+                    blend_mode: zeno_engine::BlendMode::Normal,
+                    ..Default::default()
+                },
+                SourceDefinition {
+                    id: fg_id_str.clone(),
+                    name: "Media Logo (Black BG + White)".into(),
+                    kind: SourceKind::MediaFile,
+                    target: "logo.mp4".into(),
+                    visible: true,
+                    locked: false,
+                    volume: 1.0,
+                    muted: false,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 1920.0,
+                    height: 1080.0,
+                    rotation: 0.0,
+                    blend_mode: zeno_engine::BlendMode::Normal,
+                    ..Default::default()
+                },
+            ],
+        )),
+        ..Default::default()
+    };
+
+    // Build Compositor Scene
+    let sc_id = zeno_ui::app::string_to_scene_id(&scene_id_str);
+    let mut comp_scene = Scene::new("Main Scene");
+    comp_scene.id = sc_id;
+    comp_scene.add_item(
+        SceneItem::new("Green Background", SceneItemSource::Source(bg_source_id))
+            .with_position(960.0, 540.0)
+            .with_scale(1.0, 1.0),
+    );
+    comp_scene.add_item(
+        SceneItem::new("Media Logo", SceneItemSource::Source(fg_source_id))
+            .with_position(960.0, 540.0)
+            .with_scale(1.0, 1.0),
+    );
+    comp.add_scene(comp_scene.clone());
+    comp.set_program(sc_id);
+    comp.set_preview(sc_id);
+    comp.preview_working_scene = Some(comp_scene);
+
+    let v_settings = VideoEncoderSettings {
+        encoder_kind: EncoderKind::X264,
+        width: 1920,
+        height: 1080,
+        fps: 60.0,
+        rate_control: RateControl::Cbr,
+        bitrate_kbps: 6000,
+        max_bitrate_kbps: Some(6000),
+        keyframe_interval_seconds: 2.0,
+        preset: EncoderPreset::VeryFast,
+        profile: EncoderProfile::Main,
+        b_frames: 0,
+        handoff_mode: Default::default(),
+    };
+    let a_settings = AudioEncoderSettings {
+        sample_rate: 48000,
+        channels: 2,
+        bitrate_kbps: 160,
+    };
+    let output_manager = Arc::new(OutputManager::new_dry_run(v_settings, a_settings));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some(scene_id_str.clone()),
+        selected_source_id: Some(fg_id_str.clone()),
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(std::path::Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(reg)),
+        compositor: Arc::new(parking_lot::RwLock::new(Some(comp))),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: Some(device.clone()),
+        wgpu_queue: Some(queue.clone()),
+        source_warning_message: None,
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false, // Normal Mode
+        clipboard_source: None,
+        clipboard_filters: None,
+        filter_dialog: Default::default(),
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
+    };
+
+    // 1. Verify Normal Mode UI context-menu action propagates immediately:
+    // Operator selects Blending Mode -> Screen on the foreground media source
+    app.sync_source_blend_mode_to_compositor(&fg_id_str, zeno_engine::BlendMode::Screen);
+
+    // Assert that the project model is updated
+    let active_src = app
+        .project
+        .scenes
+        .iter()
+        .find(|s| s.id == scene_id_str)
+        .unwrap()
+        .sources
+        .iter()
+        .find(|s| s.id == fg_id_str)
+        .unwrap();
+    assert_eq!(active_src.blend_mode, zeno_engine::BlendMode::Screen);
+
+    // Assert that the compositor's Program scene item AND Preview working scene item are updated!
+    {
+        let comp_lock = app.compositor.read();
+        let comp_ref = comp_lock.as_ref().unwrap();
+        let prog_scene = comp_ref.get_scene(sc_id).unwrap();
+        let fg_item = prog_scene
+            .items
+            .iter()
+            .find(|it| match it.source {
+                SceneItemSource::Source(id) => id == fg_source_id,
+                _ => false,
+            })
+            .unwrap();
+        assert_eq!(fg_item.blend_mode, zeno_engine::BlendMode::Screen);
+
+        let prev_scene = comp_ref.preview_working_scene.as_ref().unwrap();
+        let prev_item = prev_scene
+            .items
+            .iter()
+            .find(|it| match it.source {
+                SceneItemSource::Source(id) => id == fg_source_id,
+                _ => false,
+            })
+            .unwrap();
+        assert_eq!(prev_item.blend_mode, zeno_engine::BlendMode::Screen);
+    }
+
+    // 2. Render frame with Screen blending and verify GPU pixel output
+    let mut sources_map = std::collections::HashMap::new();
+    let bg_view = app
+        .source_registry
+        .write()
+        .get_mut(bg_source_id)
+        .unwrap()
+        .get_frame()
+        .unwrap()
+        .texture_view
+        .clone();
+    sources_map.insert(bg_source_id, bg_view);
+    sources_map.insert(fg_source_id, fg_frame.texture_view.clone());
+
+    {
+        let mut comp_lock = app.compositor.write();
+        let comp_mut = comp_lock.as_mut().unwrap();
+        comp_mut
+            .render_frame(&sources_map, 1.0 / 60.0)
+            .expect("Render frame with Screen blend");
+    }
+
+    // Read back rendered program texture
+    let comp_lock = app.compositor.read();
+    let comp_ref = comp_lock.as_ref().unwrap();
+
+    let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("ScreenReadbackBuffer"),
+        size: 1920 * 1080 * 4,
+        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+        label: Some("ScreenReadbackEncoder"),
+    });
+    encoder.copy_texture_to_buffer(
+        wgpu::TexelCopyTextureInfo {
+            texture: comp_ref.program_texture(),
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        wgpu::TexelCopyBufferInfo {
+            buffer: &output_buffer,
+            layout: wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(1920 * 4),
+                rows_per_image: Some(1080),
+            },
+        },
+        wgpu::Extent3d {
+            width: 1920,
+            height: 1080,
+            depth_or_array_layers: 1,
+        },
+    );
+    queue.submit(std::iter::once(encoder.finish()));
+
+    let slice = output_buffer.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |res| {
+        tx.send(res).unwrap();
+    });
+    device.poll(wgpu::Maintain::Wait);
+    rx.recv().unwrap().unwrap();
+
+    {
+        let data = slice.get_mapped_range();
+
+        // Left half (x: 480, y: 540): Screen blend of Black over Green!
+        // Background green MUST shine through with zero darkening!
+        let left_idx = (540 * 1920 + 480) * 4;
+        assert_eq!(data[left_idx], 0, "Left half should have zero Red");
+        assert!(
+            data[left_idx + 1] > 200,
+            "Left half should show 100% Green background through screened black!"
+        );
+        assert_eq!(data[left_idx + 2], 0, "Left half should have zero Blue");
+
+        // Right half (x: 1440, y: 540): Screen blend of White over Green!
+        // Output must be White [255, 255, 255]!
+        let right_idx = (540 * 1920 + 1440) * 4;
+        assert!(
+            data[right_idx] > 200,
+            "Right half should be White (high Red)"
+        );
+        assert!(
+            data[right_idx + 1] > 200,
+            "Right half should be White (high Green)"
+        );
+        assert!(
+            data[right_idx + 2] > 200,
+            "Right half should be White (high Blue)"
+        );
+    }
+    output_buffer.unmap();
+    drop(comp_lock);
+
+    // 3. Test Studio Mode: Preview working scene update and Cut commit
+    app.studio_mode = true;
+    app.sync_source_blend_mode_to_compositor(&fg_id_str, zeno_engine::BlendMode::ColorDodge);
+
+    // In Studio Mode, preview working scene has ColorDodge immediately, Program remains Screen
+    {
+        let comp_lock = app.compositor.read();
+        let comp_ref = comp_lock.as_ref().unwrap();
+        let prev_scene = comp_ref.preview_working_scene.as_ref().unwrap();
+        let prev_item = prev_scene
+            .items
+            .iter()
+            .find(|it| match it.source {
+                SceneItemSource::Source(id) => id == fg_source_id,
+                _ => false,
+            })
+            .unwrap();
+        assert_eq!(prev_item.blend_mode, zeno_engine::BlendMode::ColorDodge);
+
+        let prog_scene = comp_ref.get_scene(sc_id).unwrap();
+        let prog_item = prog_scene
+            .items
+            .iter()
+            .find(|it| match it.source {
+                SceneItemSource::Source(id) => id == fg_source_id,
+                _ => false,
+            })
+            .unwrap();
+        assert_eq!(prog_item.blend_mode, zeno_engine::BlendMode::Screen);
+    }
+
+    // Cut to Program: Program now transitions to ColorDodge
+    app.execute_cut();
+    {
+        let comp_lock = app.compositor.read();
+        let comp_ref = comp_lock.as_ref().unwrap();
+        let prog_scene = comp_ref.get_scene(sc_id).unwrap();
+        let prog_item = prog_scene
+            .items
+            .iter()
+            .find(|it| match it.source {
+                SceneItemSource::Source(id) => id == fg_source_id,
+                _ => false,
+            })
+            .unwrap();
+        assert_eq!(prog_item.blend_mode, zeno_engine::BlendMode::ColorDodge);
+    }
+}

@@ -1021,6 +1021,31 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - **Non-Blocking Present Mode**: Configured `wgpu::PresentMode::AutoNoVsync` in `eframe::NativeOptions`, enabling Mailbox/Immediate low-latency presentation.
   - **Instrumentation**: Added `tracing::trace!` spans recording inter-arrival delta (`delta_arrival_ms`), readback duration (`readback_duration_ms`), drained stale frame count (`drained_stale_frames`), and GPU upload duration (`upload_duration_ms`).
 
+## 2026-11-09: Live Source Blending Modes & Method Synchronization (Issue Fix)
+
+- **Root Cause Analysis**:
+  1. **UI Mutation Ignored Compositor**: In `crates/zeno-ui-hot/src/dock.rs`, clicking any entry in the `Blending Mode` or `Blending Method` context submenus mutated `s.blend_mode = mode;` exclusively on `self.project`. `self.compositor` was never notified; no trigger or synchronization method existed. The compositor continued rendering the item with `BlendMode::Normal`.
+  2. **Compositor API Gap**: `SceneCompositor` lacked `update_program_item_blend_mode()`, `update_preview_item_blend_mode()`, and `update_editable_item_blend_mode()` (as well as `_method` variants).
+  3. **Compositor Pipeline Fallback**: In `CompositorGpuPipeline::get_item_pipeline()`, blend modes `Overlay`, `ColorDodge`, `ColorBurn`, and `Difference` were omitted, falling back via wildcard `_ => &self.item_pipeline` to Normal alpha blending. `Subtract` was missing from the UI menu.
+  4. **Uninitialized Item State**: In `crates/zeno-ui-hot/src/app.rs`, `SceneItem::new` invocations in project resets, file opens, and source additions did not propagate `src_def.blend_mode` or `src_def.blend_method`.
+
+- **Implementation**:
+  1. **UI Triggers & Synchronization**:
+     - Added `trigger_change_blend_mode` and `trigger_change_blend_method` to `StudioTabViewer`.
+     - Implemented `sync_source_blend_mode_to_compositor` and `sync_source_blend_method_to_compositor` in `ZenocastApp`, updating both canonical/preview project sources and compositor items in Normal Mode and Studio Mode.
+  2. **Compositor Updates**:
+     - Implemented `update_program_item_blend_mode()`, `update_program_item_blending_method()`, `update_preview_item_blend_mode()`, `update_preview_item_blending_method()`, `update_editable_item_blend_mode()`, and `update_editable_item_blending_method()` in `SceneCompositor`.
+     - Initialized `blend_mode` and `blending_method` across all `SceneItem` instantiations (`reset_to_new_project`, `open_project_from_path`, `create_and_add_source`, `paste_source_reference`, `paste_source_duplicate`).
+  3. **GPU Render Pipelines for All Blend Modes**:
+     - Added dedicated render pipelines and fixed-function hardware blend states in `CompositorGpuPipeline` for `ColorDodge` (`src: Dst, dst: One, op: Add`), `ColorBurn` (`src: OneMinusDst, dst: OneMinusSrcAlpha, op: ReverseSubtract`), `Overlay` (`src: Dst, dst: Src, op: Add`), and `Difference` / `Exclusion` (`src: OneMinusDst, dst: OneMinusSrc, op: Add`).
+     - Added `Subtract` to the context menu.
+     - Confirmed mathematical cancellation for Screen blending ($C_{src} + C_{dst} \cdot (1 - C_{src})$): black background pixels leave underlying destination 100% intact, eliminating opaque black bounding rectangles on media sources.
+
+- **Acceptance Validation**:
+  - Verified via `test_blend_modes_live_context_menu_sync_and_gpu_rendering` in `tests/ui_wiring/scene_switching.rs`.
+  - Normal Mode right-click immediately updates live on-air Program rendering; Studio Mode updates Preview and transfers cleanly upon CUT.
+  - GPU hardware pixel readback verifies that media sources with black background screen out completely over a green canvas, rendering foreground content at 100% opacity without artifacts.
+
 
 
 

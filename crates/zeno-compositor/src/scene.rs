@@ -208,6 +208,18 @@ impl SceneItem {
         self.blend_mode = blend_mode;
         self
     }
+
+    /// Sets blending method.
+    pub fn with_blending_method(mut self, blending_method: BlendingMethod) -> Self {
+        self.blending_method = blending_method;
+        self
+    }
+
+    /// Sets filter chain.
+    pub fn with_filters(mut self, filters: FilterChain) -> Self {
+        self.filters = filters;
+        self
+    }
 }
 
 /// A complete broadcast scene containing an ordered stack of visual items.

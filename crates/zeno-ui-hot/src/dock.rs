@@ -128,6 +128,8 @@ pub struct StudioTabViewer<'a> {
     pub trigger_copy_filters: &'a mut Option<String>,
     pub trigger_paste_filters: &'a mut Option<String>,
     pub has_clipboard_filters: bool,
+    pub trigger_change_blend_mode: &'a mut Option<(String, zeno_engine::BlendMode)>,
+    pub trigger_change_blend_method: &'a mut Option<(String, crate::project::BlendingMethod)>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -548,6 +550,7 @@ impl<'a> StudioTabViewer<'a> {
             for &(mode, label) in &[
                 (zeno_engine::BlendMode::Normal, "Normal"),
                 (zeno_engine::BlendMode::Add, "Add"),
+                (zeno_engine::BlendMode::Subtract, "Subtract"),
                 (zeno_engine::BlendMode::Multiply, "Multiply"),
                 (zeno_engine::BlendMode::Screen, "Screen"),
                 (zeno_engine::BlendMode::Overlay, "Overlay"),
@@ -565,6 +568,7 @@ impl<'a> StudioTabViewer<'a> {
                             s.blend_mode = mode;
                         }
                     }
+                    *self.trigger_change_blend_mode = Some((sel_id.to_string(), mode));
                     ui.close_menu();
                 }
             }
@@ -588,6 +592,7 @@ impl<'a> StudioTabViewer<'a> {
                             s.blend_method = method;
                         }
                     }
+                    *self.trigger_change_blend_method = Some((sel_id.to_string(), method));
                     ui.close_menu();
                 }
             }

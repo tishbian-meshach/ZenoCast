@@ -305,6 +305,14 @@ impl ZenocastApp {
                         .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
                     item.visible = src_def.visible;
                     item.locked = src_def.locked;
+                    item.blend_mode = src_def.blend_mode;
+                    item.blending_method = match src_def.blend_method {
+                        crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+                        crate::project::BlendingMethod::SrgbOff => {
+                            zeno_core::BlendingMethod::SrgbOff
+                        }
+                    };
+                    item.filters = src_def.filters.clone();
                     scene.add_item(item);
                 }
 
@@ -639,6 +647,14 @@ impl ZenocastApp {
                         .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
                     item.visible = src_def.visible;
                     item.locked = src_def.locked;
+                    item.blend_mode = src_def.blend_mode;
+                    item.blending_method = match src_def.blend_method {
+                        crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+                        crate::project::BlendingMethod::SrgbOff => {
+                            zeno_core::BlendingMethod::SrgbOff
+                        }
+                    };
+                    item.filters = src_def.filters.clone();
                     scene.add_item(item);
                 }
                 comp.add_scene(scene);
@@ -682,6 +698,14 @@ impl ZenocastApp {
                         .with_scale(src_def.width / canvas_w, src_def.height / canvas_h);
                     item.visible = src_def.visible;
                     item.locked = src_def.locked;
+                    item.blend_mode = src_def.blend_mode;
+                    item.blending_method = match src_def.blend_method {
+                        crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+                        crate::project::BlendingMethod::SrgbOff => {
+                            zeno_core::BlendingMethod::SrgbOff
+                        }
+                    };
+                    item.filters = src_def.filters.clone();
                     scene.add_item(item);
                 }
                 comp.add_scene(scene);
@@ -1022,7 +1046,7 @@ impl ZenocastApp {
                 }
                 if let Some(sources) = self.project.preview_working_sources_mut() {
                     if !sources.iter().any(|s| s.id == source_id_str) {
-                        sources.push(src_def);
+                        sources.push(src_def.clone());
                     }
                 }
 
@@ -1031,15 +1055,27 @@ impl ZenocastApp {
                     let canvas_w = comp.width() as f32;
                     let canvas_h = comp.height() as f32;
                     let sc_id = string_to_scene_id(sel_scene_id);
+                    let core_method = match src_def.blend_method {
+                        crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+                        crate::project::BlendingMethod::SrgbOff => {
+                            zeno_core::BlendingMethod::SrgbOff
+                        }
+                    };
                     if let Some(scene) = comp.get_scene_mut(sc_id) {
                         let item = SceneItem::new(name.clone(), SceneItemSource::Source(source_id))
                             .with_position(canvas_w / 2.0, canvas_h / 2.0)
-                            .with_scale((width as f32) / canvas_w, (height as f32) / canvas_h);
+                            .with_scale((width as f32) / canvas_w, (height as f32) / canvas_h)
+                            .with_blend_mode(src_def.blend_mode)
+                            .with_blending_method(core_method)
+                            .with_filters(src_def.filters.clone());
                         scene.add_item(item);
                     }
                     let item = SceneItem::new(name, SceneItemSource::Source(source_id))
                         .with_position(canvas_w / 2.0, canvas_h / 2.0)
-                        .with_scale((width as f32) / canvas_w, (height as f32) / canvas_h);
+                        .with_scale((width as f32) / canvas_w, (height as f32) / canvas_h)
+                        .with_blend_mode(src_def.blend_mode)
+                        .with_blending_method(core_method)
+                        .with_filters(src_def.filters.clone());
                     comp.add_preview_item(item);
                 }
 
@@ -1450,6 +1486,120 @@ impl ZenocastApp {
         }
     }
 
+    /// Synchronizes a source's blend mode across project state and compositor scene items.
+    pub fn sync_source_blend_mode_to_compositor(
+        &mut self,
+        source_id_str: &str,
+        blend_mode: zeno_engine::BlendMode,
+    ) {
+        let s_id = string_to_source_id(source_id_str);
+
+        // 1. Update project model
+        if !self.studio_mode {
+            if let Some(ref act_id) = self.project.active_scene_id {
+                for sc in &mut self.project.scenes {
+                    if &sc.id == act_id {
+                        if let Some(src) = sc.sources.iter_mut().find(|s| s.id == source_id_str) {
+                            src.blend_mode = blend_mode;
+                        }
+                    }
+                }
+            }
+            if let Some((_, ref mut srcs)) = self.project.preview_working_sources {
+                if let Some(src) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                    src.blend_mode = blend_mode;
+                }
+            }
+        } else {
+            if let Some((_, ref mut srcs)) = self.project.preview_working_sources {
+                if let Some(src) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                    src.blend_mode = blend_mode;
+                }
+            }
+        }
+
+        // 2. Update compositor GPU scene items
+        if let Some(ref mut comp) = *self.compositor.write() {
+            if !self.studio_mode {
+                if let Some(ref act_id) = self.project.active_scene_id {
+                    let sc_id = string_to_scene_id(act_id);
+                    if let Some(scene) = comp.get_scene_mut(sc_id) {
+                        for item in &mut scene.items {
+                            if let SceneItemSource::Source(id) = item.source {
+                                if id == s_id || item.id == s_id.0 {
+                                    item.blend_mode = blend_mode;
+                                }
+                            }
+                        }
+                    }
+                }
+                comp.update_program_item_blend_mode(s_id, blend_mode);
+                comp.update_preview_item_blend_mode(s_id, blend_mode);
+            } else {
+                comp.update_preview_item_blend_mode(s_id, blend_mode);
+            }
+        }
+    }
+
+    /// Synchronizes a source's blending method across project state and compositor scene items.
+    pub fn sync_source_blend_method_to_compositor(
+        &mut self,
+        source_id_str: &str,
+        method: crate::project::BlendingMethod,
+    ) {
+        let s_id = string_to_source_id(source_id_str);
+        let core_method = match method {
+            crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+            crate::project::BlendingMethod::SrgbOff => zeno_core::BlendingMethod::SrgbOff,
+        };
+
+        // 1. Update project model
+        if !self.studio_mode {
+            if let Some(ref act_id) = self.project.active_scene_id {
+                for sc in &mut self.project.scenes {
+                    if &sc.id == act_id {
+                        if let Some(src) = sc.sources.iter_mut().find(|s| s.id == source_id_str) {
+                            src.blend_method = method;
+                        }
+                    }
+                }
+            }
+            if let Some((_, ref mut srcs)) = self.project.preview_working_sources {
+                if let Some(src) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                    src.blend_method = method;
+                }
+            }
+        } else {
+            if let Some((_, ref mut srcs)) = self.project.preview_working_sources {
+                if let Some(src) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                    src.blend_method = method;
+                }
+            }
+        }
+
+        // 2. Update compositor GPU scene items
+        if let Some(ref mut comp) = *self.compositor.write() {
+            if !self.studio_mode {
+                if let Some(ref act_id) = self.project.active_scene_id {
+                    let sc_id = string_to_scene_id(act_id);
+                    if let Some(scene) = comp.get_scene_mut(sc_id) {
+                        for item in &mut scene.items {
+                            if let SceneItemSource::Source(id) = item.source {
+                                if id == s_id || item.id == s_id.0 {
+                                    item.blending_method = core_method;
+                                }
+                            }
+                        }
+                    }
+                }
+                comp.update_program_item_blending_method(s_id, core_method);
+                comp.update_preview_item_blending_method(s_id, core_method);
+            } else {
+                comp.update_preview_item_blending_method(s_id, core_method);
+            }
+        }
+    }
+
     /// Copies the currently selected source to the internal clipboard.
     pub fn copy_selected_source(&mut self) {
         if let Some(ref sel_id) = self.selected_source_id {
@@ -1510,6 +1660,12 @@ impl ZenocastApp {
             item.id = string_to_source_id(&new_id).0;
             item.visible = new_item.visible;
             item.locked = new_item.locked;
+            item.blend_mode = new_item.blend_mode;
+            item.blending_method = match new_item.blend_method {
+                crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+                crate::project::BlendingMethod::SrgbOff => zeno_core::BlendingMethod::SrgbOff,
+            };
+            item.filters = new_item.filters.clone();
             comp.add_preview_item(item);
         }
         self.selected_source_id = Some(new_id);
@@ -1569,6 +1725,12 @@ impl ZenocastApp {
             item.id = string_to_source_id(&new_id).0;
             item.visible = new_item.visible;
             item.locked = new_item.locked;
+            item.blend_mode = new_item.blend_mode;
+            item.blending_method = match new_item.blend_method {
+                crate::project::BlendingMethod::Linear => zeno_core::BlendingMethod::Linear,
+                crate::project::BlendingMethod::SrgbOff => zeno_core::BlendingMethod::SrgbOff,
+            };
+            item.filters = new_item.filters.clone();
             comp.add_preview_item(item);
         }
         self.selected_source_id = Some(new_id);
@@ -3219,6 +3381,9 @@ impl ZenocastApp {
         let mut trigger_open_filters: Option<String> = None;
         let mut trigger_copy_filters: Option<String> = None;
         let mut trigger_paste_filters: Option<String> = None;
+        let mut trigger_change_blend_mode: Option<(String, zeno_engine::BlendMode)> = None;
+        let mut trigger_change_blend_method: Option<(String, crate::project::BlendingMethod)> =
+            None;
 
         let stats = self.output_manager.stats();
         let fps = if stats.encode_time_ms > 0.0 {
@@ -3292,6 +3457,8 @@ impl ZenocastApp {
                     trigger_copy_filters: &mut trigger_copy_filters,
                     trigger_paste_filters: &mut trigger_paste_filters,
                     has_clipboard_filters: self.clipboard_filters.is_some(),
+                    trigger_change_blend_mode: &mut trigger_change_blend_mode,
+                    trigger_change_blend_method: &mut trigger_change_blend_method,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -3523,6 +3690,12 @@ impl ZenocastApp {
         }
         if let Some(ref s_id) = trigger_paste_filters {
             self.paste_source_filters(s_id);
+        }
+        if let Some((ref s_id, mode)) = trigger_change_blend_mode {
+            self.sync_source_blend_mode_to_compositor(s_id, mode);
+        }
+        if let Some((ref s_id, method)) = trigger_change_blend_method {
+            self.sync_source_blend_method_to_compositor(s_id, method);
         }
         if trigger_audio_change {
             if let Some(ref act_id) = self.project.active_scene_id {
