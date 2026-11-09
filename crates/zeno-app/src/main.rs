@@ -127,6 +127,24 @@ impl eframe::App for ZenocastHostApp {
     }
 }
 
+/// Initializes explicit Windows AppUserModelID so the Windows Taskbar associates the running
+/// process with Zenocast Studio and displays the embedded application icon properly.
+#[cfg(windows)]
+fn init_windows_app_id() {
+    use std::os::windows::ffi::OsStrExt;
+    let app_id: Vec<u16> = std::ffi::OsStr::new("Zenocast.Studio.App")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        #[link(name = "shell32")]
+        extern "system" {
+            fn SetCurrentProcessExplicitAppUserModelID(app_id: *const u16) -> i32;
+        }
+        let _ = SetCurrentProcessExplicitAppUserModelID(app_id.as_ptr());
+    }
+}
+
 /// Loads the application icon for window decoration and taskbar.
 pub fn load_app_icon() -> std::sync::Arc<egui::IconData> {
     const RAW_RGBA: &[u8] = include_bytes!("../../../assets/icon_256.rgba");
@@ -138,6 +156,9 @@ pub fn load_app_icon() -> std::sync::Arc<egui::IconData> {
 }
 
 fn main() -> eframe::Result<()> {
+    #[cfg(windows)]
+    init_windows_app_id();
+
     install_panic_hook();
 
     let native_options = NativeOptions {
