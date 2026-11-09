@@ -1172,6 +1172,22 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
 - **Clean Inter-Track Separators**:
   - Removed unconditional trailing separator after the last source: separators are now drawn strictly between tracks (`Master | Source 1 | Source 2`).
 
+---
+
+## 2026-11-10: Display Capture Hardware Ingest & Zero-Latency WGC Parity (v1.7 Section 1)
+
+- **Diagnosis**:
+  - `DisplayCaptureSource` previously relied on synchronous GDI `BitBlt` and `GetDIBits` on every frame directly on the render thread.
+  - On standard 1080p, 1440p, or 4K monitors, copying raw framebuffer scanlines from the root desktop device context blocked the UI loop for 15–35 ms, resulting in severe preview stuttering and input lag.
+  - Furthermore, CPU-side BGRA-to-RGBA byte swizzling was run continuously even when display contents did not change.
+- **Architectural Parity with Window Capture**:
+  - **WGC Monitor Support**: Extended `WgcCaptureSession` in `zeno-platform` to support monitor handles via `IGraphicsCaptureItemInterop::CreateForMonitor(HMONITOR)`, sharing the unified D3D11 staging and background capture loop with `CreateForWindow(HWND)`.
+  - **Pool Frame Draining (Skip to Latest)**: In `FrameArrived`, pending frames in the pool are drained in a loop, discarding stale frames immediately and delivering sub-frame latency.
+  - **Hardware BGRA Color Mapping**: Replaced default RGBA texture format with `wgpu::TextureFormat::Bgra8UnormSrgb` in `DisplayCaptureSource`, enabling direct zero-copy GPU uploads of D3D11 raw BGRA staging memory without CPU swizzling.
+  - **Monotonic Sequence Deduplication**: Added `last_frame_seq` counter check in `DisplayCaptureSource::update()`. Identical frames are skipped immediately without burning GPU queue bandwidth or reallocating buffers.
+  - **GDI Fallback**: Retained GDI `capture_display_raw` strictly as a fallback when running in virtualized/headless environments where WGC is unavailable.
+
+
 
 
 

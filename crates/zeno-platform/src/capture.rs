@@ -22,7 +22,7 @@ use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::Graphics::Gdi::{
     BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
     GetWindowDC, ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
-    HDC, SRCCOPY,
+    HDC, HMONITOR, SRCCOPY,
 };
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
@@ -49,9 +49,9 @@ pub struct CapturedFrame {
     pub is_bgra: bool,
 }
 
-/// Windows Graphics Capture (WGC) hardware-accelerated session for a specific HWND.
+/// Windows Graphics Capture (WGC) hardware-accelerated session for a specific HWND or HMONITOR.
 pub struct WgcCaptureSession {
-    hwnd: isize,
+    target_handle: isize,
     session: GraphicsCaptureSession,
     frame_pool: Direct3D11CaptureFramePool,
     latest_frame: Arc<parking_lot::Mutex<Option<Arc<CapturedFrame>>>>,
@@ -61,6 +61,11 @@ pub struct WgcCaptureSession {
 impl WgcCaptureSession {
     /// Creates and starts an asynchronous Windows Graphics Capture session for the target HWND.
     pub fn new(hwnd: isize, capture_cursor: bool) -> Result<Self, String> {
+        Self::for_window(hwnd, capture_cursor)
+    }
+
+    /// Creates and starts an asynchronous Windows Graphics Capture session for the target HWND.
+    pub fn for_window(hwnd: isize, capture_cursor: bool) -> Result<Self, String> {
         let hwnd_val = HWND(hwnd as *mut _);
 
         // 1. Verify window exists and query rectangle
@@ -82,17 +87,39 @@ impl WgcCaptureSession {
         let item: GraphicsCaptureItem = unsafe { interop.CreateForWindow(hwnd_val) }
             .map_err(|e| format!("GraphicsCaptureItem::CreateForWindow failed: {}", e))?;
 
+        Self::start_session_internal(item, hwnd, capture_cursor)
+    }
+
+    /// Creates and starts an asynchronous Windows Graphics Capture session for the target HMONITOR.
+    pub fn for_monitor(hmonitor: isize, capture_cursor: bool) -> Result<Self, String> {
+        if hmonitor == 0 {
+            return Err("Invalid monitor handle".to_string());
+        }
+        let hmonitor_val = HMONITOR(hmonitor as *mut _);
+
+        let interop = windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()
+            .map_err(|e| format!("Failed to get IGraphicsCaptureItemInterop: {}", e))?;
+
+        let item: GraphicsCaptureItem = unsafe { interop.CreateForMonitor(hmonitor_val) }
+            .map_err(|e| format!("GraphicsCaptureItem::CreateForMonitor failed: {}", e))?;
+
+        Self::start_session_internal(item, hmonitor, capture_cursor)
+    }
+
+    fn start_session_internal(
+        item: GraphicsCaptureItem,
+        target_handle: isize,
+        capture_cursor: bool,
+    ) -> Result<Self, String> {
         let item_size = item
             .Size()
             .map_err(|e| format!("Failed to get item size: {}", e))?;
 
         tracing::info!(
-            "[WGC] Starting window capture for HWND 0x{:x}, item size: {}x{}, window rect: {}x{}",
-            hwnd,
+            "[WGC] Starting capture for handle 0x{:x}, item size: {}x{}",
+            target_handle,
             item_size.Width,
-            item_size.Height,
-            win_width,
-            win_height
+            item_size.Height
         );
 
         if item_size.Width <= 0 || item_size.Height <= 0 {
@@ -344,7 +371,7 @@ impl WgcCaptureSession {
             .map_err(|e| format!("StartCapture failed: {}", e))?;
 
         Ok(Self {
-            hwnd,
+            target_handle,
             session,
             frame_pool,
             latest_frame,
@@ -357,9 +384,14 @@ impl WgcCaptureSession {
         self.latest_frame.lock().clone()
     }
 
-    /// Returns the target HWND handle.
+    /// Returns the target HWND or HMONITOR handle.
     pub fn hwnd(&self) -> isize {
-        self.hwnd
+        self.target_handle
+    }
+
+    /// Returns the target handle identifier (HWND or HMONITOR).
+    pub fn target_handle(&self) -> isize {
+        self.target_handle
     }
 
     /// Stops and closes the capture session.
@@ -682,9 +714,9 @@ pub fn capture_display_raw(
         )
     };
 
+    // Ensure full alpha on DIB BGRA scanlines
     if lines > 0 {
         for chunk in out_rgba[..byte_count].chunks_exact_mut(4) {
-            chunk.swap(0, 2); // BGRA to RGBA
             chunk[3] = 255;
         }
     }

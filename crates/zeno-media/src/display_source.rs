@@ -5,7 +5,7 @@ use crate::source::{Source, SourceKind, VideoFrame};
 use crate::texture_buffer::DoubleBufferedTexture;
 use wgpu::{Device, Queue};
 use zeno_core::SourceId;
-use zeno_platform::{enumerate_displays, DisplayInfo};
+use zeno_platform::{enumerate_displays, DisplayInfo, WgcCaptureSession};
 
 /// Physical monitor display capture source.
 pub struct DisplayCaptureSource {
@@ -20,6 +20,8 @@ pub struct DisplayCaptureSource {
     active: bool,
     texture_buffer: DoubleBufferedTexture,
     raw_buffer: Vec<u8>,
+    wgc_session: Option<WgcCaptureSession>,
+    last_frame_seq: u64,
 }
 
 impl DisplayCaptureSource {
@@ -40,8 +42,10 @@ impl DisplayCaptureSource {
             target_fps: 60.0,
             last_capture_time: -1.0,
             active: false,
-            texture_buffer: DoubleBufferedTexture::new(),
+            texture_buffer: DoubleBufferedTexture::with_format(wgpu::TextureFormat::Bgra8UnormSrgb),
             raw_buffer: Vec::new(),
+            wgc_session: None,
+            last_frame_seq: 0,
         }
     }
 
@@ -97,7 +101,14 @@ impl DisplayCaptureSource {
 
     /// Sets whether the mouse cursor is rendered in the capture output.
     pub fn set_capture_cursor(&mut self, enabled: bool) {
-        self.capture_cursor = enabled;
+        if self.capture_cursor != enabled {
+            self.capture_cursor = enabled;
+            if self.active && self.hmonitor != 0 {
+                self.wgc_session =
+                    WgcCaptureSession::for_monitor(self.hmonitor, self.capture_cursor).ok();
+                self.last_frame_seq = 0;
+            }
+        }
     }
 
     /// Sets the target framerate.
@@ -142,7 +153,12 @@ impl Source for DisplayCaptureSource {
     }
 
     fn dimensions(&self) -> (u32, u32) {
-        (self.bounds.2, self.bounds.3)
+        let (tb_w, tb_h) = self.texture_buffer.dimensions();
+        if tb_w > 0 && tb_h > 0 {
+            (tb_w, tb_h)
+        } else {
+            (self.bounds.2, self.bounds.3)
+        }
     }
 
     fn properties(&self) -> crate::source::SourceProperties {
@@ -163,15 +179,35 @@ impl Source for DisplayCaptureSource {
             cursor_visible,
         } = properties
         {
+            let cursor_changed = self.capture_cursor != *cursor_visible;
             self.capture_cursor = *cursor_visible;
-            if self.monitor_index != *monitor_index {
+
+            let monitor_changed = self.monitor_index != *monitor_index;
+            if monitor_changed {
                 let displays = enumerate_displays();
                 if let Some(disp) = displays.get(*monitor_index) {
+                    let old_hmonitor = self.hmonitor;
                     self.monitor_index = *monitor_index;
                     self.hmonitor = disp.hmonitor;
                     self.bounds = disp.bounds;
                     self.name = disp.name.clone();
+
+                    if self.active
+                        && (old_hmonitor != self.hmonitor
+                            || cursor_changed
+                            || self.wgc_session.is_none())
+                    {
+                        self.wgc_session =
+                            WgcCaptureSession::for_monitor(self.hmonitor, self.capture_cursor).ok();
+                        self.last_frame_seq = 0;
+                        self.last_capture_time = -1.0;
+                    }
                 }
+            } else if cursor_changed && self.active && self.hmonitor != 0 {
+                self.wgc_session =
+                    WgcCaptureSession::for_monitor(self.hmonitor, self.capture_cursor).ok();
+                self.last_frame_seq = 0;
+                self.last_capture_time = -1.0;
             }
             Ok(())
         } else {
@@ -184,11 +220,38 @@ impl Source for DisplayCaptureSource {
     fn start(&mut self, _device: &Device, _queue: &Queue) -> Result<(), SourceError> {
         self.active = true;
         self.last_capture_time = -1.0;
+        self.last_frame_seq = 0;
+
+        // Initialize hardware-accelerated Windows Graphics Capture (WGC) for target HMONITOR
+        if self.hmonitor != 0 {
+            match WgcCaptureSession::for_monitor(self.hmonitor, self.capture_cursor) {
+                Ok(session) => {
+                    tracing::info!(
+                        "[DisplayCapture] Initialized hardware WGC capture for monitor index {} (HMONITOR 0x{:x})",
+                        self.monitor_index,
+                        self.hmonitor
+                    );
+                    self.wgc_session = Some(session);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "[DisplayCapture] WGC initialization failed for HMONITOR 0x{:x} (falling back to GDI): {}",
+                        self.hmonitor,
+                        e
+                    );
+                    self.wgc_session = None;
+                }
+            }
+        } else {
+            self.wgc_session = None;
+        }
+
         Ok(())
     }
 
     fn stop(&mut self) {
         self.active = false;
+        self.wgc_session = None;
     }
 
     fn get_frame(&mut self) -> Option<&VideoFrame> {
@@ -200,6 +263,42 @@ impl Source for DisplayCaptureSource {
             return;
         }
 
+        // 1. Check for hardware-accelerated WGC frame first
+        if let Some(ref session) = self.wgc_session {
+            if let Some(frame) = session.get_latest_frame() {
+                if frame.sequence != self.last_frame_seq && frame.width > 0 && frame.height > 0 {
+                    let t_upload_start = std::time::Instant::now();
+                    self.last_frame_seq = frame.sequence;
+
+                    let capture_latency_ms =
+                        (current_time - frame.timestamp_seconds).max(0.0) * 1000.0;
+
+                    self.texture_buffer.upload(
+                        device,
+                        queue,
+                        frame.width,
+                        frame.height,
+                        &frame.rgba,
+                        current_time,
+                    );
+                    self.last_capture_time = current_time;
+
+                    let upload_duration_ms = t_upload_start.elapsed().as_secs_f64() * 1000.0;
+                    tracing::trace!(
+                        seq = frame.sequence,
+                        capture_latency_ms,
+                        upload_duration_ms,
+                        "[DisplayCapture] Uploaded new WGC frame to texture"
+                    );
+                    return;
+                } else if frame.sequence == self.last_frame_seq {
+                    // Frame hasn't changed; avoid re-uploading identical buffer and burning GPU queue
+                    return;
+                }
+            }
+        }
+
+        // 2. Fallback to GDI capture if WGC is not active or hasn't produced frames
         let interval = 1.0 / (self.target_fps as f64);
         if self.last_capture_time >= 0.0 && (current_time - self.last_capture_time) < interval {
             return;
