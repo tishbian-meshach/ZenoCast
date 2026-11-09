@@ -11,7 +11,10 @@ pub mod credentials;
 pub mod display;
 pub mod window;
 
-pub use camera::{enumerate_camera_devices, CameraDeviceInfo, CameraFormat};
+pub use camera::{
+    enumerate_camera_devices, nv12_to_bgra, yuy2_to_bgra, CameraDeviceInfo, CameraFormat,
+    MfCameraSession,
+};
 pub use capture::{capture_display_raw, capture_window_raw, CapturedFrame, WgcCaptureSession};
 pub use credentials::PlatformCredentialManager;
 pub use display::{enumerate_displays, DisplayInfo};

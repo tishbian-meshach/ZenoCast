@@ -935,8 +935,12 @@ impl ZenocastApp {
                         Some(Box::new(win.with_id(source_id)))
                     }
                     SourceKind::CameraFeed => {
-                        let cam = CameraCaptureSource::from_name_or_id(&target).with_id(source_id);
-                        Some(Box::new(cam))
+                        let cam = if target.is_empty() {
+                            CameraCaptureSource::default_or_fallback()
+                        } else {
+                            CameraCaptureSource::from_name_or_id(&target)
+                        };
+                        Some(Box::new(cam.with_id(source_id)))
                     }
                     SourceKind::Text => Some(Box::new(
                         TextSource::new(&name, text_content, font_size, color_rgba, width, height)

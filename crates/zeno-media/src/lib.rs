@@ -86,7 +86,8 @@ mod tests {
         let mut source = CameraCaptureSource::default_or_fallback();
         assert_eq!(source.kind(), SourceKind::CameraCapture);
         assert!(!source.is_active());
-        assert_eq!(source.dimensions(), (1920, 1080));
+        let (expected_w, expected_h) = source.dimensions();
+        assert!(expected_w > 0 && expected_h > 0);
 
         source
             .start(&gpu.device, &gpu.queue)
@@ -96,14 +97,15 @@ mod tests {
         // Update frame at t = 0.0s
         source.update(&gpu.device, &gpu.queue, 0.0);
         let frame1 = source.get_frame().expect("Frame ready at t=0.0");
-        assert_eq!(frame1.width, 1920);
-        assert_eq!(frame1.height, 1080);
+        assert_eq!(frame1.width, expected_w);
+        assert_eq!(frame1.height, expected_h);
         assert_eq!(frame1.timestamp_seconds, 0.0);
 
-        // Update frame at t = 0.020s (exceeding the 1/60s = 0.01667s frame interval)
-        source.update(&gpu.device, &gpu.queue, 0.020);
-        let frame2 = source.get_frame().expect("Frame ready at t=0.020");
-        assert_eq!(frame2.timestamp_seconds, 0.020);
+        // Update frame exceeding the camera's format frame interval
+        let next_t = 1.0 / (source.format().frame_rate as f64) + 0.01;
+        source.update(&gpu.device, &gpu.queue, next_t);
+        let frame2 = source.get_frame().expect("Frame ready at next_t");
+        assert_eq!(frame2.timestamp_seconds, next_t);
 
         source.stop();
         assert!(!source.is_active());

@@ -647,10 +647,16 @@ impl SourceDialogState {
                                 ui.horizontal(|ui| {
                                     ui.colored_label(TEXT, "Camera Device:");
                                     let current = if self.camera_device.is_empty() {
-                                        cameras
-                                            .first()
-                                            .map(|c| c.name.clone())
-                                            .unwrap_or_else(|| "Virtual Broadcast Camera (Simulation)".into())
+                                        if let Some(first_cam) = cameras.first() {
+                                            self.camera_device = first_cam.name.clone();
+                                            if let Some(fmt) = first_cam.formats.first() {
+                                                self.width = fmt.width;
+                                                self.height = fmt.height;
+                                            }
+                                            first_cam.name.clone()
+                                        } else {
+                                            "Virtual Broadcast Camera (Simulation)".into()
+                                        }
                                     } else {
                                         self.camera_device.clone()
                                     };
