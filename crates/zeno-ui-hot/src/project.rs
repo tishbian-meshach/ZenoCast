@@ -38,10 +38,41 @@ pub enum SourceKind {
     Browser,
 }
 
+/// Scaling filter for source texture sampling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum ScaleFilter {
+    #[default]
+    Bilinear,
+    Point,
+    Bicubic,
+    Lanczos,
+}
+
+/// Blending method for color space math.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum BlendingMethod {
+    #[default]
+    Default,
+    SrgbOff,
+}
+
+/// Preview monitor scaling mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum PreviewScalingMode {
+    #[default]
+    ScaleToWindow,
+    Canvas1To1,
+    Output1To1,
+}
+
 /// Serialized source item in a scene.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceDefinition {
     pub id: String,
+    /// Reference to underlying backend source in SourceRegistry.
+    /// If None, defaults to `id` for backwards compatibility.
+    #[serde(default)]
+    pub source_id: Option<String>,
     pub name: String,
     pub kind: SourceKind,
     pub target: String,
@@ -55,6 +86,49 @@ pub struct SourceDefinition {
     pub height: f32,
     #[serde(default)]
     pub rotation: f32,
+    #[serde(default)]
+    pub blend_mode: zeno_engine::BlendMode,
+    #[serde(default)]
+    pub scale_filter: ScaleFilter,
+    #[serde(default)]
+    pub blend_method: BlendingMethod,
+    #[serde(default)]
+    pub show_transition: Option<String>,
+    #[serde(default)]
+    pub hide_transition: Option<String>,
+}
+
+impl SourceDefinition {
+    /// Returns the underlying SourceId string in SourceRegistry.
+    pub fn underlying_source_id(&self) -> &str {
+        self.source_id.as_deref().unwrap_or(&self.id)
+    }
+}
+
+impl Default for SourceDefinition {
+    fn default() -> Self {
+        Self {
+            id: String::new(),
+            source_id: None,
+            name: String::new(),
+            kind: SourceKind::DisplayCapture,
+            target: String::new(),
+            visible: true,
+            locked: false,
+            volume: 1.0,
+            muted: false,
+            x: 0.0,
+            y: 0.0,
+            width: 1920.0,
+            height: 1080.0,
+            rotation: 0.0,
+            blend_mode: zeno_engine::BlendMode::Normal,
+            scale_filter: ScaleFilter::Bilinear,
+            blend_method: BlendingMethod::Default,
+            show_transition: None,
+            hide_transition: None,
+        }
+    }
 }
 
 /// Serialized scene containing ordered source items.
@@ -99,6 +173,7 @@ impl Default for Project {
                     width: 1920.0,
                     height: 1080.0,
                     rotation: 0.0,
+                    ..Default::default()
                 },
                 SourceDefinition {
                     id: "src_cam".into(),
@@ -114,6 +189,7 @@ impl Default for Project {
                     width: 480.0,
                     height: 270.0,
                     rotation: 0.0,
+                    ..Default::default()
                 },
             ],
         };
@@ -135,6 +211,7 @@ impl Default for Project {
                 width: 1920.0,
                 height: 1080.0,
                 rotation: 0.0,
+                ..Default::default()
             }],
         };
 

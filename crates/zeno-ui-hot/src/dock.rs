@@ -12,14 +12,6 @@ use crate::theme::{
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RowOrderAction {
-    BringToFront,
-    BringForward,
-    SendBackward,
-    SendToBack,
-}
-
 /// Studio panel tabs available in Live production mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StudioTab {
@@ -125,6 +117,13 @@ pub struct StudioTabViewer<'a> {
     pub studio_mode: bool,
     pub trigger_toggle_studio_mode: &'a mut bool,
     pub trigger_switch_scene_direct: &'a mut Option<String>,
+    pub clipboard_source: &'a mut Option<crate::project::SourceDefinition>,
+    pub preview_locked: &'a mut bool,
+    pub preview_scaling_mode: &'a mut crate::project::PreviewScalingMode,
+    pub trigger_paste_reference: &'a mut bool,
+    pub trigger_paste_duplicate: &'a mut bool,
+    pub trigger_save_screenshot: &'a mut Option<(Option<String>, bool)>,
+    pub trigger_resize_output_to_source: &'a mut Option<String>,
 }
 
 impl<'a> TabViewer for StudioTabViewer<'a> {
@@ -337,9 +336,9 @@ impl<'a> StudioTabViewer<'a> {
                     .registry
                     .accelerator_text(crate::hotkey_registry::ActionId::Cut);
                 let cut_tooltip = if cut_acc.is_empty() {
-                    "Cut (Preview → Program immediately)".to_string()
+                    "Cut (Preview Ã¢â€ â€™ Program immediately)".to_string()
                 } else {
-                    format!("Cut (Preview → Program immediately) [{}]", cut_acc)
+                    format!("Cut (Preview Ã¢â€ â€™ Program immediately) [{}]", cut_acc)
                 };
                 if ui.button(" CUT ").on_hover_text(cut_tooltip).clicked() {
                     *self.trigger_cut = true;
@@ -418,6 +417,744 @@ impl<'a> StudioTabViewer<'a> {
         });
     }
 
+    /// Renders all OBS-parity context menu items for a specific source.
+    pub fn render_source_context_menu_items(
+        &mut self,
+        ui: &mut egui::Ui,
+        sel_id: &str,
+        canvas_w: f32,
+        canvas_h: f32,
+    ) {
+        let sources = self.project.preview_sources();
+        let src_idx_opt = sources.iter().position(|s| s.id == sel_id);
+        let src_def_opt = src_idx_opt.and_then(|i| sources.get(i).cloned());
+        let src_name = src_def_opt
+            .as_ref()
+            .map(|s| s.name.clone())
+            .unwrap_or_else(|| sel_id.to_string());
+        let is_locked = src_def_opt.as_ref().map(|s| s.locked).unwrap_or(false);
+        let sc_id_opt = self.project.preview_scene_id.clone();
+        let num_sources = sources.len();
+
+        ui.label(egui::RichText::new(&src_name).strong());
+        ui.separator();
+
+        // 1. Add Source
+        if ui.button("+ Add Source...").clicked() {
+            *self.trigger_open_add_source = true;
+            ui.close_menu();
+        }
+
+        // 2. Studio Mode: Enable / Lock Preview
+        if self.studio_mode {
+            ui.checkbox(self.preview_locked, "Lock Preview");
+        }
+
+        // 3. Preview Scaling Submenu
+        ui.menu_button("Preview Scaling", |ui| {
+            if ui
+                .selectable_value(
+                    self.preview_scaling_mode,
+                    crate::project::PreviewScalingMode::ScaleToWindow,
+                    "Scale to Window (Fit)",
+                )
+                .clicked()
+            {
+                ui.close_menu();
+            }
+            if ui
+                .selectable_value(
+                    self.preview_scaling_mode,
+                    crate::project::PreviewScalingMode::Canvas1To1,
+                    "Canvas (1:1)",
+                )
+                .clicked()
+            {
+                ui.close_menu();
+            }
+            if ui
+                .selectable_value(
+                    self.preview_scaling_mode,
+                    crate::project::PreviewScalingMode::Output1To1,
+                    "Output (1:1)",
+                )
+                .clicked()
+            {
+                ui.close_menu();
+            }
+        });
+
+        // 4. Projector
+        ui.menu_button("Projector", |ui| {
+            if ui.button("Open Windowed Projector (Source)").clicked() {
+                ui.close_menu();
+            }
+            if ui.button("Open Fullscreen Projector (Source)").clicked() {
+                ui.close_menu();
+            }
+        });
+
+        // 5. Screenshot
+        if ui.button("Save Source Screenshot (PNG)...").clicked() {
+            *self.trigger_save_screenshot = Some((Some(sel_id.to_string()), false));
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        // 6. Scale Filtering Submenu
+        ui.menu_button("Scale Filtering", |ui| {
+            let cur_filter = src_def_opt
+                .as_ref()
+                .map(|s| s.scale_filter)
+                .unwrap_or_default();
+            for &(filter, label) in &[
+                (
+                    crate::project::ScaleFilter::Point,
+                    "Point (Nearest Neighbor)",
+                ),
+                (crate::project::ScaleFilter::Bilinear, "Bilinear"),
+                (crate::project::ScaleFilter::Bicubic, "Bicubic"),
+                (crate::project::ScaleFilter::Lanczos, "Lanczos"),
+            ] {
+                let is_cur = cur_filter == filter;
+                if ui.selectable_label(is_cur, label).clicked() {
+                    *self.trigger_snapshot_undo = true;
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
+                            s.scale_filter = filter;
+                        }
+                    }
+                    ui.close_menu();
+                }
+            }
+        });
+
+        // 7. Blending Mode Submenu
+        ui.menu_button("Blending Mode", |ui| {
+            let cur_mode = src_def_opt
+                .as_ref()
+                .map(|s| s.blend_mode)
+                .unwrap_or_default();
+            for &(mode, label) in &[
+                (zeno_engine::BlendMode::Normal, "Normal"),
+                (zeno_engine::BlendMode::Add, "Add"),
+                (zeno_engine::BlendMode::Multiply, "Multiply"),
+                (zeno_engine::BlendMode::Screen, "Screen"),
+                (zeno_engine::BlendMode::Overlay, "Overlay"),
+                (zeno_engine::BlendMode::Darken, "Darken"),
+                (zeno_engine::BlendMode::Lighten, "Lighten"),
+                (zeno_engine::BlendMode::ColorDodge, "Color Dodge"),
+                (zeno_engine::BlendMode::ColorBurn, "Color Burn"),
+                (zeno_engine::BlendMode::Difference, "Difference"),
+            ] {
+                let is_cur = cur_mode == mode;
+                if ui.selectable_label(is_cur, label).clicked() {
+                    *self.trigger_snapshot_undo = true;
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
+                            s.blend_mode = mode;
+                        }
+                    }
+                    ui.close_menu();
+                }
+            }
+        });
+
+        // 8. Blending Method Submenu
+        ui.menu_button("Blending Method", |ui| {
+            let cur_method = src_def_opt
+                .as_ref()
+                .map(|s| s.blend_method)
+                .unwrap_or_default();
+            for &(method, label) in &[
+                (crate::project::BlendingMethod::Default, "Default"),
+                (crate::project::BlendingMethod::SrgbOff, "SRGB Off (Linear)"),
+            ] {
+                let is_cur = cur_method == method;
+                if ui.selectable_label(is_cur, label).clicked() {
+                    *self.trigger_snapshot_undo = true;
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
+                            s.blend_method = method;
+                        }
+                    }
+                    ui.close_menu();
+                }
+            }
+        });
+
+        // 9. Show / Hide Transitions
+        ui.menu_button("Show Transition", |ui| {
+            let cur_tr = src_def_opt.as_ref().and_then(|s| s.show_transition.clone());
+            for &(val, label) in &[
+                (None, "None"),
+                (Some("Cut"), "Cut"),
+                (Some("Fade"), "Fade"),
+                (Some("Slide"), "Slide"),
+            ] {
+                let is_cur = cur_tr.as_deref() == val;
+                if ui.selectable_label(is_cur, label).clicked() {
+                    *self.trigger_snapshot_undo = true;
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
+                            s.show_transition = val.map(String::from);
+                        }
+                    }
+                    ui.close_menu();
+                }
+            }
+        });
+        ui.menu_button("Hide Transition", |ui| {
+            let cur_tr = src_def_opt.as_ref().and_then(|s| s.hide_transition.clone());
+            for &(val, label) in &[
+                (None, "None"),
+                (Some("Cut"), "Cut"),
+                (Some("Fade"), "Fade"),
+                (Some("Slide"), "Slide"),
+            ] {
+                let is_cur = cur_tr.as_deref() == val;
+                if ui.selectable_label(is_cur, label).clicked() {
+                    *self.trigger_snapshot_undo = true;
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
+                            s.hide_transition = val.map(String::from);
+                        }
+                    }
+                    ui.close_menu();
+                }
+            }
+        });
+
+        ui.separator();
+
+        // 10. Resize output (source size)
+        if ui.button("Resize output (source size)").clicked() {
+            *self.trigger_resize_output_to_source = Some(sel_id.to_string());
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        // 11. Order Submenu
+        let can_front = src_idx_opt.is_some_and(|i| i + 1 < num_sources);
+        let can_back = src_idx_opt.is_some_and(|i| i > 0);
+        ui.menu_button("Order", |ui| {
+            if ui
+                .add_enabled(can_front, egui::Button::new("Move to Top\tCtrl+Shift+]"))
+                .clicked()
+            {
+                if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        *self.trigger_snapshot_undo = true;
+                        if idx < srcs.len() {
+                            let s = srcs.remove(idx);
+                            srcs.push(s);
+                            *self.trigger_sync_source_order = Some(sc_id);
+                        }
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui
+                .add_enabled(can_front, egui::Button::new("Move Up\tCtrl+]"))
+                .clicked()
+            {
+                if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        *self.trigger_snapshot_undo = true;
+                        if idx + 1 < srcs.len() {
+                            srcs.swap(idx, idx + 1);
+                            *self.trigger_sync_source_order = Some(sc_id);
+                        }
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui
+                .add_enabled(can_back, egui::Button::new("Move Down\tCtrl+["))
+                .clicked()
+            {
+                if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        *self.trigger_snapshot_undo = true;
+                        if idx > 0 && idx < srcs.len() {
+                            srcs.swap(idx, idx - 1);
+                            *self.trigger_sync_source_order = Some(sc_id);
+                        }
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui
+                .add_enabled(can_back, egui::Button::new("Move to Bottom\tCtrl+Shift+["))
+                .clicked()
+            {
+                if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
+                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                        *self.trigger_snapshot_undo = true;
+                        if idx < srcs.len() {
+                            let s = srcs.remove(idx);
+                            srcs.insert(0, s);
+                            *self.trigger_sync_source_order = Some(sc_id);
+                        }
+                    }
+                }
+                ui.close_menu();
+            }
+        });
+
+        // 12. Transform Submenu
+        ui.menu_button("Transform", |ui| {
+            if ui.button("Reset Transform\tCtrl+R").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.x = 0.0;
+                        s.y = 0.0;
+                        s.rotation = 0.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Rotate 90Ã‚Â° CW").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.rotation = (s.rotation + 90.0) % 360.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Rotate 90Ã‚Â° CCW").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.rotation = (s.rotation - 90.0 + 360.0) % 360.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Rotate 180Ã‚Â°").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.rotation = (s.rotation + 180.0) % 360.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Flip Horizontal").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.rotation = (360.0 - s.rotation) % 360.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Flip Vertical").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.rotation = (180.0 - s.rotation + 360.0) % 360.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Fit to Screen\tCtrl+F").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        let aspect = if s.height > 0.0 {
+                            s.width / s.height
+                        } else {
+                            16.0 / 9.0
+                        };
+                        if canvas_w / aspect <= canvas_h {
+                            s.width = canvas_w;
+                            s.height = canvas_w / aspect;
+                        } else {
+                            s.height = canvas_h;
+                            s.width = canvas_h * aspect;
+                        }
+                        s.x = (canvas_w - s.width) * 0.5;
+                        s.y = (canvas_h - s.height) * 0.5;
+                        s.rotation = 0.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Stretch to Screen").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.x = 0.0;
+                        s.y = 0.0;
+                        s.width = canvas_w;
+                        s.height = canvas_h;
+                        s.rotation = 0.0;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Center to Screen\tCtrl+D").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.x = (canvas_w - s.width) * 0.5;
+                        s.y = (canvas_h - s.height) * 0.5;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Center Horizontally").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.x = (canvas_w - s.width) * 0.5;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+            if ui.button("Center Vertically").clicked() {
+                *self.trigger_snapshot_undo = true;
+                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                        s.y = (canvas_h - s.height) * 0.5;
+                        *self.trigger_transform_source =
+                            Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
+                    }
+                }
+                ui.close_menu();
+            }
+        });
+
+        // 13. Group Selected Items
+        if ui.button("Group Selected Items\tCtrl+G").clicked() {
+            *self.trigger_snapshot_undo = true;
+            if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
+                    s.name = format!("[Group] {}", s.name);
+                }
+            }
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        // 14. Copy / Paste (Reference) / Paste (Duplicate)
+        if ui.button("Copy\tCtrl+C").clicked() {
+            if let Some(ref s) = src_def_opt {
+                *self.clipboard_source = Some(s.clone());
+            }
+            ui.close_menu();
+        }
+        let can_paste = self.clipboard_source.is_some();
+        if ui
+            .add_enabled(
+                can_paste,
+                egui::Button::new("Paste (Reference)\tCtrl+Shift+V"),
+            )
+            .clicked()
+        {
+            *self.trigger_paste_reference = true;
+            ui.close_menu();
+        }
+        if ui
+            .add_enabled(can_paste, egui::Button::new("Paste (Duplicate)\tCtrl+V"))
+            .clicked()
+        {
+            *self.trigger_paste_duplicate = true;
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        // 15. Toggle Visibility & Lock
+        let vis_text = if src_def_opt.as_ref().map(|s| s.visible).unwrap_or(true) {
+            "Hide Source"
+        } else {
+            "Show Source"
+        };
+        if ui.button(vis_text).clicked() {
+            *self.trigger_toggle_source_visibility = Some(sel_id.to_string());
+            ui.close_menu();
+        }
+        let lock_text = if is_locked {
+            "Unlock Source"
+        } else {
+            "Lock Source"
+        };
+        if ui.button(lock_text).clicked() {
+            *self.trigger_toggle_source_lock = Some(sel_id.to_string());
+            ui.close_menu();
+        }
+
+        // 16. Rename
+        if ui.button("Rename...").clicked() {
+            *self.rename_scene_id = Some(sel_id.to_string());
+            *self.rename_scene_buffer = src_name.clone();
+            ui.close_menu();
+        }
+
+        // 17. Remove Source (respects lock safety block)
+        let del_btn = if is_locked {
+            egui::Button::new("Remove Source (Locked)")
+        } else {
+            egui::Button::new("Remove Source\tDelete")
+        };
+        if ui.add(del_btn).clicked() {
+            if is_locked {
+                *self.source_warning_message =
+                    Some(("Unlock to delete".to_string(), std::time::Instant::now()));
+            } else {
+                *self.trigger_remove_source = Some(sel_id.to_string());
+            }
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        // 18. Properties
+        if ui.button("Properties...").clicked() {
+            *self.trigger_open_edit_source = Some(sel_id.to_string());
+            ui.close_menu();
+        }
+
+        ui.separator();
+        ui.label(egui::RichText::new("Source Hotkeys (OBS Parity)").strong());
+        let src_hk = self
+            .project
+            .settings
+            .hotkeys
+            .registry
+            .source_hotkeys
+            .get(sel_id)
+            .cloned()
+            .unwrap_or_default();
+
+        // Mute/Unmute
+        let mute_str = src_hk.mute.unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label("Mute/Unmute:");
+            let btn_text = if mute_str.is_empty() {
+                egui::RichText::new("None").color(TEXT_MUTED)
+            } else {
+                egui::RichText::new(&mute_str).strong()
+            };
+            if ui.button(btn_text).clicked() {
+                *self.rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourceMute(
+                    sel_id.to_string(),
+                ));
+                ui.close_menu();
+            }
+            if !mute_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+                self.project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .source_hotkeys
+                    .entry(sel_id.to_string())
+                    .or_default()
+                    .mute = None;
+            }
+        });
+
+        // Push-to-mute
+        let ptm_str = src_hk.push_to_mute.unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label("Push-to-Mute:");
+            let btn_text = if ptm_str.is_empty() {
+                egui::RichText::new("None").color(TEXT_MUTED)
+            } else {
+                egui::RichText::new(&ptm_str).strong()
+            };
+            if ui.button(btn_text).clicked() {
+                *self.rebinding_target = Some(
+                    crate::hotkey_registry::RebindTarget::SourcePushToMute(sel_id.to_string()),
+                );
+                ui.close_menu();
+            }
+            if !ptm_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+                self.project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .source_hotkeys
+                    .entry(sel_id.to_string())
+                    .or_default()
+                    .push_to_mute = None;
+            }
+        });
+
+        // Push-to-talk
+        let ptt_str = src_hk.push_to_talk.unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label("Push-to-Talk:");
+            let btn_text = if ptt_str.is_empty() {
+                egui::RichText::new("None").color(TEXT_MUTED)
+            } else {
+                egui::RichText::new(&ptt_str).strong()
+            };
+            if ui.button(btn_text).clicked() {
+                *self.rebinding_target = Some(
+                    crate::hotkey_registry::RebindTarget::SourcePushToTalk(sel_id.to_string()),
+                );
+                ui.close_menu();
+            }
+            if !ptt_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+                self.project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .source_hotkeys
+                    .entry(sel_id.to_string())
+                    .or_default()
+                    .push_to_talk = None;
+            }
+        });
+
+        // Show/Hide
+        let sh_str = src_hk.show_hide.unwrap_or_default();
+        ui.horizontal(|ui| {
+            ui.label("Show/Hide Toggle:");
+            let btn_text = if sh_str.is_empty() {
+                egui::RichText::new("None").color(TEXT_MUTED)
+            } else {
+                egui::RichText::new(&sh_str).strong()
+            };
+            if ui.button(btn_text).clicked() {
+                *self.rebinding_target = Some(
+                    crate::hotkey_registry::RebindTarget::SourceShowHide(sel_id.to_string()),
+                );
+                ui.close_menu();
+            }
+            if !sh_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+                self.project
+                    .settings
+                    .hotkeys
+                    .registry
+                    .source_hotkeys
+                    .entry(sel_id.to_string())
+                    .or_default()
+                    .show_hide = None;
+            }
+        });
+    }
+
+    /// Renders context menu on empty canvas or empty list space.
+    pub fn render_empty_context_menu_items(&mut self, ui: &mut egui::Ui) {
+        ui.label(egui::RichText::new("Canvas").strong());
+        ui.separator();
+
+        if ui.button("+ Add Source...").clicked() {
+            *self.trigger_open_add_source = true;
+            ui.close_menu();
+        }
+
+        let can_paste = self.clipboard_source.is_some();
+        if ui
+            .add_enabled(
+                can_paste,
+                egui::Button::new("Paste (Reference)\tCtrl+Shift+V"),
+            )
+            .clicked()
+        {
+            *self.trigger_paste_reference = true;
+            ui.close_menu();
+        }
+        if ui
+            .add_enabled(can_paste, egui::Button::new("Paste (Duplicate)\tCtrl+V"))
+            .clicked()
+        {
+            *self.trigger_paste_duplicate = true;
+            ui.close_menu();
+        }
+
+        if self.studio_mode {
+            ui.separator();
+            ui.checkbox(self.preview_locked, "Lock Preview");
+        }
+
+        ui.menu_button("Preview Scaling", |ui| {
+            if ui
+                .selectable_value(
+                    self.preview_scaling_mode,
+                    crate::project::PreviewScalingMode::ScaleToWindow,
+                    "Scale to Window (Fit)",
+                )
+                .clicked()
+            {
+                ui.close_menu();
+            }
+            if ui
+                .selectable_value(
+                    self.preview_scaling_mode,
+                    crate::project::PreviewScalingMode::Canvas1To1,
+                    "Canvas (1:1)",
+                )
+                .clicked()
+            {
+                ui.close_menu();
+            }
+            if ui
+                .selectable_value(
+                    self.preview_scaling_mode,
+                    crate::project::PreviewScalingMode::Output1To1,
+                    "Output (1:1)",
+                )
+                .clicked()
+            {
+                ui.close_menu();
+            }
+        });
+
+        ui.menu_button("Projector", |ui| {
+            if ui.button("Open Windowed Projector (Preview)").clicked() {
+                ui.close_menu();
+            }
+            if ui.button("Open Fullscreen Projector (Preview)").clicked() {
+                ui.close_menu();
+            }
+        });
+
+        if ui.button("Save Preview Screenshot (PNG)...").clicked() {
+            *self.trigger_save_screenshot = Some((None, true));
+            ui.close_menu();
+        }
+
+        ui.separator();
+
+        if ui
+            .add(egui::Button::new("Deselect All").shortcut_text("Escape"))
+            .clicked()
+        {
+            *self.selected_source_id = None;
+            ui.close_menu();
+        }
+    }
+
     /// Renders the on-canvas right-click context menu for sources and canvas area.
     fn render_canvas_context_menu(&mut self, canvas_response: &egui::Response) {
         let canvas_w = (self.project.settings.video.base_width as f32).max(1.0);
@@ -425,290 +1162,10 @@ impl<'a> StudioTabViewer<'a> {
 
         canvas_response.context_menu(|ui| {
             if let Some(ref sel_id) = *self.selected_source_id {
-                let sources = self.project.preview_sources();
-                let src_name = sources
-                    .iter()
-                    .find(|s| &s.id == sel_id)
-                    .map(|s| s.name.clone())
-                    .unwrap_or_else(|| sel_id.clone());
-
-                ui.label(egui::RichText::new(&src_name).strong());
-                ui.separator();
-
-                let num_sources = sources.len();
-                let cur_idx_opt = sources.iter().position(|s| &s.id == sel_id);
-                let can_front = cur_idx_opt.is_some_and(|i| i + 1 < num_sources);
-                let can_back = cur_idx_opt.is_some_and(|i| i > 0);
-                let sc_id_opt = self.project.preview_scene_id.clone();
-
-                ui.menu_button("Order", |ui| {
-                    if ui
-                        .add_enabled(can_front, egui::Button::new("Bring to Front\tCtrl+Shift+]"))
-                        .clicked()
-                    {
-                        if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
-                            if let Some(srcs) = self.project.preview_working_sources_mut() {
-                                *self.trigger_snapshot_undo = true;
-                                if idx < srcs.len() {
-                                    let s = srcs.remove(idx);
-                                    srcs.push(s);
-                                    *self.trigger_sync_source_order = Some(sc_id);
-                                }
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_front, egui::Button::new("Bring Forward\tCtrl+]"))
-                        .clicked()
-                    {
-                        if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
-                            if let Some(srcs) = self.project.preview_working_sources_mut() {
-                                *self.trigger_snapshot_undo = true;
-                                if idx + 1 < srcs.len() {
-                                    srcs.swap(idx, idx + 1);
-                                    *self.trigger_sync_source_order = Some(sc_id);
-                                }
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_back, egui::Button::new("Send Backward\tCtrl+["))
-                        .clicked()
-                    {
-                        if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
-                            if let Some(srcs) = self.project.preview_working_sources_mut() {
-                                *self.trigger_snapshot_undo = true;
-                                if idx > 0 && idx < srcs.len() {
-                                    srcs.swap(idx, idx - 1);
-                                    *self.trigger_sync_source_order = Some(sc_id);
-                                }
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_back, egui::Button::new("Send to Back\tCtrl+Shift+["))
-                        .clicked()
-                    {
-                        if let (Some(idx), Some(sc_id)) = (cur_idx_opt, sc_id_opt.clone()) {
-                            if let Some(srcs) = self.project.preview_working_sources_mut() {
-                                *self.trigger_snapshot_undo = true;
-                                if idx < srcs.len() {
-                                    let s = srcs.remove(idx);
-                                    srcs.insert(0, s);
-                                    *self.trigger_sync_source_order = Some(sc_id);
-                                }
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                });
-
-                ui.menu_button("Transform", |ui| {
-                    if ui.button("Reset Transform\tCtrl+R").clicked() {
-                        *self.trigger_snapshot_undo = true;
-                        if let Some(srcs) = self.project.preview_working_sources_mut() {
-                            if let Some(s) = srcs.iter_mut().find(|s| &s.id == sel_id) {
-                                s.x = 0.0;
-                                s.y = 0.0;
-                                s.rotation = 0.0;
-                                *self.trigger_transform_source =
-                                    Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("Center on Screen\tCtrl+D").clicked() {
-                        *self.trigger_snapshot_undo = true;
-                        if let Some(srcs) = self.project.preview_working_sources_mut() {
-                            if let Some(s) = srcs.iter_mut().find(|s| &s.id == sel_id) {
-                                s.x = (canvas_w - s.width) * 0.5;
-                                s.y = (canvas_h - s.height) * 0.5;
-                                *self.trigger_transform_source =
-                                    Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("Fit to Screen\tCtrl+F").clicked() {
-                        *self.trigger_snapshot_undo = true;
-                        if let Some(srcs) = self.project.preview_working_sources_mut() {
-                            if let Some(s) = srcs.iter_mut().find(|s| &s.id == sel_id) {
-                                s.x = 0.0;
-                                s.y = 0.0;
-                                s.width = canvas_w;
-                                s.height = canvas_h;
-                                s.rotation = 0.0;
-                                *self.trigger_transform_source =
-                                    Some((s.id.clone(), s.x, s.y, s.width, s.height, s.rotation));
-                            }
-                        }
-                        ui.close_menu();
-                    }
-                });
-
-                ui.separator();
-
-                let prop_acc = self
-                    .project
-                    .settings
-                    .hotkeys
-                    .registry
-                    .accelerator_text(crate::hotkey_registry::ActionId::OpenSourceProperties);
-                let prop_btn = if prop_acc.is_empty() {
-                    egui::Button::new("Properties...")
-                } else {
-                    egui::Button::new("Properties...").shortcut_text(&prop_acc)
-                };
-                if ui.add(prop_btn).clicked() {
-                    *self.trigger_open_edit_source = Some(sel_id.clone());
-                    ui.close_menu();
-                }
-
-                let vis_acc = self
-                    .project
-                    .settings
-                    .hotkeys
-                    .registry
-                    .accelerator_text(crate::hotkey_registry::ActionId::ToggleSourceVisibility);
-                let vis_btn = if vis_acc.is_empty() {
-                    egui::Button::new("Toggle Visibility")
-                } else {
-                    egui::Button::new("Toggle Visibility").shortcut_text(&vis_acc)
-                };
-                if ui.add(vis_btn).clicked() {
-                    *self.trigger_toggle_source_visibility = Some(sel_id.clone());
-                    ui.close_menu();
-                }
-
-                let lock_acc = self
-                    .project
-                    .settings
-                    .hotkeys
-                    .registry
-                    .accelerator_text(crate::hotkey_registry::ActionId::ToggleSourceLock);
-                let lock_btn = if lock_acc.is_empty() {
-                    egui::Button::new("Toggle Lock")
-                } else {
-                    egui::Button::new("Toggle Lock").shortcut_text(&lock_acc)
-                };
-                if ui.add(lock_btn).clicked() {
-                    *self.trigger_toggle_source_lock = Some(sel_id.clone());
-                    ui.close_menu();
-                }
-
-                let del_acc = self
-                    .project
-                    .settings
-                    .hotkeys
-                    .registry
-                    .accelerator_text(crate::hotkey_registry::ActionId::DeleteSelected);
-                let is_locked = self
-                    .project
-                    .preview_sources()
-                    .iter()
-                    .find(|s| &s.id == sel_id)
-                    .map(|s| s.locked)
-                    .unwrap_or(false);
-                let del_btn = if is_locked {
-                    egui::Button::new("Remove Source (Locked)")
-                } else if del_acc.is_empty() {
-                    egui::Button::new("Remove Source")
-                } else {
-                    egui::Button::new("Remove Source").shortcut_text(&del_acc)
-                };
-                if ui.add(del_btn).clicked() {
-                    if is_locked {
-                        *self.source_warning_message =
-                            Some(("Unlock to delete".to_string(), std::time::Instant::now()));
-                    } else {
-                        *self.trigger_remove_source = Some(sel_id.clone());
-                    }
-                    ui.close_menu();
-                }
-
-                ui.separator();
-                ui.label(egui::RichText::new("Source Hotkeys (OBS Parity)").strong());
-                let src_hk = self
-                    .project
-                    .settings
-                    .hotkeys
-                    .registry
-                    .source_hotkeys
-                    .get(sel_id)
-                    .cloned()
-                    .unwrap_or_default();
-
-                // Mute/Unmute
-                let mute_str = src_hk.mute.unwrap_or_default();
-                ui.horizontal(|ui| {
-                    ui.label("Mute/Unmute:");
-                    let btn_text = if mute_str.is_empty() {
-                        egui::RichText::new("None").color(TEXT_MUTED)
-                    } else {
-                        egui::RichText::new(&mute_str).color(TEXT)
-                    };
-                    if ui.button(btn_text).clicked() {
-                        *self.rebinding_target = Some(
-                            crate::hotkey_registry::RebindTarget::SourceMute(sel_id.clone()),
-                        );
-                        ui.close_menu();
-                    }
-                    if !mute_str.is_empty() && ui.small_button("✖").clicked() {
-                        self.project
-                            .settings
-                            .hotkeys
-                            .registry
-                            .source_hotkeys
-                            .entry(sel_id.clone())
-                            .or_default()
-                            .mute = None;
-                    }
-                });
-
-                // Show/Hide
-                let sh_str = src_hk.show_hide.unwrap_or_default();
-                ui.horizontal(|ui| {
-                    ui.label("Show/Hide:");
-                    let btn_text = if sh_str.is_empty() {
-                        egui::RichText::new("None").color(TEXT_MUTED)
-                    } else {
-                        egui::RichText::new(&sh_str).color(TEXT)
-                    };
-                    if ui.button(btn_text).clicked() {
-                        *self.rebinding_target = Some(
-                            crate::hotkey_registry::RebindTarget::SourceShowHide(sel_id.clone()),
-                        );
-                        ui.close_menu();
-                    }
-                    if !sh_str.is_empty() && ui.small_button("✖").clicked() {
-                        self.project
-                            .settings
-                            .hotkeys
-                            .registry
-                            .source_hotkeys
-                            .entry(sel_id.clone())
-                            .or_default()
-                            .show_hide = None;
-                    }
-                });
+                let sel = sel_id.clone();
+                self.render_source_context_menu_items(ui, &sel, canvas_w, canvas_h);
             } else {
-                // Empty Canvas Context Menu
-                ui.label(egui::RichText::new("Canvas").strong());
-                ui.separator();
-                if ui.button("+ Add Source...").clicked() {
-                    *self.trigger_open_add_source = true;
-                    ui.close_menu();
-                }
-                if ui
-                    .add(egui::Button::new("Deselect All").shortcut_text("Escape"))
-                    .clicked()
-                {
-                    *self.selected_source_id = None;
-                    ui.close_menu();
-                }
+                self.render_empty_context_menu_items(ui);
             }
         });
     }
@@ -960,7 +1417,7 @@ impl<'a> StudioTabViewer<'a> {
             if self.project.scenes.is_empty() {
                 ui.vertical_centered(|ui| {
                     ui.add_space(24.0);
-                    ui.colored_label(TEXT_MUTED, "No scenes yet — click + Add Scene");
+                    ui.colored_label(TEXT_MUTED, "No scenes yet Ã¢â‚¬â€ click + Add Scene");
                 });
             } else {
                 for scene in &self.project.scenes {
@@ -1038,7 +1495,8 @@ impl<'a> StudioTabViewer<'a> {
                                     ));
                                 ui.close_menu();
                             }
-                            if !switch_to_str.is_empty() && ui.small_button("✖").clicked() {
+                            if !switch_to_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked()
+                            {
                                 clear_scene_switch_to = Some(scene_id.clone());
                             }
                         });
@@ -1059,7 +1517,8 @@ impl<'a> StudioTabViewer<'a> {
                                     ));
                                 ui.close_menu();
                             }
-                            if !switch_back_str.is_empty() && ui.small_button("✖").clicked() {
+                            if !switch_back_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked()
+                            {
                                 clear_scene_switch_back = Some(scene_id.clone());
                             }
                         });
@@ -1261,7 +1720,7 @@ impl<'a> StudioTabViewer<'a> {
                 ui.add_space(24.0);
                 ui.colored_label(
                     TEXT_MUTED,
-                    "No sources yet — click + Add Source or drag media here",
+                    "No sources yet Ã¢â‚¬â€ click + Add Source or drag media here",
                 );
             });
         }
@@ -1270,7 +1729,6 @@ impl<'a> StudioTabViewer<'a> {
         let dragging_source_id: Option<String> = ui.ctx().data(|d| d.get_temp(dnd_source_id_key));
 
         let mut row_rects: Vec<egui::Rect> = Vec::with_capacity(num_sources);
-        let mut row_actions: Vec<(usize, RowOrderAction)> = Vec::new();
 
         let scroll_output = egui::ScrollArea::vertical().show(ui, |ui| {
             let list_width = ui.available_width();
@@ -1391,238 +1849,11 @@ impl<'a> StudioTabViewer<'a> {
                     *self.trigger_open_edit_source = Some(src_id.clone());
                 }
 
-                // Context menu
+                // Context menu with full OBS parity
                 row_sense.context_menu(|ui| {
-                    let cur_idx_opt = sources.iter().position(|s| s.id == src_id);
-                    let can_front = cur_idx_opt.is_some_and(|i| i + 1 < num_sources);
-                    let can_back = cur_idx_opt.is_some_and(|i| i > 0);
-
-                    if ui
-                        .add_enabled(can_front, egui::Button::new("Bring to Front\tCtrl+Shift+]"))
-                        .clicked()
-                    {
-                        if let Some(i) = cur_idx_opt {
-                            row_actions.push((i, RowOrderAction::BringToFront));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_front, egui::Button::new("Bring Forward\tCtrl+]"))
-                        .clicked()
-                    {
-                        if let Some(i) = cur_idx_opt {
-                            row_actions.push((i, RowOrderAction::BringForward));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_back, egui::Button::new("Send Backward\tCtrl+["))
-                        .clicked()
-                    {
-                        if let Some(i) = cur_idx_opt {
-                            row_actions.push((i, RowOrderAction::SendBackward));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(can_back, egui::Button::new("Send to Back\tCtrl+Shift+["))
-                        .clicked()
-                    {
-                        if let Some(i) = cur_idx_opt {
-                            row_actions.push((i, RowOrderAction::SendToBack));
-                        }
-                        ui.close_menu();
-                    }
-                    ui.separator();
-                    let prop_acc =
-                        self.project.settings.hotkeys.registry.accelerator_text(
-                            crate::hotkey_registry::ActionId::OpenSourceProperties,
-                        );
-                    let prop_btn = if prop_acc.is_empty() {
-                        egui::Button::new("Properties")
-                    } else {
-                        egui::Button::new("Properties").shortcut_text(&prop_acc)
-                    };
-                    if ui.add(prop_btn).clicked() {
-                        *self.trigger_open_edit_source = Some(src_id.clone());
-                        ui.close_menu();
-                    }
-
-                    let vis_acc =
-                        self.project.settings.hotkeys.registry.accelerator_text(
-                            crate::hotkey_registry::ActionId::ToggleSourceVisibility,
-                        );
-                    let vis_btn = if vis_acc.is_empty() {
-                        egui::Button::new("Toggle Visibility")
-                    } else {
-                        egui::Button::new("Toggle Visibility").shortcut_text(&vis_acc)
-                    };
-                    if ui.add(vis_btn).clicked() {
-                        *self.trigger_toggle_source_visibility = Some(src_id.clone());
-                        ui.close_menu();
-                    }
-
-                    let lock_acc = self
-                        .project
-                        .settings
-                        .hotkeys
-                        .registry
-                        .accelerator_text(crate::hotkey_registry::ActionId::ToggleSourceLock);
-                    let lock_btn = if lock_acc.is_empty() {
-                        egui::Button::new("Toggle Lock")
-                    } else {
-                        egui::Button::new("Toggle Lock").shortcut_text(&lock_acc)
-                    };
-                    if ui.add(lock_btn).clicked() {
-                        *self.trigger_toggle_source_lock = Some(src_id.clone());
-                        ui.close_menu();
-                    }
-
-                    let del_acc = self
-                        .project
-                        .settings
-                        .hotkeys
-                        .registry
-                        .accelerator_text(crate::hotkey_registry::ActionId::DeleteSelected);
-                    let del_btn = if src_locked {
-                        egui::Button::new("Remove Source (Locked)")
-                    } else if del_acc.is_empty() {
-                        egui::Button::new("Remove Source")
-                    } else {
-                        egui::Button::new("Remove Source").shortcut_text(&del_acc)
-                    };
-                    if ui.add(del_btn).clicked() {
-                        if src_locked {
-                            *self.source_warning_message =
-                                Some(("Unlock to delete".to_string(), std::time::Instant::now()));
-                        } else {
-                            *self.trigger_remove_source = Some(src_id.clone());
-                        }
-                        ui.close_menu();
-                    }
-
-                    ui.separator();
-                    ui.label(egui::RichText::new("Source Hotkeys (OBS Parity)").strong());
-                    let src_hk = self
-                        .project
-                        .settings
-                        .hotkeys
-                        .registry
-                        .source_hotkeys
-                        .get(&src_id)
-                        .cloned()
-                        .unwrap_or_default();
-
-                    // Mute/Unmute
-                    let mute_str = src_hk.mute.unwrap_or_default();
-                    ui.horizontal(|ui| {
-                        ui.label("Mute/Unmute:");
-                        let btn_text = if mute_str.is_empty() {
-                            egui::RichText::new("None").color(TEXT_MUTED)
-                        } else {
-                            egui::RichText::new(&mute_str).color(TEXT)
-                        };
-                        if ui.button(btn_text).clicked() {
-                            *self.rebinding_target = Some(
-                                crate::hotkey_registry::RebindTarget::SourceMute(src_id.clone()),
-                            );
-                            ui.close_menu();
-                        }
-                        if !mute_str.is_empty() && ui.small_button("✖").clicked() {
-                            self.project
-                                .settings
-                                .hotkeys
-                                .registry
-                                .source_hotkeys
-                                .entry(src_id.clone())
-                                .or_default()
-                                .mute = None;
-                        }
-                    });
-
-                    // Push-to-Mute
-                    let ptm_str = src_hk.push_to_mute.unwrap_or_default();
-                    ui.horizontal(|ui| {
-                        ui.label("Push-to-Mute:");
-                        let btn_text = if ptm_str.is_empty() {
-                            egui::RichText::new("None").color(TEXT_MUTED)
-                        } else {
-                            egui::RichText::new(&ptm_str).color(TEXT)
-                        };
-                        if ui.button(btn_text).clicked() {
-                            *self.rebinding_target =
-                                Some(crate::hotkey_registry::RebindTarget::SourcePushToMute(
-                                    src_id.clone(),
-                                ));
-                            ui.close_menu();
-                        }
-                        if !ptm_str.is_empty() && ui.small_button("✖").clicked() {
-                            self.project
-                                .settings
-                                .hotkeys
-                                .registry
-                                .source_hotkeys
-                                .entry(src_id.clone())
-                                .or_default()
-                                .push_to_mute = None;
-                        }
-                    });
-
-                    // Push-to-Talk
-                    let ptt_str = src_hk.push_to_talk.unwrap_or_default();
-                    ui.horizontal(|ui| {
-                        ui.label("Push-to-Talk:");
-                        let btn_text = if ptt_str.is_empty() {
-                            egui::RichText::new("None").color(TEXT_MUTED)
-                        } else {
-                            egui::RichText::new(&ptt_str).color(TEXT)
-                        };
-                        if ui.button(btn_text).clicked() {
-                            *self.rebinding_target =
-                                Some(crate::hotkey_registry::RebindTarget::SourcePushToTalk(
-                                    src_id.clone(),
-                                ));
-                            ui.close_menu();
-                        }
-                        if !ptt_str.is_empty() && ui.small_button("✖").clicked() {
-                            self.project
-                                .settings
-                                .hotkeys
-                                .registry
-                                .source_hotkeys
-                                .entry(src_id.clone())
-                                .or_default()
-                                .push_to_talk = None;
-                        }
-                    });
-
-                    // Show/Hide
-                    let sh_str = src_hk.show_hide.unwrap_or_default();
-                    ui.horizontal(|ui| {
-                        ui.label("Show/Hide:");
-                        let btn_text = if sh_str.is_empty() {
-                            egui::RichText::new("None").color(TEXT_MUTED)
-                        } else {
-                            egui::RichText::new(&sh_str).color(TEXT)
-                        };
-                        if ui.button(btn_text).clicked() {
-                            *self.rebinding_target =
-                                Some(crate::hotkey_registry::RebindTarget::SourceShowHide(
-                                    src_id.clone(),
-                                ));
-                            ui.close_menu();
-                        }
-                        if !sh_str.is_empty() && ui.small_button("✖").clicked() {
-                            self.project
-                                .settings
-                                .hotkeys
-                                .registry
-                                .source_hotkeys
-                                .entry(src_id.clone())
-                                .or_default()
-                                .show_hide = None;
-                        }
-                    });
+                    let canvas_w = (self.project.settings.video.base_width as f32).max(1.0);
+                    let canvas_h = (self.project.settings.video.base_height as f32).max(1.0);
+                    self.render_source_context_menu_items(ui, &src_id, canvas_w, canvas_h);
                 });
             }
         });
@@ -1706,40 +1937,6 @@ impl<'a> StudioTabViewer<'a> {
             }
         }
 
-        // Apply context menu row actions
-        if let Some(srcs) = self.project.preview_working_sources_mut() {
-            for (i, action) in row_actions {
-                match action {
-                    RowOrderAction::BringToFront => {
-                        if i < srcs.len() {
-                            let s = srcs.remove(i);
-                            srcs.push(s);
-                            *self.trigger_sync_source_order = Some(sc_id.clone());
-                        }
-                    }
-                    RowOrderAction::BringForward => {
-                        if i + 1 < srcs.len() {
-                            srcs.swap(i, i + 1);
-                            *self.trigger_sync_source_order = Some(sc_id.clone());
-                        }
-                    }
-                    RowOrderAction::SendBackward => {
-                        if i > 0 && i < srcs.len() {
-                            srcs.swap(i, i - 1);
-                            *self.trigger_sync_source_order = Some(sc_id.clone());
-                        }
-                    }
-                    RowOrderAction::SendToBack => {
-                        if i < srcs.len() {
-                            let s = srcs.remove(i);
-                            srcs.insert(0, s);
-                            *self.trigger_sync_source_order = Some(sc_id.clone());
-                        }
-                    }
-                }
-            }
-        }
-
         if let Some(ref sel_id) = *self.selected_source_id {
             if let Some(srcs) = self.project.preview_working_sources_mut() {
                 if let Some(src) = srcs.iter_mut().find(|s| &s.id == sel_id) {
@@ -1813,6 +2010,24 @@ impl<'a> StudioTabViewer<'a> {
         }
     }
 
+    /// Converts linear volume [0.0..] to dBFS decibels.
+    pub fn volume_to_db(vol: f32) -> f32 {
+        if vol <= 0.0001 {
+            -60.0
+        } else {
+            20.0 * vol.log10()
+        }
+    }
+
+    /// Converts dBFS decibels [-60.0..] to linear volume.
+    pub fn db_to_volume(db: f32) -> f32 {
+        if db <= -59.9 {
+            0.0
+        } else {
+            10.0_f32.powf(db / 20.0)
+        }
+    }
+
     /// Renders 6-track audio mixer sliders, mute buttons, and live meters.
     fn ui_audio_mixer(&mut self, ui: &mut Ui) {
         const CHANNEL_WIDTH: f32 = 75.0;
@@ -1829,19 +2044,22 @@ impl<'a> StudioTabViewer<'a> {
                         ui.add(name_label).on_hover_text("Master Output");
                         ui.add_space(4.0);
 
+                        let mut master_db = Self::volume_to_db(*self.master_volume);
                         let vol_resp = ui.add(
-                            egui::Slider::new(self.master_volume, 0.0..=1.5)
+                            egui::Slider::new(&mut master_db, -60.0..=6.0)
                                 .vertical()
                                 .show_value(false),
                         );
                         if vol_resp.changed() {
+                            *self.master_volume = Self::db_to_volume(master_db);
                             *self.trigger_audio_change = true;
                         }
 
-                        let master_db_text = if *self.master_volume <= 0.0 || *self.master_muted {
+                        let master_db_text = if *self.master_volume <= 0.0001 || *self.master_muted
+                        {
                             "-inf dB".to_string()
                         } else {
-                            format!("{:.1} dB", 20.0 * (*self.master_volume).log10())
+                            format!("{:.1} dB", Self::volume_to_db(*self.master_volume))
                         };
                         ui.label(master_db_text);
 
@@ -1880,19 +2098,21 @@ impl<'a> StudioTabViewer<'a> {
                                     ui.add(name_label).on_hover_text(&src.name);
                                     ui.add_space(4.0);
 
+                                    let mut src_db = Self::volume_to_db(src.volume);
                                     let src_vol_resp = ui.add(
-                                        egui::Slider::new(&mut src.volume, 0.0..=1.5)
+                                        egui::Slider::new(&mut src_db, -60.0..=6.0)
                                             .vertical()
                                             .show_value(false),
                                     );
                                     if src_vol_resp.changed() {
+                                        src.volume = Self::db_to_volume(src_db);
                                         *self.trigger_audio_change = true;
                                     }
 
-                                    let db_text = if src.volume <= 0.0 || src.muted {
+                                    let db_text = if src.volume <= 0.0001 || src.muted {
                                         "-inf dB".to_string()
                                     } else {
-                                        format!("{:.1} dB", 20.0 * src.volume.log10())
+                                        format!("{:.1} dB", Self::volume_to_db(src.volume))
                                     };
                                     ui.label(db_text);
 
@@ -2064,5 +2284,23 @@ impl<'a> StudioTabViewer<'a> {
                 });
             });
         });
+    }
+}
+
+/// Converts linear volume [0.0..] to dBFS decibels.
+pub fn volume_to_db(vol: f32) -> f32 {
+    if vol <= 0.0001 {
+        -60.0
+    } else {
+        20.0 * vol.log10()
+    }
+}
+
+/// Converts dBFS decibels [-60.0..] to linear volume.
+pub fn db_to_volume(db: f32) -> f32 {
+    if db <= -59.9 {
+        0.0
+    } else {
+        10.0_f32.powf(db / 20.0)
     }
 }

@@ -866,3 +866,124 @@ This log records major architectural and implementation choices, defaults select
   - Granular change detection: edits inside `crates/zeno-ui-hot` trigger incremental compilation of `zeno-ui-hot` only; `hot-lib-reloader` swaps the `.dll` in-place, and a discreet `"UI reloaded HH:MM:SS"` indicator appears in the debug status bar.
   - Any modifications to engine or static crates (`zeno-engine`, `zeno-compositor`, etc.) display a diagnostic notice (`[dev-watch] Engine/static crate code changed, hot reload unavailable, relaunching...`) and trigger a full rebuild and relaunch.
 
+---
+
+## 2026-11-09: REA Analysis Pass & Specification Scope Additions
+
+Following static binary and structure analysis of locally installed OBS Studio 32.2.2 via REA (Reverse Engineering Anything) MCP tooling under strict clean-room guidelines, the following architectural additions and spec refinements are formally incorporated into the Zenocast specification.
+
+### 1. Specification Scope Addition: The Filters Subsystem (Milestone M5c / M6b)
+
+The v1.0 specification omitted a formal filter pipeline. Based on REA analysis of reference filter chain execution and parameter serialization, the Filters subsystem is now scoped as a foundational capability across video composition and audio DSP.
+
+- **Data Model (`zeno-core` & `zeno-engine`)**:
+  ```rust
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+  pub enum FilterCategory {
+      AudioDsp,
+      VideoEffect,
+  }
+
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+  pub enum FilterKind {
+      // Audio DSP Filters
+      Gain { db: f32 },
+      NoiseGate { open_threshold_db: f32, close_threshold_db: f32, attack_ms: f32, hold_ms: f32, release_ms: f32 },
+      Compressor { ratio: f32, threshold_db: f32, attack_ms: f32, release_ms: f32, output_gain_db: f32 },
+      Equalizer3Band { low_db: f32, mid_db: f32, high_db: f32 },
+      // Video Effect Filters
+      ColorCorrection { brightness: f32, contrast: f32, saturation: f32, hue_shift_deg: f32, opacity: f32 },
+      ColorGradingLut { lut_asset_id: Option<String>, strength: f32 },
+      ChromaKey { key_color: [f32; 3], similarity: f32, smoothness: f32, spill_reduction: f32 },
+      LumaKey { luma_max: f32, luma_min: f32, smoothness: f32 },
+      Mask { mask_asset_id: Option<String>, invert: bool, mode: MaskMode },
+      CropPad { left: u32, top: u32, right: u32, bottom: u32 },
+      Sharpness { sharpness: f32 },
+  }
+
+  #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+  pub struct FilterDefinition {
+      pub id: String,
+      pub name: String,
+      pub enabled: bool,
+      pub category: FilterCategory,
+      pub kind: FilterKind,
+  }
+  ```
+  - Added `filters: Vec<FilterDefinition>` to `SourceDefinition`.
+  - Filter chain ordering is preserved in list order: audio filters execute in sequence within the `zeno-audio` mixer worker, while video effect filters execute sequentially via offscreen GPU texture ping-ponging before passing to the compositor scene bus.
+  - **Copy / Paste Filters**: Serializes the `filters` vector of the source and deserializes fresh instances onto the target source, preserving all user parameter adjustments.
+
+- **UI Panel Description (`FilterModal` in `zeno-ui`)**:
+  - Accessible via right-click on any source row -> **Filters**, or via the **Filters** button in the Sources toolbar.
+  - Modal layout features two partitioned sections:
+    1. **Audio/Video Filters** (DSP conditioners).
+    2. **Effect Filters** (Color, Chroma, LUT, Crop).
+  - Left panel: Filter stack list with icon toggle buttons (`Eye` / `EyeOff` for active state), `+ Add`, `- Remove`, and `▲` / `▼` reordering buttons.
+  - Right panel: Dynamic properties inspector rendering typed `DragValue` and slider widgets for the currently selected filter in the stack.
+  - Bottom toolbar: `Close` button and `Copy Filters` / `Paste Filters` buttons.
+
+- **Milestone Entry: M5c Video Effect Filters & M6b Audio DSP Filters**:
+  - `M5c Video Filters`: Implement ping-pong offscreen texture renderer in `zeno-compositor`, WGSL shaders for Color Correction, Chroma Key, Crop/Pad, and LUT grading, verifying 60fps throughput at 1080p.
+  - `M6b Audio Filters`: Implement real-time software audio DSP blocks (Gain, Noise Gate, Compressor, 3-Band EQ) inside the `zeno-audio` mix pipeline.
+
+---
+
+### 2. Compositor Blending Modes & Blending Method (Refinement to Section 6 & 7)
+
+- **Fixed-Function Hardware Blend Table**:
+  Instead of expensive multi-pass fragment shaders, `zeno-compositor` maps all 7 blend modes directly to `wgpu::BlendState` descriptors using premultiplied alpha Over compositing math discovered during REA binary analysis:
+  - `Normal`: `src: One`, `dst: OneMinusSrcAlpha`, `op: Add`.
+  - `Additive`: `src: One`, `dst: One`, `op: Add`.
+  - `Subtract`: `src: One`, `dst: One`, `op: ReverseSubtract` ($Dst - Src$).
+  - `Screen`: `src: One`, `dst: OneMinusSrcColor`, `op: Add` ($Src + Dst - Src \cdot Dst$).
+  - `Multiply`: `src: DstColor`, `dst: OneMinusSrcAlpha`, `op: Add` ($Src \cdot Dst + Dst \cdot (1 - A_{src})$).
+  - `Lighten`: `src: One`, `dst: One`, `op: Max`.
+  - `Darken`: `src: One`, `dst: One`, `op: Min`.
+- **Blending Method**:
+  Added `blending_method` to `SceneItemDefinition`:
+  - `Linear` (default): Blends physically correctly in linear sRGB color space.
+  - `SrgbOff` (legacy mode): Emulates legacy OBS alpha compositing by decompressing input to non-linear sRGB, modulating alpha, and converting back to linear space.
+
+---
+
+### 3. Scene/Source Reference vs. Duplicate Semantics (Refinement to v1.1 & v1.4)
+
+- **Proxy SceneItem Architecture**:
+  - `SourceRegistry` owns the backing `Arc<RwLock<dyn Source>>` instances.
+  - `SceneItemDefinition` acts as a lightweight spatial proxy referencing `source_id: SourceId`.
+  - **Paste Reference**: Generates a new `SceneItemDefinition` pointing to the existing `source_id`. Both instances share media decode state, settings, audio gain, and filters, but maintain independent canvas position, scale, rotation, crop, visibility, lock, and blend mode.
+  - **Paste Duplicate**: Generates a deep clone of the source in `SourceRegistry` with a new `SourceId` and creates a `SceneItemDefinition` referencing the new clone.
+
+---
+
+### 4. Hotkey System Coupling & Storage Scoping (Refinement to Shortcuts Spec)
+
+- **Hotkey Pair Abstraction**:
+  - State toggles (Mute/Unmute, Show/Hide, Push-to-Talk) are coupled as `HotkeyPair`s in `zeno-control`, enabling synchronized UI indicators and mutual exclusion.
+- **Storage Scoping**:
+  - Per-item hotkeys (per-scene and per-source bindings) serialize into `.arxproj` container projects.
+  - Application-level shortcuts serialize into user `preferences.json`.
+- **Conflict Handling**:
+  - Duplicate hotkey bindings are permitted to execute concurrently, with visual non-blocking amber badges displayed in the Settings UI.
+
+---
+
+### 5. Studio Mode Transition & Scene Duplication (Refinement to v1.3 Section 2)
+
+- **Duplication & Swap Policies**:
+  - Validated that Zenocast's `preview_working_sources` and `preview_working_scene` provide full parity with OBS's `SceneDuplicationMode`.
+  - Added `swap_scenes_on_transition: bool` to `UserPreferences` and `ProjectSettings`. When true, CUT/AUTO swaps Preview and Program; when false, Program updates while Preview retains its active working scene.
+  - T-Bar dragging scrubs smoothly across the transition pipeline, committing upon reaching $\ge 0.95$ and cancelling on return to $0.0$.
+
+---
+
+### 6. Video Output Texture Staging Pipeline (Refinement to v1.0 Section 10)
+
+- **Double-Buffered Staging Surfaces**:
+  - To prevent GPU pipeline stalls during CPU software encoding (x264), `zeno-compositor` implements a double-buffered staging texture ring buffer. The GPU renders to texture $N$ while asynchronously mapping texture $N-1$ for NV12 conversion.
+  - For hardware encoders (NVENC/AMF/QSV), Zenocast leverages direct GPU surface sharing, bypassing system RAM transfers.
+- **Timestamp Invariance**:
+  - Frame timestamps are generated strictly from the compositor's monotonic master presentation clock, ensuring deterministic A/V lip-sync across RTMP and SRT outputs.
+
+

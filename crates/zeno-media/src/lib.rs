@@ -30,7 +30,7 @@ pub use display_source::DisplayCaptureSource;
 pub use error::SourceError;
 pub use image_source::ImageSource;
 pub use ndi::NdiSource;
-pub use registry::SourceRegistry;
+pub use registry::{create_source_from_properties, SourceRegistry};
 pub use source::{Source, SourceKind, SourceProperties, VideoFrame};
 pub use spout::SpoutSource;
 pub use text_source::TextSource;

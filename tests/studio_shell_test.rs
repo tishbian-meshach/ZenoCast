@@ -51,6 +51,7 @@ fn test_m8_user_builds_scenes_and_adds_sources_via_ui() {
         width: 1920.0,
         height: 1080.0,
         rotation: 0.0,
+        ..Default::default()
     });
 
     // 3. User adds Camera Feed source
@@ -68,6 +69,7 @@ fn test_m8_user_builds_scenes_and_adds_sources_via_ui() {
         width: 480.0,
         height: 270.0,
         rotation: 0.0,
+        ..Default::default()
     });
 
     // 4. User adds ARX Motion Graphics Overlay
@@ -85,6 +87,7 @@ fn test_m8_user_builds_scenes_and_adds_sources_via_ui() {
         width: 1920.0,
         height: 1080.0,
         rotation: 0.0,
+        ..Default::default()
     });
 
     project.scenes.push(new_scene);
@@ -178,6 +181,9 @@ fn test_m8_preview_to_program_transition_switching() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     assert_eq!(
@@ -280,6 +286,9 @@ fn test_m8_one_click_live_streaming_and_recording() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     assert!(!app.is_streaming);
@@ -467,6 +476,9 @@ fn test_section_2_1_wire_source_creation_to_real_backend_and_live_preview() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // Step 1: User adds a real backend source through the source dialog flow
@@ -698,6 +710,9 @@ fn test_section_2_2_all_ten_source_types_and_resource_lifecycle() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // The 10 broadcast source types required by Section 2.2
@@ -975,6 +990,9 @@ fn test_section_3_ui_interactivity_audit_wiring() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // 1. AppMode Switching
@@ -1258,6 +1276,9 @@ fn test_source_reordering_live_studio() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // Start with 2 default sources: src_display (idx 0), src_cam (idx 1)
@@ -1588,6 +1609,9 @@ fn test_section_4_eye_lock_visibility_and_safety_controls() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // 1. Initial State: src_display is visible and not locked
@@ -1756,6 +1780,9 @@ fn test_section_1_normal_mode_default_and_studio_mode_toggle() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // 1. Initial State: Normal Mode by default
@@ -1876,6 +1903,9 @@ fn test_section_2_split_pane_layout_and_panel_resizing() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     let ctx = egui::Context::default();

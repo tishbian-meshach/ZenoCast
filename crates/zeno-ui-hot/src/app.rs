@@ -187,6 +187,12 @@ pub struct ZenocastApp {
     pub push_to_mute_active: HashMap<String, bool>,
     /// Sources actively held in push-to-talk state
     pub push_to_talk_active: HashMap<String, bool>,
+    /// Internal clipboard for copied scene source item (OBS Copy / Paste Reference / Paste Duplicate)
+    pub clipboard_source: Option<SourceDefinition>,
+    /// Whether Preview monitor interaction is locked (OBS Lock Preview)
+    pub preview_locked: bool,
+    /// Preview scaling mode (OBS Preview Scaling)
+    pub preview_scaling_mode: crate::project::PreviewScalingMode,
 }
 
 impl ZenocastApp {
@@ -347,6 +353,9 @@ impl ZenocastApp {
             wgpu_queue,
             source_warning_message: None,
             studio_mode,
+            clipboard_source: None,
+            preview_locked: false,
+            preview_scaling_mode: crate::project::PreviewScalingMode::ScaleToWindow,
             app_mode: AppMode::LiveStudio,
             overlay_editor: OverlayEditor::default(),
             timeline_mode: TimelineMode::DopeSheet,
@@ -453,6 +462,9 @@ impl ZenocastApp {
             wgpu_queue: None,
             source_warning_message: None,
             studio_mode: false,
+            clipboard_source: None,
+            preview_locked: false,
+            preview_scaling_mode: crate::project::PreviewScalingMode::ScaleToWindow,
             app_mode: AppMode::LiveStudio,
             overlay_editor: OverlayEditor::default(),
             timeline_mode: TimelineMode::DopeSheet,
@@ -972,6 +984,7 @@ impl ZenocastApp {
                     width: width as f32,
                     height: height as f32,
                     rotation: 0.0,
+                    ..Default::default()
                 };
                 if let Some(scene) = self
                     .project
@@ -1022,14 +1035,26 @@ impl ZenocastApp {
                 volume,
                 muted,
             } => {
-                let src_id = string_to_source_id(&id);
-                let Some(ref sel_scene_id) = self.selected_scene_id else {
+                let src_def_opt = self
+                    .project
+                    .scenes
+                    .iter()
+                    .flat_map(|sc| &sc.sources)
+                    .find(|s| s.id == id);
+                let underlying_str = src_def_opt
+                    .map(|s| s.underlying_source_id().to_string())
+                    .unwrap_or_else(|| id.clone());
+                let src_id = string_to_source_id(&underlying_str);
+                if self.selected_scene_id.is_none() {
                     return;
-                };
+                }
 
-                // Update Project / Preview working sources
+                // Update Project / Preview working sources across all referencing instances
                 if let Some(sources) = self.project.preview_working_sources_mut() {
-                    if let Some(src) = sources.iter_mut().find(|s| s.id == id) {
+                    for src in sources
+                        .iter_mut()
+                        .filter(|s| s.id == id || s.underlying_source_id() == underlying_str)
+                    {
                         src.name = name.clone();
                         src.target = target.clone();
                         src.width = width as f32;
@@ -1038,15 +1063,14 @@ impl ZenocastApp {
                         src.muted = muted;
                     }
                 }
-                if let Some(scene) = self
-                    .project
-                    .scenes
-                    .iter_mut()
-                    .find(|s| &s.id == sel_scene_id)
-                {
-                    if let Some(src) = scene.sources.iter_mut().find(|s| s.id == id) {
+                for scene in self.project.scenes.iter_mut() {
+                    for src in scene
+                        .sources
+                        .iter_mut()
+                        .filter(|s| s.id == id || s.underlying_source_id() == underlying_str)
+                    {
                         src.name = name.clone();
-                        src.target = target;
+                        src.target = target.clone();
                         src.width = width as f32;
                         src.height = height as f32;
                         src.volume = volume;
@@ -1143,7 +1167,24 @@ impl ZenocastApp {
             return;
         }
 
+        let underlying_str = self
+            .project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == source_id_str)
+            .map(|s| s.underlying_source_id().to_string())
+            .unwrap_or_else(|| {
+                self.project
+                    .scenes
+                    .iter()
+                    .flat_map(|sc| &sc.sources)
+                    .find(|s| s.id == source_id_str)
+                    .map(|s| s.underlying_source_id().to_string())
+                    .unwrap_or_else(|| source_id_str.to_string())
+            });
+        let underlying_id = string_to_source_id(&underlying_str);
         let src_id = string_to_source_id(source_id_str);
+
         if let Some(ref sel_scene_id) = self.selected_scene_id {
             if let Some(scene) = self
                 .project
@@ -1157,11 +1198,11 @@ impl ZenocastApp {
                 let sc_id = string_to_scene_id(sel_scene_id);
                 if let Some(scene) = comp.get_scene_mut(sc_id) {
                     scene.items.retain(|item| {
-                        if let SceneItemSource::Source(id) = item.source {
-                            id != src_id
-                        } else {
-                            true
-                        }
+                        item.id != src_id.0
+                            && match item.source {
+                                SceneItemSource::Source(id) => id != src_id,
+                                _ => true,
+                            }
                     });
                 }
             }
@@ -1170,9 +1211,17 @@ impl ZenocastApp {
             sources.retain(|s| s.id != source_id_str);
         }
         if let Some(ref mut comp) = *self.compositor.write() {
-            comp.remove_preview_item_by_source(src_id);
+            if let Some(scene) = comp.preview_working_scene_mut() {
+                scene.items.retain(|item| {
+                    item.id != src_id.0
+                        && match item.source {
+                            SceneItemSource::Source(id) => id != src_id,
+                            _ => true,
+                        }
+                });
+            }
         }
-        self.source_registry.write().unregister(src_id);
+        self.source_registry.write().release_ref(underlying_id);
         if self.selected_source_id.as_deref() == Some(source_id_str) {
             self.selected_source_id = None;
         }
@@ -1306,6 +1355,171 @@ impl ZenocastApp {
                 height / canvas_h,
                 rotation,
             );
+        }
+    }
+
+    /// Copies the currently selected source to the internal clipboard.
+    pub fn copy_selected_source(&mut self) {
+        if let Some(ref sel_id) = self.selected_source_id {
+            if let Some(src) = self
+                .project
+                .preview_sources()
+                .iter()
+                .find(|s| &s.id == sel_id)
+            {
+                self.clipboard_source = Some(src.clone());
+            }
+        }
+    }
+
+    /// Pastes the clipboard source as a reference (linked instance).
+    pub fn paste_source_reference(&mut self) {
+        let Some(clip) = self.clipboard_source.clone() else {
+            return;
+        };
+        self.studio_snapshot_for_undo();
+        let mut new_item = clip.clone();
+        new_item.id = uuid::Uuid::new_v4().to_string();
+        new_item.x += 20.0;
+        new_item.y += 20.0;
+        let underlying_str = clip.underlying_source_id().to_string();
+        new_item.source_id = Some(underlying_str.clone());
+        let new_id = new_item.id.clone();
+        let underlying_source_id = string_to_source_id(&underlying_str);
+
+        // Increment reference count in SourceRegistry
+        self.source_registry.write().add_ref(underlying_source_id);
+
+        if let Some(srcs) = self.project.preview_working_sources_mut() {
+            srcs.push(new_item.clone());
+        }
+        if let Some(ref sel_scene_id) = self.selected_scene_id {
+            if let Some(scene) = self
+                .project
+                .scenes
+                .iter_mut()
+                .find(|s| &s.id == sel_scene_id)
+            {
+                scene.sources.push(new_item.clone());
+            }
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let canvas_w = comp.width() as f32;
+            let canvas_h = comp.height() as f32;
+            let mut item = SceneItem::new(
+                new_item.name.clone(),
+                SceneItemSource::Source(underlying_source_id),
+            )
+            .with_position(
+                new_item.x + new_item.width / 2.0,
+                new_item.y + new_item.height / 2.0,
+            )
+            .with_scale(new_item.width / canvas_w, new_item.height / canvas_h);
+            item.id = string_to_source_id(&new_id).0;
+            item.visible = new_item.visible;
+            item.locked = new_item.locked;
+            comp.add_preview_item(item);
+        }
+        self.selected_source_id = Some(new_id);
+    }
+
+    /// Pastes the clipboard source as a duplicate (independent clone).
+    pub fn paste_source_duplicate(&mut self) {
+        let Some(clip) = self.clipboard_source.clone() else {
+            return;
+        };
+        self.studio_snapshot_for_undo();
+        let mut new_item = clip.clone();
+        new_item.id = uuid::Uuid::new_v4().to_string();
+        new_item.name = format!("{} (Copy)", new_item.name);
+        new_item.x += 20.0;
+        new_item.y += 20.0;
+        let new_id = new_item.id.clone();
+        let orig_underlying_str = clip.underlying_source_id();
+        let orig_underlying_id = string_to_source_id(orig_underlying_str);
+
+        let dev = self.wgpu_device.as_deref();
+        let q = self.wgpu_queue.as_deref();
+        let new_src_id = self.source_registry.write().duplicate_source(
+            orig_underlying_id,
+            Some(new_item.name.clone()),
+            dev,
+            q,
+        );
+        let new_underlying_id = new_src_id.unwrap_or_else(|| string_to_source_id(&new_id));
+        new_item.source_id = Some(new_underlying_id.to_string());
+
+        if let Some(srcs) = self.project.preview_working_sources_mut() {
+            srcs.push(new_item.clone());
+        }
+        if let Some(ref sel_scene_id) = self.selected_scene_id {
+            if let Some(scene) = self
+                .project
+                .scenes
+                .iter_mut()
+                .find(|s| &s.id == sel_scene_id)
+            {
+                scene.sources.push(new_item.clone());
+            }
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            let canvas_w = comp.width() as f32;
+            let canvas_h = comp.height() as f32;
+            let mut item = SceneItem::new(
+                new_item.name.clone(),
+                SceneItemSource::Source(new_underlying_id),
+            )
+            .with_position(
+                new_item.x + new_item.width / 2.0,
+                new_item.y + new_item.height / 2.0,
+            )
+            .with_scale(new_item.width / canvas_w, new_item.height / canvas_h);
+            item.id = string_to_source_id(&new_id).0;
+            item.visible = new_item.visible;
+            item.locked = new_item.locked;
+            comp.add_preview_item(item);
+        }
+        self.selected_source_id = Some(new_id);
+    }
+
+    /// Saves a screenshot of the preview monitor or a specific source to disk.
+    pub fn save_screenshot(&mut self, source_id: Option<&str>, _is_preview: bool) {
+        let name_prefix = source_id.unwrap_or("Screenshot");
+        let default_name = format!("{}.png", name_prefix);
+        if let Some(path) = rfd::FileDialog::new()
+            .set_file_name(&default_name)
+            .add_filter("PNG Image", &["png"])
+            .save_file()
+        {
+            self.source_warning_message = Some((
+                format!("Saved screenshot to {}", path.display()),
+                std::time::Instant::now(),
+            ));
+            tracing::info!("Screenshot saved to {:?}", path);
+        }
+    }
+
+    /// Resizes base and output canvas to match the selected source's native resolution.
+    pub fn resize_output_to_source(&mut self, source_id: &str) {
+        if let Some(src) = self
+            .project
+            .preview_sources()
+            .iter()
+            .find(|s| s.id == source_id)
+        {
+            let w = src.width.round() as u32;
+            let h = src.height.round() as u32;
+            if w > 0 && h > 0 {
+                self.studio_snapshot_for_undo();
+                self.project.settings.video.base_width = w;
+                self.project.settings.video.base_height = h;
+                self.project.settings.video.output_width = w;
+                self.project.settings.video.output_height = h;
+                self.source_warning_message = Some((
+                    format!("Output resized to {}x{}", w, h),
+                    std::time::Instant::now(),
+                ));
+            }
         }
     }
 
@@ -2827,6 +3041,10 @@ impl ZenocastApp {
         let mut trigger_audio_change = false;
         let mut trigger_toggle_studio_mode = false;
         let mut trigger_switch_scene_direct: Option<String> = None;
+        let mut trigger_paste_reference = false;
+        let mut trigger_paste_duplicate = false;
+        let mut trigger_save_screenshot: Option<(Option<String>, bool)> = None;
+        let mut trigger_resize_output_to_source: Option<String> = None;
 
         let stats = self.output_manager.stats();
         let fps = if stats.encode_time_ms > 0.0 {
@@ -2889,6 +3107,13 @@ impl ZenocastApp {
                     studio_mode: self.studio_mode,
                     trigger_toggle_studio_mode: &mut trigger_toggle_studio_mode,
                     trigger_switch_scene_direct: &mut trigger_switch_scene_direct,
+                    clipboard_source: &mut self.clipboard_source,
+                    preview_locked: &mut self.preview_locked,
+                    preview_scaling_mode: &mut self.preview_scaling_mode,
+                    trigger_paste_reference: &mut trigger_paste_reference,
+                    trigger_paste_duplicate: &mut trigger_paste_duplicate,
+                    trigger_save_screenshot: &mut trigger_save_screenshot,
+                    trigger_resize_output_to_source: &mut trigger_resize_output_to_source,
                 };
 
                 if ui.available_width() >= 100.0 && ui.available_height() >= 100.0 {
@@ -3099,6 +3324,18 @@ impl ZenocastApp {
         }
         if let Some(ref sc_id) = trigger_sync_source_order {
             self.sync_scene_sources_order_to_compositor(sc_id);
+        }
+        if trigger_paste_reference {
+            self.paste_source_reference();
+        }
+        if trigger_paste_duplicate {
+            self.paste_source_duplicate();
+        }
+        if let Some((src_id_opt, is_prev)) = trigger_save_screenshot {
+            self.save_screenshot(src_id_opt.as_deref(), is_prev);
+        }
+        if let Some(ref s_id) = trigger_resize_output_to_source {
+            self.resize_output_to_source(s_id);
         }
         if trigger_audio_change {
             if let Some(ref act_id) = self.project.active_scene_id {

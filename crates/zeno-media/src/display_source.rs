@@ -80,6 +80,21 @@ impl DisplayCaptureSource {
         Ok(Self::with_monitor(display, idx))
     }
 
+    /// Automatically select the primary monitor, first available, or fallback to dummy 1920x1080 display.
+    pub fn default_or_fallback() -> Self {
+        Self::primary()
+            .or_else(|_| Self::from_index(0))
+            .unwrap_or_else(|_| {
+                let dummy = DisplayInfo {
+                    name: "Primary Display (Fallback)".to_string(),
+                    bounds: (0, 0, 1920, 1080),
+                    is_primary: true,
+                    hmonitor: 0,
+                };
+                Self::with_monitor(&dummy, 0)
+            })
+    }
+
     /// Sets whether the mouse cursor is rendered in the capture output.
     pub fn set_capture_cursor(&mut self, enabled: bool) {
         self.capture_cursor = enabled;

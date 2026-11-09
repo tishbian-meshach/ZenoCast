@@ -95,6 +95,7 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
                     width: 1920.0,
                     height: 1080.0,
                     rotation: 0.0,
+                    ..Default::default()
                 }],
             },
             SceneDefinition {
@@ -114,6 +115,7 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
                     width: 1920.0,
                     height: 1080.0,
                     rotation: 0.0,
+                    ..Default::default()
                 }],
             },
         ],
@@ -195,6 +197,9 @@ pub fn test_scene_switching_drives_real_engine_program_output() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // 1. Initial State Check
@@ -372,6 +377,7 @@ pub fn test_independent_preview_and_program_buses() {
                 width: 1920.0,
                 height: 1080.0,
                 rotation: 0.0,
+                ..Default::default()
             }],
         }],
         active_scene_id: Some(scene_str.clone()),
@@ -452,6 +458,9 @@ pub fn test_independent_preview_and_program_buses() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // 1. Move and scale source in Preview only
@@ -581,6 +590,7 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
                 width: 1920.0,
                 height: 1080.0,
                 rotation: 0.0,
+                ..Default::default()
             }],
         }],
         active_scene_id: Some(scene_str.clone()),
@@ -661,6 +671,9 @@ pub fn test_source_changes_refresh_preview_immediately_no_scene_switch() {
         push_to_mute_active: std::collections::HashMap::new(),
         push_to_talk_active: std::collections::HashMap::new(),
         studio_mode: false,
+        clipboard_source: None,
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
     };
 
     // Initial state: 1 source
