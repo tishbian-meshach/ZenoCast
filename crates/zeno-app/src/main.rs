@@ -127,12 +127,23 @@ impl eframe::App for ZenocastHostApp {
     }
 }
 
+/// Loads the application icon for window decoration and taskbar.
+pub fn load_app_icon() -> std::sync::Arc<egui::IconData> {
+    const RAW_RGBA: &[u8] = include_bytes!("../../../assets/icon_256.rgba");
+    std::sync::Arc::new(egui::IconData {
+        rgba: RAW_RGBA.to_vec(),
+        width: 256,
+        height: 256,
+    })
+}
+
 fn main() -> eframe::Result<()> {
     install_panic_hook();
 
     let native_options = NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title("Zenocast Studio")
+            .with_icon(load_app_icon())
             .with_inner_size(vec2(1440.0, 900.0))
             .with_min_inner_size(vec2(960.0, 600.0)),
         wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
@@ -202,5 +213,13 @@ mod tests {
         let _ = ctx.run(input, |ctx| {
             hot_ui::draw_frame(ctx, &mut app);
         });
+    }
+
+    #[test]
+    fn test_app_icon_data_validity() {
+        let icon = load_app_icon();
+        assert_eq!(icon.width, 256);
+        assert_eq!(icon.height, 256);
+        assert_eq!(icon.rgba.len(), 256 * 256 * 4);
     }
 }
