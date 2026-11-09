@@ -70,6 +70,9 @@ egui_dock = { version = "0.16", default-features = false }
 rfd = "0.15"
 hot-lib-reloader = "0.8.2"
 global-hotkey = "0.9.0"
+icondata = { version = "0.7.0", default-features = false, features = ["lucide"] }
+resvg = "0.37"
+usvg = "0.37"
 
 [workspace.lints.rust]
 unsafe_code = "allow" # Restricted per rule 4 to zeno-platform and FFI glue

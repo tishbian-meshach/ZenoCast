@@ -1,19 +1,23 @@
-//! Lucide line-icon rendering engine and compact icon-button widgets for Zenocast.
+//! Lucide icon rendering engine powered by prebuilt `icondata` and vector rasterization for Zenocast.
 //!
-//! Visual specifications (Build Spec v1.0 Section 12 & v1.4 Section 3):
-//! - Line-icon set (Lucide style): strictly 16px icon box with 1.5px stroke width.
-//! - Flat broadcast styling: zero emojis, flat neutral surfaces, strict theme tokens.
-//! - Hover tooltips for all routine actions. Text retained on high-stakes actions.
-//! - DPI-aware: direct vector rendering preserves razor-sharp edges at 100%, 150%, and 200% scaling.
+//! Visual specifications (Build Spec v1.0 Section 12, v1.4 Section 3, v1.8 Section 1):
+//! - Authentic Lucide icon set provided via the `icondata` crate.
+//! - High-resolution vector rasterization via `resvg`/`tiny_skia` into GPU textures.
+//! - Dynamic GPU tinting using theme tokens (`TEXT`, `TEXT_MUTED`, `ACCENT`, etc.) with zero per-frame CPU overhead.
+//! - Consistent 26x26 button hit targets with strictly 16x16 icon boxes.
+//! - Fully DPI-aware: razor-sharp at 100%, 150%, and 200% scaling.
 
 use egui::{
     pos2, vec2, CornerRadius, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
 };
+use usvg::TreeParsing;
 
-use crate::theme::{ACCENT, BORDER_WIDTH, CORNER_RADIUS, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED};
+use crate::theme::{
+    ACCENT, BORDER_WIDTH, CORNER_RADIUS, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED, TRANSPARENT,
+};
 
 /// Enumeration of vector Lucide icons used across broadcast toolbars.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IconKind {
     Plus,
     Minus,
@@ -42,298 +46,102 @@ pub enum IconKind {
     X,
 }
 
-/// Paints a 16px Lucide vector line icon inside `rect` using `stroke`.
-pub fn paint_lucide_icon(painter: &Painter, icon: IconKind, rect: Rect, stroke: Stroke) {
-    let min = rect.min;
-    let w = rect.width();
-    let h = rect.height();
-
-    let pt = |x: f32, y: f32| pos2(min.x + x * w, min.y + y * h);
-
-    match icon {
-        IconKind::Plus => {
-            painter.line_segment([pt(0.50, 0.16), pt(0.50, 0.84)], stroke);
-            painter.line_segment([pt(0.16, 0.50), pt(0.84, 0.50)], stroke);
-        }
-        IconKind::Minus => {
-            painter.line_segment([pt(0.16, 0.50), pt(0.84, 0.50)], stroke);
-        }
-        IconKind::Trash => {
-            // Top lid line and handle
-            painter.line_segment([pt(0.14, 0.26), pt(0.86, 0.26)], stroke);
-            painter.line_segment([pt(0.36, 0.26), pt(0.36, 0.15)], stroke);
-            painter.line_segment([pt(0.36, 0.15), pt(0.64, 0.15)], stroke);
-            painter.line_segment([pt(0.64, 0.15), pt(0.64, 0.26)], stroke);
-            // Can body outline
-            painter.line_segment([pt(0.24, 0.26), pt(0.28, 0.86)], stroke);
-            painter.line_segment([pt(0.28, 0.86), pt(0.72, 0.86)], stroke);
-            painter.line_segment([pt(0.72, 0.86), pt(0.76, 0.26)], stroke);
-            // Vertical slats
-            painter.line_segment([pt(0.42, 0.40), pt(0.42, 0.72)], stroke);
-            painter.line_segment([pt(0.58, 0.40), pt(0.58, 0.72)], stroke);
-        }
-        IconKind::Pencil => {
-            // Angled pencil body and tip
-            let p1 = pt(0.74, 0.16);
-            let p2 = pt(0.84, 0.26);
-            let p3 = pt(0.36, 0.74);
-            let p4 = pt(0.18, 0.82);
-            let p5 = pt(0.26, 0.64);
-            painter.line_segment([p1, p2], stroke);
-            painter.line_segment([p2, p3], stroke);
-            painter.line_segment([p3, p4], stroke);
-            painter.line_segment([p4, p5], stroke);
-            painter.line_segment([p5, p1], stroke);
-            painter.line_segment([pt(0.62, 0.28), pt(0.72, 0.38)], stroke);
-        }
-        IconKind::ChevronUp => {
-            painter.line_segment([pt(0.22, 0.62), pt(0.50, 0.36)], stroke);
-            painter.line_segment([pt(0.50, 0.36), pt(0.78, 0.62)], stroke);
-        }
-        IconKind::ChevronDown => {
-            painter.line_segment([pt(0.22, 0.38), pt(0.50, 0.64)], stroke);
-            painter.line_segment([pt(0.50, 0.64), pt(0.78, 0.38)], stroke);
-        }
-        IconKind::Eye => {
-            // Upper eye curve: smooth 5-point spline
-            let top_spline = [
-                pt(0.08, 0.50),
-                pt(0.26, 0.30),
-                pt(0.50, 0.22),
-                pt(0.74, 0.30),
-                pt(0.92, 0.50),
-            ];
-            for i in 0..4 {
-                painter.line_segment([top_spline[i], top_spline[i + 1]], stroke);
-            }
-            // Lower eye curve: smooth 5-point spline
-            let btm_spline = [
-                pt(0.08, 0.50),
-                pt(0.26, 0.70),
-                pt(0.50, 0.78),
-                pt(0.74, 0.70),
-                pt(0.92, 0.50),
-            ];
-            for i in 0..4 {
-                painter.line_segment([btm_spline[i], btm_spline[i + 1]], stroke);
-            }
-            // Central pupil circle
-            painter.circle_stroke(pt(0.50, 0.50), w * 0.16, stroke);
-        }
-        IconKind::EyeOff => {
-            // Upper and lower partial eye curves
-            let top_spline = [
-                pt(0.08, 0.50),
-                pt(0.26, 0.30),
-                pt(0.50, 0.22),
-                pt(0.74, 0.30),
-                pt(0.92, 0.50),
-            ];
-            for i in 0..4 {
-                painter.line_segment([top_spline[i], top_spline[i + 1]], stroke);
-            }
-            let btm_spline = [
-                pt(0.08, 0.50),
-                pt(0.26, 0.70),
-                pt(0.50, 0.78),
-                pt(0.74, 0.70),
-                pt(0.92, 0.50),
-            ];
-            for i in 0..4 {
-                painter.line_segment([btm_spline[i], btm_spline[i + 1]], stroke);
-            }
-            painter.circle_stroke(pt(0.50, 0.50), w * 0.16, stroke);
-            // Diagonal slash across eye
-            painter.line_segment([pt(0.12, 0.12), pt(0.88, 0.88)], stroke);
-        }
-        IconKind::Lock => {
-            // Body box with rounded corners
-            let body_rect = Rect::from_min_max(pt(0.16, 0.44), pt(0.84, 0.88));
-            painter.rect_stroke(body_rect, CornerRadius::same(2), stroke, StrokeKind::Inside);
-            // Rounded shackle loop
-            let shackle_pts = [
-                pt(0.32, 0.44),
-                pt(0.32, 0.28),
-                pt(0.38, 0.18),
-                pt(0.50, 0.14),
-                pt(0.62, 0.18),
-                pt(0.68, 0.28),
-                pt(0.68, 0.44),
-            ];
-            for i in 0..6 {
-                painter.line_segment([shackle_pts[i], shackle_pts[i + 1]], stroke);
-            }
-            // Keyhole
-            painter.circle_filled(pt(0.50, 0.62), 1.3, stroke.color);
-            painter.line_segment([pt(0.50, 0.62), pt(0.50, 0.72)], stroke);
-        }
-        IconKind::Unlock => {
-            let body_rect = Rect::from_min_max(pt(0.16, 0.44), pt(0.84, 0.88));
-            painter.rect_stroke(body_rect, CornerRadius::same(2), stroke, StrokeKind::Inside);
-            // Detached open shackle loop
-            let shackle_pts = [
-                pt(0.32, 0.44),
-                pt(0.32, 0.26),
-                pt(0.38, 0.16),
-                pt(0.50, 0.12),
-                pt(0.62, 0.16),
-                pt(0.68, 0.24),
-                pt(0.68, 0.32),
-            ];
-            for i in 0..6 {
-                painter.line_segment([shackle_pts[i], shackle_pts[i + 1]], stroke);
-            }
-            painter.circle_filled(pt(0.50, 0.62), 1.3, stroke.color);
-            painter.line_segment([pt(0.50, 0.62), pt(0.50, 0.72)], stroke);
-        }
-        IconKind::Sliders => {
-            // Track 1
-            painter.line_segment([pt(0.14, 0.34), pt(0.86, 0.34)], stroke);
-            painter.line_segment([pt(0.36, 0.20), pt(0.36, 0.48)], stroke);
-            // Track 2
-            painter.line_segment([pt(0.14, 0.66), pt(0.86, 0.66)], stroke);
-            painter.line_segment([pt(0.64, 0.52), pt(0.64, 0.80)], stroke);
-        }
-        IconKind::Filter => {
-            // Lucide Funnel
-            let pts = [
-                pt(0.12, 0.18),
-                pt(0.88, 0.18),
-                pt(0.58, 0.52),
-                pt(0.58, 0.82),
-                pt(0.42, 0.74),
-                pt(0.42, 0.52),
-            ];
-            for i in 0..5 {
-                painter.line_segment([pts[i], pts[i + 1]], stroke);
-            }
-            painter.line_segment([pts[5], pts[0]], stroke);
-        }
-        IconKind::GripVertical => {
-            // Lucide 6-dot vertical drag grip
-            let r = 1.3_f32;
-            let col1 = 0.36;
-            let col2 = 0.64;
-            let row1 = 0.24;
-            let row2 = 0.50;
-            let row3 = 0.76;
-
-            painter.circle_filled(pt(col1, row1), r, stroke.color);
-            painter.circle_filled(pt(col2, row1), r, stroke.color);
-            painter.circle_filled(pt(col1, row2), r, stroke.color);
-            painter.circle_filled(pt(col2, row2), r, stroke.color);
-            painter.circle_filled(pt(col1, row3), r, stroke.color);
-            painter.circle_filled(pt(col2, row3), r, stroke.color);
-        }
-        IconKind::RotateCcw => {
-            // Circular arc segments
-            painter.line_segment([pt(0.24, 0.50), pt(0.32, 0.76)], stroke);
-            painter.line_segment([pt(0.32, 0.76), pt(0.68, 0.76)], stroke);
-            painter.line_segment([pt(0.68, 0.76), pt(0.80, 0.50)], stroke);
-            painter.line_segment([pt(0.80, 0.50), pt(0.68, 0.24)], stroke);
-            painter.line_segment([pt(0.68, 0.24), pt(0.40, 0.24)], stroke);
-            // Arrow head
-            painter.line_segment([pt(0.52, 0.14), pt(0.38, 0.24)], stroke);
-            painter.line_segment([pt(0.52, 0.34), pt(0.38, 0.24)], stroke);
-        }
-        IconKind::Play => {
-            let p1 = pt(0.28, 0.20);
-            let p2 = pt(0.80, 0.50);
-            let p3 = pt(0.28, 0.80);
-            painter.line_segment([p1, p2], stroke);
-            painter.line_segment([p2, p3], stroke);
-            painter.line_segment([p3, p1], stroke);
-        }
-        IconKind::Pause => {
-            painter.line_segment([pt(0.32, 0.20), pt(0.32, 0.80)], stroke);
-            painter.line_segment([pt(0.68, 0.20), pt(0.68, 0.80)], stroke);
-        }
-        IconKind::Square => {
-            let sq_rect = Rect::from_min_max(pt(0.20, 0.20), pt(0.80, 0.80));
-            painter.rect_stroke(sq_rect, CornerRadius::same(1), stroke, StrokeKind::Inside);
-        }
-        IconKind::Type => {
-            painter.line_segment([pt(0.18, 0.22), pt(0.82, 0.22)], stroke);
-            painter.line_segment([pt(0.50, 0.22), pt(0.50, 0.82)], stroke);
-            painter.line_segment([pt(0.36, 0.82), pt(0.64, 0.82)], stroke);
-        }
-        IconKind::Camera => {
-            let body = Rect::from_min_max(pt(0.15, 0.34), pt(0.85, 0.84));
-            painter.rect_stroke(body, CornerRadius::same(2), stroke, StrokeKind::Inside);
-            painter.line_segment([pt(0.36, 0.34), pt(0.42, 0.20)], stroke);
-            painter.line_segment([pt(0.42, 0.20), pt(0.58, 0.20)], stroke);
-            painter.line_segment([pt(0.58, 0.20), pt(0.64, 0.34)], stroke);
-            painter.circle_stroke(pt(0.50, 0.59), w * 0.16, stroke);
-        }
-        IconKind::Sparkles => {
-            painter.line_segment([pt(0.50, 0.14), pt(0.50, 0.86)], stroke);
-            painter.line_segment([pt(0.14, 0.50), pt(0.86, 0.50)], stroke);
-            painter.line_segment([pt(0.28, 0.28), pt(0.72, 0.72)], stroke);
-            painter.line_segment([pt(0.28, 0.72), pt(0.72, 0.28)], stroke);
-        }
-        IconKind::Volume2 => {
-            // Speaker cone
-            let p1 = pt(0.44, 0.20);
-            let p2 = pt(0.24, 0.36);
-            let p3 = pt(0.12, 0.36);
-            let p4 = pt(0.12, 0.64);
-            let p5 = pt(0.24, 0.64);
-            let p6 = pt(0.44, 0.80);
-            painter.line_segment([p1, p2], stroke);
-            painter.line_segment([p2, p3], stroke);
-            painter.line_segment([p3, p4], stroke);
-            painter.line_segment([p4, p5], stroke);
-            painter.line_segment([p5, p6], stroke);
-            painter.line_segment([p6, p1], stroke);
-            // Soundwaves
-            painter.line_segment([pt(0.60, 0.36), pt(0.64, 0.50)], stroke);
-            painter.line_segment([pt(0.64, 0.50), pt(0.60, 0.64)], stroke);
-            painter.line_segment([pt(0.74, 0.26), pt(0.82, 0.50)], stroke);
-            painter.line_segment([pt(0.82, 0.50), pt(0.74, 0.74)], stroke);
-        }
-        IconKind::VolumeX => {
-            let p1 = pt(0.44, 0.20);
-            let p2 = pt(0.24, 0.36);
-            let p3 = pt(0.12, 0.36);
-            let p4 = pt(0.12, 0.64);
-            let p5 = pt(0.24, 0.64);
-            let p6 = pt(0.44, 0.80);
-            painter.line_segment([p1, p2], stroke);
-            painter.line_segment([p2, p3], stroke);
-            painter.line_segment([p3, p4], stroke);
-            painter.line_segment([p4, p5], stroke);
-            painter.line_segment([p5, p6], stroke);
-            painter.line_segment([p6, p1], stroke);
-            // Mute cross
-            painter.line_segment([pt(0.62, 0.36), pt(0.84, 0.64)], stroke);
-            painter.line_segment([pt(0.84, 0.36), pt(0.62, 0.64)], stroke);
-        }
-        IconKind::Settings => {
-            // Gear center circle
-            painter.circle_stroke(pt(0.50, 0.50), w * 0.22, stroke);
-            // Gear teeth
-            for i in 0..8 {
-                let angle = (i as f32) * std::f32::consts::PI / 4.0;
-                let c = angle.cos();
-                let s = angle.sin();
-                let p_in = pt(0.50 + c * 0.28, 0.50 + s * 0.28);
-                let p_out = pt(0.50 + c * 0.42, 0.50 + s * 0.42);
-                painter.line_segment([p_in, p_out], stroke);
-            }
-        }
-        IconKind::Copy => {
-            // Background box
-            let bg_box = Rect::from_min_max(pt(0.32, 0.16), pt(0.84, 0.68));
-            painter.rect_stroke(bg_box, CornerRadius::same(1), stroke, StrokeKind::Inside);
-            // Foreground box
-            let fg_box = Rect::from_min_max(pt(0.16, 0.32), pt(0.68, 0.84));
-            painter.rect_stroke(fg_box, CornerRadius::same(1), stroke, StrokeKind::Inside);
-        }
-        IconKind::X => {
-            painter.line_segment([pt(0.24, 0.24), pt(0.76, 0.76)], stroke);
-            painter.line_segment([pt(0.76, 0.24), pt(0.24, 0.76)], stroke);
+impl IconKind {
+    /// Returns the prebuilt Lucide `Icon` from the `icondata` crate.
+    pub fn icon_data(&self) -> &'static icondata::Icon {
+        match self {
+            IconKind::Plus => &icondata::LuPlus,
+            IconKind::Minus => &icondata::LuMinus,
+            IconKind::Trash => &icondata::LuTrash2,
+            IconKind::Pencil => &icondata::LuPencil,
+            IconKind::ChevronUp => &icondata::LuChevronUp,
+            IconKind::ChevronDown => &icondata::LuChevronDown,
+            IconKind::Eye => &icondata::LuEye,
+            IconKind::EyeOff => &icondata::LuEyeOff,
+            IconKind::Lock => &icondata::LuLock,
+            IconKind::Unlock => &icondata::LuLockOpen,
+            IconKind::Sliders => &icondata::LuSlidersHorizontal,
+            IconKind::Filter => &icondata::LuFunnel,
+            IconKind::GripVertical => &icondata::LuGripVertical,
+            IconKind::RotateCcw => &icondata::LuRotateCcw,
+            IconKind::Play => &icondata::LuPlay,
+            IconKind::Pause => &icondata::LuPause,
+            IconKind::Square => &icondata::LuSquare,
+            IconKind::Type => &icondata::LuType,
+            IconKind::Camera => &icondata::LuCamera,
+            IconKind::Sparkles => &icondata::LuSparkles,
+            IconKind::Volume2 => &icondata::LuVolume2,
+            IconKind::VolumeX => &icondata::LuVolumeX,
+            IconKind::Settings => &icondata::LuSettings,
+            IconKind::Copy => &icondata::LuCopy,
+            IconKind::X => &icondata::LuX,
         }
     }
+}
+
+/// Rasterizes an authentic Lucide vector icon from `icondata` into a high-resolution premultiplied `egui::ColorImage`.
+pub fn rasterize_icon(icon: IconKind, size_px: u32) -> egui::ColorImage {
+    let data = icon.icon_data();
+    let view_box = data.view_box.unwrap_or("0 0 24 24");
+    let stroke_width = data.stroke_width.unwrap_or("2");
+    let fill = if data.fill == Some("currentColor") {
+        "#ffffff"
+    } else {
+        data.fill.unwrap_or("none")
+    };
+
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{}" fill="{}" stroke="#ffffff" stroke-width="{}" stroke-linecap="round" stroke-linejoin="round">{}</svg>"##,
+        view_box, fill, stroke_width, data.data
+    );
+
+    let opt = usvg::Options::default();
+    let utree = match usvg::Tree::from_str(&svg, &opt) {
+        Ok(tree) => tree,
+        Err(err) => {
+            tracing::warn!("Failed to parse Lucide SVG for {:?}: {}", icon, err);
+            return egui::ColorImage::new([size_px as usize, size_px as usize], TRANSPARENT);
+        }
+    };
+
+    let rtree = resvg::Tree::from_usvg(&utree);
+    let mut pixmap = match resvg::tiny_skia::Pixmap::new(size_px, size_px) {
+        Some(pm) => pm,
+        None => return egui::ColorImage::new([size_px as usize, size_px as usize], TRANSPARENT),
+    };
+
+    let scale_x = size_px as f32 / utree.size.width();
+    let scale_y = size_px as f32 / utree.size.height();
+    let transform = resvg::tiny_skia::Transform::from_scale(scale_x, scale_y);
+
+    rtree.render(transform, &mut pixmap.as_mut());
+
+    egui::ColorImage::from_rgba_premultiplied([size_px as usize, size_px as usize], pixmap.data())
+}
+
+/// Retrieves or loads the GPU texture for the specified `IconKind` in the current `egui::Context`.
+pub fn get_or_load_icon_texture(ctx: &egui::Context, icon: IconKind) -> egui::TextureId {
+    let id = egui::Id::new("zeno_icondata_tex").with(icon);
+    if let Some(handle) = ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
+        handle.id()
+    } else {
+        let image = rasterize_icon(icon, 64);
+        let handle = ctx.load_texture(
+            format!("zeno_icon_{:?}", icon),
+            image,
+            egui::TextureOptions::LINEAR,
+        );
+        let tex_id = handle.id();
+        ctx.data_mut(|d| d.insert_temp(id, handle));
+        tex_id
+    }
+}
+
+/// Paints a 16px Lucide vector line icon inside `rect` using `stroke.color` for dynamic GPU tinting.
+pub fn paint_lucide_icon(painter: &Painter, icon: IconKind, rect: Rect, stroke: Stroke) {
+    let texture_id = get_or_load_icon_texture(painter.ctx(), icon);
+    let uv = Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0));
+    painter.image(texture_id, rect, uv, stroke.color);
 }
 
 /// Unified, interactive icon-button widget for all Zenocast broadcast panels.
@@ -426,7 +234,7 @@ impl IconButton {
             } else if is_hovered {
                 (SURFACE_2, ACCENT)
             } else {
-                (crate::theme::TRANSPARENT, crate::theme::TRANSPARENT)
+                (TRANSPARENT, TRANSPARENT)
             }
         } else {
             let bg = if is_down || self.selected {
@@ -452,7 +260,7 @@ impl IconButton {
             TEXT_MUTED
         };
 
-        if bg_color != crate::theme::TRANSPARENT || border_color != crate::theme::TRANSPARENT {
+        if bg_color != TRANSPARENT || border_color != TRANSPARENT {
             ui.painter().rect(
                 rect,
                 CornerRadius::same(CORNER_RADIUS as u8),
@@ -593,6 +401,57 @@ pub fn grip_handle(ui: &mut Ui, tooltip: &str) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_all_icon_variants_rasterize() {
+        let all_icons = [
+            IconKind::Plus,
+            IconKind::Minus,
+            IconKind::Trash,
+            IconKind::Pencil,
+            IconKind::ChevronUp,
+            IconKind::ChevronDown,
+            IconKind::Eye,
+            IconKind::EyeOff,
+            IconKind::Lock,
+            IconKind::Unlock,
+            IconKind::Sliders,
+            IconKind::Filter,
+            IconKind::GripVertical,
+            IconKind::RotateCcw,
+            IconKind::Play,
+            IconKind::Pause,
+            IconKind::Square,
+            IconKind::Type,
+            IconKind::Camera,
+            IconKind::Sparkles,
+            IconKind::Volume2,
+            IconKind::VolumeX,
+            IconKind::Settings,
+            IconKind::Copy,
+            IconKind::X,
+        ];
+
+        for icon in all_icons {
+            let img = rasterize_icon(icon, 32);
+            assert_eq!(img.width(), 32);
+            assert_eq!(img.height(), 32);
+            let has_visible_pixels = img.pixels.iter().any(|c| c.a() > 0);
+            assert!(
+                has_visible_pixels,
+                "icon {:?} should render visible pixels",
+                icon
+            );
+        }
+    }
+
+    #[test]
+    fn test_icon_texture_caching() {
+        let ctx = egui::Context::default();
+        let tex_id1 = get_or_load_icon_texture(&ctx, IconKind::Plus);
+        let tex_id2 = get_or_load_icon_texture(&ctx, IconKind::Plus);
+        assert_eq!(tex_id1, tex_id2);
+    }
 
     #[test]
     fn test_compute_tooltip_position_below_trigger() {

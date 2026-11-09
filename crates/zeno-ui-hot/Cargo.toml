@@ -36,6 +36,9 @@ thiserror = { workspace = true }
 rfd = { workspace = true }
 image = { workspace = true }
 global-hotkey = { workspace = true }
+icondata = { workspace = true }
+resvg = { workspace = true }
+usvg = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
