@@ -196,6 +196,8 @@ pub struct ResolvedLayer {
     pub net_opacity: f32,
     /// Blending mode for compositor passes.
     pub blend_mode: BlendMode,
+    /// Blending method (Linear vs legacy SrgbOff).
+    pub blending_method: zeno_core::BlendingMethod,
     /// 3D layer flag.
     pub is_3d: bool,
     /// Visibility flag.

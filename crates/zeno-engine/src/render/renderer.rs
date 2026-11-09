@@ -1,7 +1,7 @@
 use crate::eval::{
     evaluate_at, ResolvedContent, ResolvedFill, ResolvedFrame, ResolvedShapeGeometry,
 };
-use crate::model::{Composition, LayerContent};
+use crate::model::{BlendMode, Composition, LayerContent};
 use crate::render::model3d::{GltfModel, GpuMesh, Model3DPipeline, ModelUniforms};
 use crate::render::pipeline::{CompositorPipeline, LayerUniforms};
 use crate::render::text_raster::RasterCache;
@@ -22,6 +22,7 @@ enum RenderCommand {
     Quad {
         layer_bind_group: BindGroup,
         tex_bind_group: Option<BindGroup>,
+        blend_mode: BlendMode,
     },
     Mesh3D {
         model_bind_group: BindGroup,
@@ -173,6 +174,13 @@ impl ZenoRenderer {
                 continue;
             }
 
+            let blending_method_val =
+                if resolved.blending_method == zeno_core::BlendingMethod::SrgbOff {
+                    1.0f32
+                } else {
+                    0.0f32
+                };
+
             match &resolved.content {
                 ResolvedContent::Shape(shape) => {
                     let (width, height) = match &shape.geometry {
@@ -235,7 +243,7 @@ impl ZenoRenderer {
                     let uniforms = LayerUniforms {
                         world: final_world.to_cols_array_2d(),
                         color,
-                        params: [mode, opacity, 0.0, 0.0],
+                        params: [mode, opacity, 0.0, blending_method_val],
                         gradient_start: grad_start,
                         gradient_end: grad_end,
                         gradient_color_end: grad_color_end,
@@ -247,6 +255,7 @@ impl ZenoRenderer {
                     draw_commands.push(RenderCommand::Quad {
                         layer_bind_group,
                         tex_bind_group: None,
+                        blend_mode: resolved.blend_mode,
                     });
                 }
                 ResolvedContent::Image { asset } => {
@@ -258,7 +267,7 @@ impl ZenoRenderer {
                         let uniforms = LayerUniforms {
                             world: final_world.to_cols_array_2d(),
                             color: [1.0, 1.0, 1.0, 1.0],
-                            params: [1.0, opacity, 0.0, 0.0],
+                            params: [1.0, opacity, 0.0, blending_method_val],
                             gradient_start: [0.0, 0.0],
                             gradient_end: [1.0, 1.0],
                             gradient_color_end: [1.0, 1.0, 1.0, 1.0],
@@ -271,6 +280,7 @@ impl ZenoRenderer {
                         draw_commands.push(RenderCommand::Quad {
                             layer_bind_group,
                             tex_bind_group: Some(tex_bind_group),
+                            blend_mode: resolved.blend_mode,
                         });
                     }
                 }
@@ -286,7 +296,7 @@ impl ZenoRenderer {
                             let uniforms = LayerUniforms {
                                 world: final_world.to_cols_array_2d(),
                                 color: [1.0, 1.0, 1.0, 1.0],
-                                params: [1.0, opacity, 0.0, 0.0],
+                                params: [1.0, opacity, 0.0, blending_method_val],
                                 gradient_start: [0.0, 0.0],
                                 gradient_end: [1.0, 1.0],
                                 gradient_color_end: [1.0, 1.0, 1.0, 1.0],
@@ -303,17 +313,24 @@ impl ZenoRenderer {
                             draw_commands.push(RenderCommand::Quad {
                                 layer_bind_group,
                                 tex_bind_group: Some(tex_bind_group),
+                                blend_mode: resolved.blend_mode,
                             });
                         }
                     }
                 }
                 ResolvedContent::Particles {
                     particles,
-                    additive_blend: _,
+                    additive_blend,
                     sprite_asset,
                 } => {
                     let sprite_view = sprite_asset
                         .and_then(|id| self.image_cache.get(&id).map(|(_, view, _, _)| view));
+
+                    let particle_blend_mode = if *additive_blend {
+                        BlendMode::Add
+                    } else {
+                        resolved.blend_mode
+                    };
 
                     for p in particles {
                         let p_scale = Mat4::from_scale(Vec3::new(p.size, p.size, 1.0));
@@ -325,7 +342,12 @@ impl ZenoRenderer {
                         let uniforms = LayerUniforms {
                             world: final_world.to_cols_array_2d(),
                             color: p.color,
-                            params: [render_mode, opacity * p.color[3], p.size * 0.5, 0.0],
+                            params: [
+                                render_mode,
+                                opacity * p.color[3],
+                                p.size * 0.5,
+                                blending_method_val,
+                            ],
                             gradient_start: [0.0, 0.0],
                             gradient_end: [1.0, 1.0],
                             gradient_color_end: [1.0, 1.0, 1.0, 1.0],
@@ -340,6 +362,7 @@ impl ZenoRenderer {
                         draw_commands.push(RenderCommand::Quad {
                             layer_bind_group,
                             tex_bind_group,
+                            blend_mode: particle_blend_mode,
                         });
                     }
                 }
@@ -422,18 +445,21 @@ impl ZenoRenderer {
             });
 
             let mut active_pipeline_kind = 0; // 0: None, 1: Quad, 2: 3D Mesh
+            let mut active_blend_mode: Option<BlendMode> = None;
 
             for cmd in &draw_commands {
                 match cmd {
                     RenderCommand::Quad {
                         layer_bind_group,
                         tex_bind_group,
+                        blend_mode,
                     } => {
-                        if active_pipeline_kind != 1 {
-                            rpass.set_pipeline(&self.pipeline.pipeline);
+                        if active_pipeline_kind != 1 || active_blend_mode != Some(*blend_mode) {
+                            rpass.set_pipeline(self.pipeline.get_pipeline(*blend_mode));
                             rpass.set_bind_group(0, &self.pipeline.global_bind_group, &[]);
                             self.pipeline.bind_quad(&mut rpass);
                             active_pipeline_kind = 1;
+                            active_blend_mode = Some(*blend_mode);
                         }
                         rpass.set_bind_group(1, layer_bind_group, &[]);
                         if let Some(tex_bg) = tex_bind_group {
@@ -451,6 +477,7 @@ impl ZenoRenderer {
                             rpass.set_pipeline(&self.model_pipeline.pipeline);
                             rpass.set_bind_group(0, &self.pipeline.global_bind_group, &[]);
                             active_pipeline_kind = 2;
+                            active_blend_mode = None;
                         }
                         rpass.set_bind_group(1, model_bind_group, &[]);
                         rpass.set_vertex_buffer(0, gpu_mesh.vertex_buffer.slice(..));

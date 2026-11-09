@@ -80,7 +80,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     }
     
     // Apply master layer opacity
-    base_color.a = base_color.a * opacity;
-    
-    return base_color;
+    let a = base_color.a * opacity;
+    var rgb = base_color.rgb;
+
+    // Blending method handling:
+    // 0 = Linear (physically correct linear sRGB compositing)
+    // 1 = SrgbOff (legacy gamma bypass: de-linearize before alpha multiply)
+    let blending_method = u32(round(layer.params.w));
+    if blending_method == 1u {
+        rgb = pow(max(rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.2));
+    }
+
+    // Premultiply alpha for accurate compositing
+    return vec4<f32>(rgb * a, a);
 }

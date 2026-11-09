@@ -43,5 +43,9 @@ path = "../../tests/expressions_test.rs"
 name = "gltf_render_test"
 path = "../../tests/gltf_render_test.rs"
 
+[[test]]
+name = "blend_modes_test"
+path = "../../tests/blend_modes_test.rs"
+
 
 

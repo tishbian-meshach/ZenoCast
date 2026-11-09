@@ -1,5 +1,6 @@
 //! GPU render pipeline setup, vertex layouts, uniform buffers, and quad meshes.
 
+use crate::model::BlendMode;
 use bytemuck::{Pod, Zeroable};
 use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
@@ -100,8 +101,22 @@ pub struct LayerUniforms {
 
 /// GPU resources managing compositing shaders, mesh buffers, and render pipelines.
 pub struct CompositorPipeline {
-    /// Active render pipeline.
+    /// Active render pipeline (default/normal).
     pub pipeline: RenderPipeline,
+    /// Premultiplied alpha Normal blend pipeline.
+    pub pipeline_normal: RenderPipeline,
+    /// Premultiplied alpha Add blend pipeline.
+    pub pipeline_add: RenderPipeline,
+    /// Premultiplied alpha Subtract blend pipeline.
+    pub pipeline_subtract: RenderPipeline,
+    /// Premultiplied alpha Screen blend pipeline.
+    pub pipeline_screen: RenderPipeline,
+    /// Premultiplied alpha Multiply blend pipeline.
+    pub pipeline_multiply: RenderPipeline,
+    /// Premultiplied alpha Lighten blend pipeline.
+    pub pipeline_lighten: RenderPipeline,
+    /// Premultiplied alpha Darken blend pipeline.
+    pub pipeline_darken: RenderPipeline,
     /// Shared unit quad vertex buffer.
     pub vertex_buffer: Buffer,
     /// Shared unit quad index buffer.
@@ -216,54 +231,145 @@ impl CompositorPipeline {
             push_constant_ranges: &[],
         });
 
-        // Standard Premultiplied / Alpha Blending:
-        // color = src * src_alpha + dst * (1 - src_alpha)
-        let blend_state = BlendState {
-            color: BlendComponent {
-                src_factor: BlendFactor::SrcAlpha,
-                dst_factor: BlendFactor::OneMinusSrcAlpha,
-                operation: BlendOperation::Add,
-            },
-            alpha: BlendComponent {
-                src_factor: BlendFactor::One,
-                dst_factor: BlendFactor::OneMinusSrcAlpha,
-                operation: BlendOperation::Add,
-            },
+        let make_pipeline = |label: &'static str, blend: BlendState| {
+            device.create_render_pipeline(&RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pipeline_layout),
+                vertex: VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[Vertex::desc()],
+                    compilation_options: PipelineCompilationOptions::default(),
+                },
+                fragment: Some(FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(ColorTargetState {
+                        format: target_format,
+                        blend: Some(blend),
+                        write_mask: ColorWrites::ALL,
+                    })],
+                    compilation_options: PipelineCompilationOptions::default(),
+                }),
+                primitive: PrimitiveState {
+                    topology: PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: FrontFace::Ccw,
+                    cull_mode: None,
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                depth_stencil: None,
+                multisample: MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            })
         };
 
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("CompositorRenderPipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                buffers: &[Vertex::desc()],
-                compilation_options: PipelineCompilationOptions::default(),
+        // 7 fixed-function premultiplied-alpha blend pipelines:
+        let pipeline_normal = make_pipeline(
+            "CompositorRenderPipelineNormal",
+            BlendState::PREMULTIPLIED_ALPHA_BLENDING,
+        );
+
+        let pipeline_add = make_pipeline(
+            "CompositorRenderPipelineAdd",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Add,
+                },
             },
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                targets: &[Some(ColorTargetState {
-                    format: target_format,
-                    blend: Some(blend_state),
-                    write_mask: ColorWrites::ALL,
-                })],
-                compilation_options: PipelineCompilationOptions::default(),
-            }),
-            primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
-                strip_index_format: None,
-                front_face: FrontFace::Ccw,
-                cull_mode: None,
-                polygon_mode: wgpu::PolygonMode::Fill,
-                unclipped_depth: false,
-                conservative: false,
+        );
+
+        let pipeline_subtract = make_pipeline(
+            "CompositorRenderPipelineSubtract",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::ReverseSubtract,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Add,
+                },
             },
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            multiview: None,
-            cache: None,
-        });
+        );
+
+        let pipeline_screen = make_pipeline(
+            "CompositorRenderPipelineScreen",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrc,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            },
+        );
+
+        let pipeline_multiply = make_pipeline(
+            "CompositorRenderPipelineMultiply",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::Dst,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                    operation: BlendOperation::Add,
+                },
+            },
+        );
+
+        let pipeline_lighten = make_pipeline(
+            "CompositorRenderPipelineLighten",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Max,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Max,
+                },
+            },
+        );
+
+        let pipeline_darken = make_pipeline(
+            "CompositorRenderPipelineDarken",
+            BlendState {
+                color: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Min,
+                },
+                alpha: BlendComponent {
+                    src_factor: BlendFactor::One,
+                    dst_factor: BlendFactor::One,
+                    operation: BlendOperation::Min,
+                },
+            },
+        );
+
+        let pipeline = pipeline_normal.clone();
 
         // Quad buffers
         let vertex_buffer = device.create_buffer_init(&BufferInitDescriptor {
@@ -341,6 +447,13 @@ impl CompositorPipeline {
 
         Self {
             pipeline,
+            pipeline_normal,
+            pipeline_add,
+            pipeline_subtract,
+            pipeline_screen,
+            pipeline_multiply,
+            pipeline_lighten,
+            pipeline_darken,
             vertex_buffer,
             index_buffer,
             global_buffer,
@@ -352,6 +465,20 @@ impl CompositorPipeline {
             white_texture,
             white_texture_view,
             white_bind_group,
+        }
+    }
+
+    /// Select appropriate render pipeline for a given BlendMode.
+    pub fn get_pipeline(&self, mode: BlendMode) -> &RenderPipeline {
+        match mode {
+            BlendMode::Normal => &self.pipeline_normal,
+            BlendMode::Add => &self.pipeline_add,
+            BlendMode::Subtract => &self.pipeline_subtract,
+            BlendMode::Screen => &self.pipeline_screen,
+            BlendMode::Multiply => &self.pipeline_multiply,
+            BlendMode::Lighten => &self.pipeline_lighten,
+            BlendMode::Darken => &self.pipeline_darken,
+            _ => &self.pipeline_normal,
         }
     }
 

@@ -25,6 +25,7 @@ pub use render::{
     CompositorPipeline, GltfModel, GpuContext, GpuMesh, LayerUniforms, Model3DPipeline,
     ModelUniforms, ModelVertex, PooledTexture, RasterCache, TexturePool, ZenoRenderer,
 };
+pub use zeno_core::BlendingMethod;
 
 #[cfg(test)]
 mod tests {

@@ -64,6 +64,7 @@ pub enum BlendMode {
     #[default]
     Normal,
     /// Additive blending (linear dodge).
+    #[serde(alias = "Additive")]
     Add,
     /// Subtractive blending (reverse subtract).
     Subtract,
@@ -663,6 +664,9 @@ pub struct Layer {
     pub visible: bool,
     /// GPU blending mode.
     pub blend_mode: BlendMode,
+    /// Color blending method (Linear vs legacy SrgbOff).
+    #[serde(default)]
+    pub blending_method: zeno_core::BlendingMethod,
     /// Applied visual effects.
     pub effects: Vec<Effect>,
     /// Optional clipping or luminance mask.
@@ -684,6 +688,7 @@ impl Layer {
             is_3d: false,
             visible: true,
             blend_mode: BlendMode::Normal,
+            blending_method: zeno_core::BlendingMethod::Linear,
             effects: Vec::new(),
             mask: None,
             content,
