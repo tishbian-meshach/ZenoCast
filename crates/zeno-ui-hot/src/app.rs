@@ -317,6 +317,11 @@ impl ZenocastApp {
             if let Some(ref act) = project.active_scene_id {
                 comp.set_program(string_to_scene_id(act));
             }
+            comp.set_mode(if studio_mode {
+                zeno_compositor::StudioMode::Studio
+            } else {
+                zeno_compositor::StudioMode::Direct
+            });
 
             compositor_opt = Some(comp);
             preview_texture_id = Some(p_tex_id);
@@ -595,6 +600,13 @@ impl ZenocastApp {
                         Some((sc_id.clone(), scene.sources.clone()));
                 }
             }
+        }
+        if let Some(ref mut comp) = *self.compositor.write() {
+            comp.set_mode(if self.studio_mode {
+                zeno_compositor::StudioMode::Studio
+            } else {
+                zeno_compositor::StudioMode::Direct
+            });
         }
         let prefs = crate::preferences::UserPreferences {
             studio_mode: self.studio_mode,
@@ -1356,33 +1368,81 @@ impl ZenocastApp {
         height: f32,
         rotation: f32,
     ) {
-        // In Normal Mode, immediately persist to active scene
+        let s_id = string_to_source_id(source_id_str);
+
+        // 1. Update project model
         if !self.studio_mode {
+            // In Normal Mode: persist to active scene
             if let Some(ref act_id) = self.project.active_scene_id {
-                if let Some(sc) = self.project.scenes.iter_mut().find(|s| &s.id == act_id) {
-                    if let Some(src) = sc.sources.iter_mut().find(|s| s.id == source_id_str) {
-                        src.x = x;
-                        src.y = y;
-                        src.width = width;
-                        src.height = height;
-                        src.rotation = rotation;
+                for sc in &mut self.project.scenes {
+                    if &sc.id == act_id {
+                        if let Some(src) = sc.sources.iter_mut().find(|s| s.id == source_id_str) {
+                            src.x = x;
+                            src.y = y;
+                            src.width = width;
+                            src.height = height;
+                            src.rotation = rotation;
+                        }
                     }
+                }
+            }
+            // In Normal Mode, ALSO keep preview working copy in sync
+            if let Some((_, ref mut srcs)) = self.project.preview_working_sources {
+                if let Some(src) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                    src.x = x;
+                    src.y = y;
+                    src.width = width;
+                    src.height = height;
+                    src.rotation = rotation;
+                }
+            }
+        } else {
+            // In Studio Mode: persist to preview working sources
+            if let Some((_, ref mut srcs)) = self.project.preview_working_sources {
+                if let Some(src) = srcs.iter_mut().find(|s| s.id == source_id_str) {
+                    src.x = x;
+                    src.y = y;
+                    src.width = width;
+                    src.height = height;
+                    src.rotation = rotation;
                 }
             }
         }
 
+        // 2. Update compositor GPU scene items
         if let Some(ref mut comp) = *self.compositor.write() {
-            let s_id = string_to_source_id(source_id_str);
             let canvas_w = comp.width() as f32;
             let canvas_h = comp.height() as f32;
-            comp.update_editable_item_transform(
-                s_id,
-                x + width / 2.0,
-                y + height / 2.0,
-                width / canvas_w,
-                height / canvas_h,
-                rotation,
-            );
+            let pos_x = x + width / 2.0;
+            let pos_y = y + height / 2.0;
+            let scale_x = width / canvas_w;
+            let scale_y = height / canvas_h;
+
+            if !self.studio_mode {
+                // NORMAL MODE: Update BOTH live Program scene and Preview working scene!
+                // A) Update active scene by ID in comp.scenes
+                if let Some(ref act_id) = self.project.active_scene_id {
+                    let sc_id = string_to_scene_id(act_id);
+                    if let Some(scene) = comp.get_scene_mut(sc_id) {
+                        for item in &mut scene.items {
+                            if let SceneItemSource::Source(id) = item.source {
+                                if id == s_id || item.id == s_id.0 {
+                                    item.transform.position = zeno_core::Vec2::new(pos_x, pos_y);
+                                    item.transform.scale = zeno_core::Vec2::new(scale_x, scale_y);
+                                    item.transform.rotation_degrees = rotation;
+                                }
+                            }
+                        }
+                    }
+                }
+                // B) Update comp.bus.program_scene directly
+                comp.update_program_item_transform(s_id, pos_x, pos_y, scale_x, scale_y, rotation);
+                // C) Update preview working scene
+                comp.update_preview_item_transform(s_id, pos_x, pos_y, scale_x, scale_y, rotation);
+            } else {
+                // STUDIO MODE: Update Preview working scene only
+                comp.update_preview_item_transform(s_id, pos_x, pos_y, scale_x, scale_y, rotation);
+            }
         }
     }
 
@@ -2612,6 +2672,14 @@ impl ZenocastApp {
             drop(registry);
 
             if let Some(ref mut comp) = *self.compositor.write() {
+                let target_mode = if self.studio_mode {
+                    zeno_compositor::StudioMode::Studio
+                } else {
+                    zeno_compositor::StudioMode::Direct
+                };
+                if comp.bus().mode != target_mode {
+                    comp.set_mode(target_mode);
+                }
                 if let Some(ref prv) = self.project.preview_scene_id {
                     comp.set_preview(string_to_scene_id(prv));
                 }

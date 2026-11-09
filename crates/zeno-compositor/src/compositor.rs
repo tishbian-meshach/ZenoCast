@@ -287,9 +287,58 @@ impl SceneCompositor {
         }
     }
 
+    /// Updates transform of an item on the Program scene (Live).
+    pub fn update_program_item_transform(
+        &mut self,
+        source_id: SourceId,
+        pos_x: f32,
+        pos_y: f32,
+        scale_x: f32,
+        scale_y: f32,
+        rotation: f32,
+    ) {
+        if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.transform.position = zeno_core::Vec2::new(pos_x, pos_y);
+                        item.transform.scale = zeno_core::Vec2::new(scale_x, scale_y);
+                        item.transform.rotation_degrees = rotation;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Updates visibility of an item on the Program scene (Live).
+    pub fn update_program_item_visibility(&mut self, source_id: SourceId, visible: bool) {
+        if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.visible = visible;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Updates lock state of an item on the Program scene (Live).
+    pub fn update_program_item_lock(&mut self, source_id: SourceId, locked: bool) {
+        if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(s_id) = item.source {
+                    if s_id == source_id || item.id == source_id.0 {
+                        item.locked = locked;
+                    }
+                }
+            }
+        }
+    }
+
     /// Updates transform of an item in the active editable scene:
     /// In Studio Mode: updates the Preview working scene.
-    /// In Normal Mode: updates the live Program scene (and working copy).
+    /// In Normal Mode: updates BOTH the live Program scene AND the Preview working copy.
     pub fn update_editable_item_transform(
         &mut self,
         source_id: SourceId,
@@ -302,80 +351,33 @@ impl SceneCompositor {
         if self.bus.mode == StudioMode::Studio {
             self.update_preview_item_transform(source_id, pos_x, pos_y, scale_x, scale_y, rotation);
         } else {
-            if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(s_id) = item.source {
-                        if s_id == source_id {
-                            item.transform.position = zeno_core::Vec2::new(pos_x, pos_y);
-                            item.transform.scale = zeno_core::Vec2::new(scale_x, scale_y);
-                            item.transform.rotation_degrees = rotation;
-                        }
-                    }
-                }
-            }
-            if let Some(scene) = self.preview_working_scene.as_mut() {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(s_id) = item.source {
-                        if s_id == source_id {
-                            item.transform.position = zeno_core::Vec2::new(pos_x, pos_y);
-                            item.transform.scale = zeno_core::Vec2::new(scale_x, scale_y);
-                            item.transform.rotation_degrees = rotation;
-                        }
-                    }
-                }
-            }
+            // Normal Mode: update BOTH Program (Live) and Preview working copy
+            self.update_program_item_transform(source_id, pos_x, pos_y, scale_x, scale_y, rotation);
+            self.update_preview_item_transform(source_id, pos_x, pos_y, scale_x, scale_y, rotation);
         }
     }
 
-    /// Updates visibility of an item in the active editable scene.
+    /// Updates visibility of an item in the active editable scene:
+    /// In Studio Mode: updates the Preview working scene.
+    /// In Normal Mode: updates BOTH the live Program scene AND the Preview working copy.
     pub fn update_editable_item_visibility(&mut self, source_id: SourceId, visible: bool) {
         if self.bus.mode == StudioMode::Studio {
             self.update_preview_item_visibility(source_id, visible);
         } else {
-            if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(s_id) = item.source {
-                        if s_id == source_id {
-                            item.visible = visible;
-                        }
-                    }
-                }
-            }
-            if let Some(scene) = self.preview_working_scene.as_mut() {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(s_id) = item.source {
-                        if s_id == source_id {
-                            item.visible = visible;
-                        }
-                    }
-                }
-            }
+            self.update_program_item_visibility(source_id, visible);
+            self.update_preview_item_visibility(source_id, visible);
         }
     }
 
-    /// Updates lock state of an item in the active editable scene.
+    /// Updates lock state of an item in the active editable scene:
+    /// In Studio Mode: updates the Preview working scene.
+    /// In Normal Mode: updates BOTH the live Program scene AND the Preview working copy.
     pub fn update_editable_item_lock(&mut self, source_id: SourceId, locked: bool) {
         if self.bus.mode == StudioMode::Studio {
             self.update_preview_item_lock(source_id, locked);
         } else {
-            if let Some(scene) = self.scenes.get_mut(&self.bus.program_scene) {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(s_id) = item.source {
-                        if s_id == source_id {
-                            item.locked = locked;
-                        }
-                    }
-                }
-            }
-            if let Some(scene) = self.preview_working_scene.as_mut() {
-                for item in &mut scene.items {
-                    if let SceneItemSource::Source(s_id) = item.source {
-                        if s_id == source_id {
-                            item.locked = locked;
-                        }
-                    }
-                }
-            }
+            self.update_program_item_lock(source_id, locked);
+            self.update_preview_item_lock(source_id, locked);
         }
     }
 
@@ -392,7 +394,7 @@ impl SceneCompositor {
         if let Some(scene) = self.preview_working_scene_mut() {
             for item in &mut scene.items {
                 if let SceneItemSource::Source(s_id) = item.source {
-                    if s_id == source_id {
+                    if s_id == source_id || item.id == source_id.0 {
                         item.transform.position = zeno_core::Vec2::new(pos_x, pos_y);
                         item.transform.scale = zeno_core::Vec2::new(scale_x, scale_y);
                         item.transform.rotation_degrees = rotation;
@@ -407,7 +409,7 @@ impl SceneCompositor {
         if let Some(scene) = self.preview_working_scene_mut() {
             for item in &mut scene.items {
                 if let SceneItemSource::Source(s_id) = item.source {
-                    if s_id == source_id {
+                    if s_id == source_id || item.id == source_id.0 {
                         item.visible = visible;
                     }
                 }
@@ -420,7 +422,7 @@ impl SceneCompositor {
         if let Some(scene) = self.preview_working_scene_mut() {
             for item in &mut scene.items {
                 if let SceneItemSource::Source(s_id) = item.source {
-                    if s_id == source_id {
+                    if s_id == source_id || item.id == source_id.0 {
                         item.locked = locked;
                     }
                 }

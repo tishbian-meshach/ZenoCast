@@ -2084,6 +2084,17 @@ fn test_v1_6_normal_mode_transform_and_deselect() {
     assert_eq!(src.height, 360.0);
     assert_eq!(src.rotation, 10.0);
 
+    // Verify preview working sources in project is ALSO in sync (both live and preview)
+    if let Some((_, ref p_sources)) = app.project.preview_working_sources {
+        if let Some(p_src) = p_sources.iter().find(|s| s.id == "src_cam") {
+            assert_eq!(p_src.x, 120.0);
+            assert_eq!(p_src.y, 240.0);
+            assert_eq!(p_src.width, 640.0);
+            assert_eq!(p_src.height, 360.0);
+            assert_eq!(p_src.rotation, 10.0);
+        }
+    }
+
     // 4. Verify Escape key deselects active source
     assert_eq!(app.selected_source_id.as_deref(), Some("src_cam"));
     let ctx = egui::Context::default();
