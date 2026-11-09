@@ -9,6 +9,7 @@
 use egui::{vec2, Align2, Key, Window};
 use zeno_core::{FilterChain, FilterDefinition, FilterKind, FilterSettings};
 
+use crate::button::Button;
 use crate::icon::{icon_toggle_button, IconButton, IconKind};
 use crate::theme::{ACCENT, GRID_UNIT, TEXT, TEXT_MUTED};
 
@@ -311,15 +312,22 @@ impl FilterDialogState {
 
                 // Bottom Controls Toolbar
                 ui.horizontal(|ui| {
-                    if ui.button("Copy Filters").clicked() {
+                    if Button::new("Copy Filters")
+                        .secondary()
+                        .icon(IconKind::Copy)
+                        .show(ui)
+                        .clicked()
+                    {
                         emitted_action = Some(FilterDialogAction::CopyFilters {
                             filters: self.filters.clone(),
                         });
                         self.copy_feedback = Some("Filters copied to clipboard".to_string());
                     }
 
-                    if ui
-                        .add_enabled(has_clipboard_filters, egui::Button::new("Paste Filters"))
+                    if Button::new("Paste Filters")
+                        .secondary()
+                        .enabled(has_clipboard_filters)
+                        .show(ui)
                         .clicked()
                     {
                         if let Some(ref sid) = self.source_id {
@@ -334,7 +342,7 @@ impl FilterDialogState {
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Close").clicked() {
+                        if Button::new("Close").primary().show(ui).clicked() {
                             close_modal = true;
                         }
                     });

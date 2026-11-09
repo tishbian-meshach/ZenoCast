@@ -4,14 +4,15 @@ use egui::{vec2, Align2, CornerRadius, FontId, Sense, Stroke, StrokeKind, Ui};
 use egui_dock::{DockState, NodeIndex, TabViewer};
 use serde::{Deserialize, Serialize};
 
+use crate::button::Button;
 use crate::icon::{
     grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon,
     IconButton, IconKind,
 };
 use crate::project::Project;
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_2,
-    SURFACE_3, TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_2, SURFACE_3,
+    TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
 
@@ -354,7 +355,12 @@ impl<'a> StudioTabViewer<'a> {
                 } else {
                     format!("Cut (Preview Ã¢â€ â€™ Program immediately) [{}]", cut_acc)
                 };
-                if ui.button(" CUT ").on_hover_text(cut_tooltip).clicked() {
+                if Button::new("CUT")
+                    .primary()
+                    .tooltip(cut_tooltip)
+                    .show(ui)
+                    .clicked()
+                {
                     *self.trigger_cut = true;
                 }
                 ui.add_space(GRID_UNIT);
@@ -369,7 +375,12 @@ impl<'a> StudioTabViewer<'a> {
                 } else {
                     format!("Trigger Transition (Auto) [{}]", auto_acc)
                 };
-                if ui.button(" AUTO ").on_hover_text(auto_tooltip).clicked() {
+                if Button::new("AUTO")
+                    .secondary()
+                    .tooltip(auto_tooltip)
+                    .show(ui)
+                    .clicked()
+                {
                     *self.trigger_auto = true;
                 }
                 ui.add_space(GRID_UNIT);
@@ -2171,7 +2182,11 @@ impl<'a> StudioTabViewer<'a> {
                         };
                         ui.label(master_db_text);
 
-                        let mute_btn = ui.selectable_label(*self.master_muted, "Mute");
+                        let mute_btn = Button::new("Mute")
+                            .secondary()
+                            .selected(*self.master_muted)
+                            .width(58.0)
+                            .show(ui);
                         if mute_btn.clicked() {
                             *self.master_muted = !*self.master_muted;
                             *self.trigger_audio_change = true;
@@ -2224,7 +2239,11 @@ impl<'a> StudioTabViewer<'a> {
                                     };
                                     ui.label(db_text);
 
-                                    let mute_btn = ui.selectable_label(src.muted, "Mute");
+                                    let mute_btn = Button::new("Mute")
+                                        .secondary()
+                                        .selected(src.muted)
+                                        .width(58.0)
+                                        .show(ui);
                                     if mute_btn.clicked() {
                                         src.muted = !src.muted;
                                         *self.trigger_audio_change = true;
@@ -2280,7 +2299,12 @@ impl<'a> StudioTabViewer<'a> {
                 ui.add(egui::Slider::new(self.transition_duration_ms, 50..=2000).suffix(" ms"));
 
                 ui.add_space(GRID_UNIT);
-                if ui.button("Trigger Transition (Auto)").clicked() {
+                if Button::new("Trigger Transition (Auto)")
+                    .secondary()
+                    .full_width()
+                    .show(ui)
+                    .clicked()
+                {
                     *self.trigger_auto = true;
                 }
             });
@@ -2291,40 +2315,34 @@ impl<'a> StudioTabViewer<'a> {
     fn ui_stream_controls(&mut self, ui: &mut Ui) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             ui.vertical(|ui| {
-                // Stream button
+                // Stream button: Primary action when idle, Danger when streaming
                 let stream_text = if self.is_streaming {
                     "STOP STREAMING"
                 } else {
                     "START STREAMING"
                 };
-                let stream_btn = ui.add_sized(
-                    vec2(ui.available_width(), BUTTON_HEIGHT),
-                    egui::Button::new(stream_text).fill(if self.is_streaming {
-                        RED_LIVE
-                    } else {
-                        ACCENT
-                    }),
-                );
+                let stream_btn = if self.is_streaming {
+                    Button::new(stream_text).danger().full_width().show(ui)
+                } else {
+                    Button::new(stream_text).primary().full_width().show(ui)
+                };
                 if stream_btn.clicked() {
                     *self.trigger_toggle_stream = true;
                 }
 
                 ui.add_space(GRID_UNIT);
 
-                // Record button
+                // Record button: Secondary action when idle, Danger when recording
                 let record_text = if self.is_recording {
                     "STOP RECORDING"
                 } else {
                     "START RECORDING"
                 };
-                let record_btn = ui.add_sized(
-                    vec2(ui.available_width(), BUTTON_HEIGHT),
-                    egui::Button::new(record_text).fill(if self.is_recording {
-                        RED_LIVE
-                    } else {
-                        SURFACE_3
-                    }),
-                );
+                let record_btn = if self.is_recording {
+                    Button::new(record_text).danger().full_width().show(ui)
+                } else {
+                    Button::new(record_text).secondary().full_width().show(ui)
+                };
                 if record_btn.clicked() {
                     *self.trigger_toggle_record = true;
                 }
@@ -2337,59 +2355,55 @@ impl<'a> StudioTabViewer<'a> {
                 } else {
                     "Studio Mode"
                 };
-                let studio_mode_btn = ui.add_sized(
-                    vec2(ui.available_width(), BUTTON_HEIGHT),
-                    egui::Button::new(studio_mode_text).fill(if self.studio_mode {
-                        ACCENT
-                    } else {
-                        SURFACE_3
-                    }),
-                );
-                if studio_mode_btn
-                    .on_hover_text(
+                let studio_mode_btn = Button::new(studio_mode_text)
+                    .secondary()
+                    .selected(self.studio_mode)
+                    .full_width()
+                    .tooltip(
                         "Toggle between Normal Mode (single monitor) and Studio Mode (Preview / Program split)",
                     )
-                    .clicked()
-                {
+                    .show(ui);
+                if studio_mode_btn.clicked() {
                     *self.trigger_toggle_studio_mode = true;
                 }
 
+                ui.add_space(GRID_UNIT);
                 ui.separator();
+                ui.add_space(GRID_UNIT);
 
-                // Real-Time Output Statistics
-                ui.horizontal(|ui| {
-                    ui.colored_label(TEXT_MUTED, "Status:");
-                    if self.is_streaming {
-                        ui.colored_label(RED_LIVE, "LIVE");
-                    } else {
-                        ui.colored_label(TEXT, "OFFLINE");
-                    }
-                });
+                // Real-Time Output Statistics with fixed-width label column and tabular monospace numerals
+                let mut render_stat_row = |label: &str, val: String, val_color: egui::Color32| {
+                    ui.horizontal(|ui| {
+                        ui.allocate_ui_with_layout(
+                            vec2(72.0, 20.0),
+                            egui::Layout::left_to_right(egui::Align::Center),
+                            |ui| {
+                                ui.colored_label(TEXT_MUTED, label);
+                            },
+                        );
+                        ui.label(egui::RichText::new(val).color(val_color).monospace());
+                    });
+                };
 
-                ui.horizontal(|ui| {
-                    ui.colored_label(TEXT_MUTED, "FPS:");
-                    ui.colored_label(TEXT, format!("{:.1}", self.fps));
-                });
+                let (status_text, status_color) = if self.is_streaming {
+                    ("LIVE".to_string(), RED_LIVE)
+                } else {
+                    ("OFFLINE".to_string(), TEXT)
+                };
+                render_stat_row("Status:", status_text, status_color);
 
-                ui.horizontal(|ui| {
-                    ui.colored_label(TEXT_MUTED, "Dropped:");
-                    let drop_color = if self.dropped_percent > 0.1 {
-                        AMBER_WARN
-                    } else {
-                        TEXT
-                    };
-                    ui.colored_label(drop_color, format!("{:.2}%", self.dropped_percent));
-                });
+                render_stat_row("FPS:", format!("{:.1}", self.fps), TEXT);
 
-                ui.horizontal(|ui| {
-                    ui.colored_label(TEXT_MUTED, "Bitrate:");
-                    ui.colored_label(TEXT, format!("{} kbps", self.bitrate_kbps));
-                });
+                let drop_color = if self.dropped_percent > 0.1 {
+                    AMBER_WARN
+                } else {
+                    TEXT
+                };
+                render_stat_row("Dropped:", format!("{:.2}%", self.dropped_percent), drop_color);
 
-                ui.horizontal(|ui| {
-                    ui.colored_label(TEXT_MUTED, "Duration:");
-                    ui.colored_label(TEXT, &self.stream_time);
-                });
+                render_stat_row("Bitrate:", format!("{} kbps", self.bitrate_kbps), TEXT);
+
+                render_stat_row("Duration:", self.stream_time.clone(), TEXT);
             });
         });
     }

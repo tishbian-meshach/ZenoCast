@@ -5,6 +5,7 @@
 
 use egui::{vec2, Align2, Window};
 
+use crate::button::Button;
 use crate::icon::{IconButton, IconKind};
 use crate::project::SourceKind;
 use crate::theme::{AMBER_WARN, GRID_UNIT, RED_LIVE, TEXT, TEXT_MUTED};
@@ -493,7 +494,7 @@ impl SourceDialogState {
                         ui.add_space(GRID_UNIT);
                         ui.separator();
                         ui.horizontal(|ui| {
-                            if ui.button("Cancel").clicked() {
+                            if Button::new("Cancel").ghost().show(ui).clicked() {
                                 self.close();
                             }
                         });
@@ -1132,7 +1133,7 @@ impl SourceDialogState {
                             } else {
                                 "Add Source"
                             };
-                            let confirm_clicked = ui.button(confirm_label).clicked()
+                            let confirm_clicked = Button::new(confirm_label).primary().show(ui).clicked()
                                 || (enter_pressed && kind != SourceKind::Text);
                             if confirm_clicked {
                                 // Input Validation
@@ -1223,14 +1224,20 @@ impl SourceDialogState {
                             }
 
                             if let Some(ref edit_id) = edit_source_id {
-                                if ui.button("Filters...").on_hover_text("Open filter chain for this source").clicked() {
+                                if Button::new("Filters...")
+                                    .secondary()
+                                    .icon(IconKind::Filter)
+                                    .tooltip("Open filter chain for this source")
+                                    .show(ui)
+                                    .clicked()
+                                {
                                     action = Some(SourceDialogAction::OpenFilters {
                                         id: edit_id.clone(),
                                     });
                                 }
                             }
 
-                            if ui.button("Cancel").clicked() {
+                            if Button::new("Cancel").ghost().show(ui).clicked() {
                                 self.close();
                             }
                         });

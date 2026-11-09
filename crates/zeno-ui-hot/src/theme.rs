@@ -39,6 +39,7 @@ pub const BORDER_WIDTH: f32 = 1.0;
 pub const CORNER_RADIUS: f32 = 4.0;
 pub const ROW_HEIGHT_LIST: f32 = 28.0;
 pub const BUTTON_HEIGHT: f32 = 32.0;
+pub const BUTTON_PADDING_H: f32 = 16.0;
 
 // Shaded lifecycle timeline region tints (flat neutral surfaces with alpha)
 pub const REGION_IN: Color32 = Color32::from_rgba_premultiplied(0x1D, 0x20, 0x24, 70);

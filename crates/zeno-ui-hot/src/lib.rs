@@ -4,6 +4,7 @@
 //! timeline keyframe manipulation, bezier curve editor, and strict design token theme.
 
 pub mod app;
+pub mod button;
 pub mod data_panel;
 pub mod dock;
 pub mod editor;
@@ -64,6 +65,7 @@ pub fn mark_reloaded() {
 pub fn draw_frame(ctx: &egui::Context, state: &mut AppState) {
     state.draw_ui(ctx);
 }
+pub use button::{Button, ButtonVariant};
 pub use data_panel::{ui_esports_data_panel, DataPanelState};
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
