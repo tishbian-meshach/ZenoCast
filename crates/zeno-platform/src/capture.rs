@@ -38,13 +38,15 @@ extern "system" {
     fn PrintWindow(hwnd: HWND, hdc_blt: HDC, n_flags: u32) -> BOOL;
 }
 
-/// A captured video frame with dimensions, RGBA8 pixel memory, and timestamp.
+/// A captured video frame with dimensions, pixel memory, timestamp, and sequence counter.
 #[derive(Debug, Clone)]
 pub struct CapturedFrame {
     pub width: u32,
     pub height: u32,
-    pub rgba: Vec<u8>,
+    pub rgba: Arc<Vec<u8>>,
     pub timestamp_seconds: f64,
+    pub sequence: u64,
+    pub is_bgra: bool,
 }
 
 /// Windows Graphics Capture (WGC) hardware-accelerated session for a specific HWND.
@@ -52,7 +54,7 @@ pub struct WgcCaptureSession {
     hwnd: isize,
     session: GraphicsCaptureSession,
     frame_pool: Direct3D11CaptureFramePool,
-    latest_frame: Arc<parking_lot::Mutex<Option<CapturedFrame>>>,
+    latest_frame: Arc<parking_lot::Mutex<Option<Arc<CapturedFrame>>>>,
     active: Arc<AtomicBool>,
 }
 
@@ -156,12 +158,14 @@ impl WgcCaptureSession {
         let _ = session.SetIsCursorCaptureEnabled(capture_cursor);
         let _ = session.SetIsBorderRequired(false);
 
-        let latest_frame = Arc::new(parking_lot::Mutex::new(None::<CapturedFrame>));
+        let latest_frame = Arc::new(parking_lot::Mutex::new(None::<Arc<CapturedFrame>>));
         let active = Arc::new(AtomicBool::new(true));
+        let sequence_counter = Arc::new(std::sync::atomic::AtomicU64::new(0));
 
         // 7. Subscribe to FrameArrived on background thread
         let context_mutex = Arc::new(parking_lot::Mutex::new(d3d_context));
         let staging_tex = Arc::new(parking_lot::Mutex::new(None::<ID3D11Texture2D>));
+        let last_arrival_time = Arc::new(parking_lot::Mutex::new(std::time::Instant::now()));
 
         {
             let d3d_device = d3d_device.clone();
@@ -169,6 +173,8 @@ impl WgcCaptureSession {
             let staging_tex = Arc::clone(&staging_tex);
             let latest_frame = Arc::clone(&latest_frame);
             let active = Arc::clone(&active);
+            let sequence_counter = Arc::clone(&sequence_counter);
+            let last_arrival_time = Arc::clone(&last_arrival_time);
 
             frame_pool
                 .FrameArrived(&TypedEventHandler::new(
@@ -179,11 +185,34 @@ impl WgcCaptureSession {
                         let Some(pool) = pool_opt else {
                             return Ok(());
                         };
-                        let frame = match pool.TryGetNextFrame() {
-                            Ok(f) => f,
-                            Err(_) => return Ok(()),
+
+                        let now_inst = std::time::Instant::now();
+                        let delta_arrival_ms = {
+                            let mut last_t = last_arrival_time.lock();
+                            let d = now_inst.duration_since(*last_t).as_secs_f64() * 1000.0;
+                            *last_t = now_inst;
+                            d
                         };
 
+                        // Discard stale queued frames: drain all pending frames in the pool
+                        // so Zenocast presents strictly the latest unconsumed frame with sub-frame lag.
+                        let mut latest_frame_obj: Option<
+                            windows::Graphics::Capture::Direct3D11CaptureFrame,
+                        > = None;
+                        let mut drained_count = 0usize;
+                        while let Ok(f) = pool.TryGetNextFrame() {
+                            if let Some(prev) = latest_frame_obj.take() {
+                                let _ = prev.Close();
+                                drained_count += 1;
+                            }
+                            latest_frame_obj = Some(f);
+                        }
+
+                        let Some(frame) = latest_frame_obj else {
+                            return Ok(());
+                        };
+
+                        let t_readback_start = std::time::Instant::now();
                         let surface: IDirect3DSurface = frame.Surface()?;
                         let access: IDirect3DDxgiInterfaceAccess = surface.cast()?;
                         let source_texture: ID3D11Texture2D = unsafe { access.GetInterface()? };
@@ -249,40 +278,54 @@ impl WgcCaptureSession {
                                 {
                                     let row_pitch = mapped.RowPitch as usize;
                                     let pixel_count = (width * height) as usize;
-                                    let mut rgba = vec![0u8; pixel_count * 4];
+                                    let byte_count = pixel_count * 4;
+                                    let mut pixel_data = vec![0u8; byte_count];
 
                                     let src_data = mapped.pData as *const u8;
-                                    for y in 0..height as usize {
-                                        let src_row = std::slice::from_raw_parts(
-                                            src_data.add(y * row_pitch),
-                                            width as usize * 4,
-                                        );
-                                        let dst_row = &mut rgba[y * (width as usize * 4)
-                                            ..(y + 1) * (width as usize * 4)];
-
-                                        for (s, d) in
-                                            src_row.chunks_exact(4).zip(dst_row.chunks_exact_mut(4))
-                                        {
-                                            d[0] = s[2]; // R
-                                            d[1] = s[1]; // G
-                                            d[2] = s[0]; // B
-                                            d[3] = 255; // A
+                                    if row_pitch == width as usize * 4 {
+                                        let src_slice =
+                                            std::slice::from_raw_parts(src_data, byte_count);
+                                        pixel_data.copy_from_slice(src_slice);
+                                    } else {
+                                        let row_len = width as usize * 4;
+                                        for y in 0..height as usize {
+                                            let src_row = std::slice::from_raw_parts(
+                                                src_data.add(y * row_pitch),
+                                                row_len,
+                                            );
+                                            let dst_row =
+                                                &mut pixel_data[y * row_len..(y + 1) * row_len];
+                                            dst_row.copy_from_slice(src_row);
                                         }
                                     }
 
                                     ctx.Unmap(staging, 0);
 
-                                    let now = std::time::SystemTime::now()
+                                    let readback_duration_ms =
+                                        t_readback_start.elapsed().as_secs_f64() * 1000.0;
+                                    let seq = sequence_counter.fetch_add(1, Ordering::Relaxed) + 1;
+
+                                    let now_sec = std::time::SystemTime::now()
                                         .duration_since(std::time::UNIX_EPOCH)
                                         .map(|d| d.as_secs_f64())
                                         .unwrap_or(0.0);
 
-                                    *latest_frame.lock() = Some(CapturedFrame {
+                                    *latest_frame.lock() = Some(Arc::new(CapturedFrame {
                                         width,
                                         height,
-                                        rgba,
-                                        timestamp_seconds: now,
-                                    });
+                                        rgba: Arc::new(pixel_data),
+                                        timestamp_seconds: now_sec,
+                                        sequence: seq,
+                                        is_bgra: true,
+                                    }));
+
+                                    tracing::trace!(
+                                        delta_arrival_ms,
+                                        readback_duration_ms,
+                                        drained_stale_frames = drained_count,
+                                        seq,
+                                        "[WGC FrameArrived] Captured frame"
+                                    );
                                 }
                             }
                         }
@@ -310,7 +353,7 @@ impl WgcCaptureSession {
     }
 
     /// Queries the latest captured frame from the background pool without blocking.
-    pub fn get_latest_frame(&self) -> Option<CapturedFrame> {
+    pub fn get_latest_frame(&self) -> Option<Arc<CapturedFrame>> {
         self.latest_frame.lock().clone()
     }
 
@@ -486,10 +529,9 @@ pub fn capture_window_raw(
         }
     }
 
-    // Convert BGRA to RGBA in-place
+    // Ensure full alpha on DIB BGRA scanlines
     if lines > 0 {
         for chunk in out_rgba[..byte_count].chunks_exact_mut(4) {
-            chunk.swap(0, 2);
             chunk[3] = 255;
         }
     }

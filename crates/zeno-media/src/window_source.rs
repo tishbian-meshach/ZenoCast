@@ -22,6 +22,7 @@ pub struct WindowCaptureSource {
     texture_buffer: DoubleBufferedTexture,
     raw_buffer: Vec<u8>,
     wgc_session: Option<WgcCaptureSession>,
+    last_frame_seq: u64,
 }
 
 impl WindowCaptureSource {
@@ -38,9 +39,10 @@ impl WindowCaptureSource {
             active: false,
             target_found: hwnd != 0,
             offline_rendered: false,
-            texture_buffer: DoubleBufferedTexture::new(),
+            texture_buffer: DoubleBufferedTexture::with_format(wgpu::TextureFormat::Bgra8UnormSrgb),
             raw_buffer: Vec::new(),
             wgc_session: None,
+            last_frame_seq: 0,
         }
     }
 
@@ -220,9 +222,15 @@ impl Source for WindowCaptureSource {
         // 1. Check for hardware-accelerated WGC frame first
         if let Some(ref session) = self.wgc_session {
             if let Some(frame) = session.get_latest_frame() {
-                if frame.width > 0 && frame.height > 0 {
+                if frame.sequence != self.last_frame_seq && frame.width > 0 && frame.height > 0 {
+                    let t_upload_start = std::time::Instant::now();
+                    self.last_frame_seq = frame.sequence;
                     self.target_found = true;
                     self.offline_rendered = false;
+
+                    let capture_latency_ms =
+                        (current_time - frame.timestamp_seconds).max(0.0) * 1000.0;
+
                     self.texture_buffer.upload(
                         device,
                         queue,
@@ -232,6 +240,17 @@ impl Source for WindowCaptureSource {
                         current_time,
                     );
                     self.last_capture_time = current_time;
+
+                    let upload_duration_ms = t_upload_start.elapsed().as_secs_f64() * 1000.0;
+                    tracing::trace!(
+                        seq = frame.sequence,
+                        capture_latency_ms,
+                        upload_duration_ms,
+                        "[WindowCapture] Uploaded new WGC frame to texture"
+                    );
+                    return;
+                } else if frame.sequence == self.last_frame_seq {
+                    // Frame hasn't changed; avoid re-uploading identical buffer and burning GPU queue
                     return;
                 }
             }
@@ -308,17 +327,17 @@ impl WindowCaptureSource {
                     self.raw_buffer[px + 2] = 48;
                     self.raw_buffer[px + 3] = 255;
                 } else if in_offline_banner && (440..=840).contains(&x) {
-                    // Offline notice banner with warning highlight
+                    // Offline notice banner with warning highlight (BGRA)
                     let is_banner_edge = y == 320 || y == 400 || x == 440 || x == 840;
                     if is_banner_edge {
-                        self.raw_buffer[px] = 255; // Warning red/accent
-                        self.raw_buffer[px + 1] = 59;
-                        self.raw_buffer[px + 2] = 48;
+                        self.raw_buffer[px] = 48; // Blue
+                        self.raw_buffer[px + 1] = 59; // Green
+                        self.raw_buffer[px + 2] = 255; // Red
                         self.raw_buffer[px + 3] = 255;
                     } else {
-                        self.raw_buffer[px] = 39; // #272B30
+                        self.raw_buffer[px] = 48;
                         self.raw_buffer[px + 1] = 43;
-                        self.raw_buffer[px + 2] = 48;
+                        self.raw_buffer[px + 2] = 39;
                         self.raw_buffer[px + 3] = 255;
                     }
                 } else {

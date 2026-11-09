@@ -135,6 +135,10 @@ fn main() -> eframe::Result<()> {
             .with_title("Zenocast Studio")
             .with_inner_size(vec2(1440.0, 900.0))
             .with_min_inner_size(vec2(960.0, 600.0)),
+        wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
+            present_mode: eframe::egui_wgpu::wgpu::PresentMode::AutoNoVsync,
+            ..Default::default()
+        },
         ..Default::default()
     };
 

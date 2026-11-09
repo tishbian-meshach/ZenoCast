@@ -1002,5 +1002,25 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - `FilterChain` (in `zeno-core`, `zeno-compositor`, and `zeno-audio`) handles broadcast stream processing (live camera chroma keying, LUT grading, sharpness, WASAPI noise suppression, multiband compression) across live inputs before scene compositing and multiplexing.
   - Rather than subsuming one another, the two systems complement each other: `.arx` container packages remain self-contained motion graphics assets using `Layer::effects`, while `FilterChain` provides real-time broadcast conditioning for live streaming and recording.
 
+---
+
+### 8. Window Capture Latency Elimination & Zero-Copy Ingest Pipeline (v1.7 Section 1)
+
+- **Root Cause Diagnosis**:
+  1. *Frame Pool Backpressure & Queue Backlog*: `Direct3D11CaptureFramePool` fires `FrameArrived` for every frame delivered by the Desktop Window Manager (DWM). When `TryGetNextFrame()` was called only once per arrival event without draining, any brief CPU/GPU stall accumulated an internal queue backlog. The consumer lagged several frames behind real-time.
+  2. *Redundant Per-Frame Heap Allocations*: On every frame arrival at 60 FPS, an 8.3 MB `Vec<u8>` was freshly allocated on the heap, pixel-by-pixel BGRA->RGBA swizzled on CPU, and then cloned again on the main render loop in `session.get_latest_frame().clone()`, creating ~1 GB/s of redundant memory churn.
+  3. *Per-Frame WGPU Texture View Re-creation*: `DoubleBufferedTexture::upload()` called `back_tex.create_view(&TextureViewDescriptor::default())` on every frame, generating continuous driver allocations.
+  4. *Redundant Duplicate Frame Uploads*: `WindowCaptureSource::update()` lacked a sequence counter check, re-uploading the same 8.3 MB texture whenever the consumer ticked faster than window content updates.
+  5. *UI Swapchain VSync Blocking*: Default `eframe` presentation mode (`PresentMode::Fifo`) forced blocking VSync on the application window, compounding pipeline latency across multiple frames.
+
+- **Architectural Solution & Fixes**:
+  - **Pool Frame Draining (Skip to Latest)**: In `WgcCaptureSession::FrameArrived`, `pool.TryGetNextFrame()` is drained in a loop, immediately closing older frames and retaining strictly the latest frame.
+  - **Hardware Color Mapping**: `DoubleBufferedTexture` now supports `wgpu::TextureFormat::Bgra8UnormSrgb`. Raw BGRA bytes from D3D11 staging memory are copied contiguously into preallocated memory via `copy_from_slice`, completely eliminating CPU-side byte swizzling loops and utilizing GPU hardware texture units for zero-cost component mapping.
+  - **Zero-Allocation Texture View Ping-Pong**: Both `front` and `back` textures and their corresponding `TextureView`s are allocated once upfront and swapped without re-creating views.
+  - **Arc-Shared Frame & Sequence Deduplication**: `CapturedFrame` stores `rgba: Arc<Vec<u8>>` and a monotonic `sequence: u64`. `WindowCaptureSource` checks `frame.sequence != self.last_frame_seq` before uploading, eliminating duplicate GPU uploads.
+  - **Non-Blocking Present Mode**: Configured `wgpu::PresentMode::AutoNoVsync` in `eframe::NativeOptions`, enabling Mailbox/Immediate low-latency presentation.
+  - **Instrumentation**: Added `tracing::trace!` spans recording inter-arrival delta (`delta_arrival_ms`), readback duration (`readback_duration_ms`), drained stale frame count (`drained_stale_frames`), and GPU upload duration (`upload_duration_ms`).
+
+
 
 
