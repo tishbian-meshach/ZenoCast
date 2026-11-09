@@ -163,18 +163,22 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
                     .inner_margin(egui::Margin::symmetric(GRID_UNIT as i8, 4));
 
+                let mut grip_drag = false;
                 let resp = row_frame.show(ui, |ui| {
                     ui.set_width(list_width);
                     ui.set_min_height(ROW_HEIGHT_LIST);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_centered(|ui| {
                         // Drag handle grip
                         let grip_resp = grip_handle(ui, "Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         }
+                        if grip_resp.drag_started() {
+                            grip_drag = true;
+                        }
 
                         // Eye visibility toggle
-                        if icon_toggle_button(
+                        let eye_resp = icon_toggle_button(
                             ui,
                             layer_visible,
                             IconKind::Eye,
@@ -184,10 +188,10 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                             } else {
                                 "Show Layer"
                             },
-                        )
-                        .clicked()
-                        {
+                        );
+                        if eye_resp.clicked() {
                             editor.composition.layers[l_idx].visible = !layer_visible;
+                            editor.selected_layer_id = Some(layer_id);
                         }
 
                         // 3D toggle
@@ -208,14 +212,19 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 let row_rect = resp.response.rect;
                 row_rects.push(row_rect);
 
-                // Row interaction
+                // Row interaction - starts after grip (16) and eye (22) + spacing (~76px)
+                // so clicks on buttons are handled cleanly by the buttons themselves
+                let label_interact_rect = egui::Rect::from_min_max(
+                    egui::pos2((row_rect.min.x + 76.0).min(row_rect.max.x), row_rect.min.y),
+                    row_rect.max,
+                );
                 let row_sense = ui.interact(
-                    row_rect,
+                    label_interact_rect,
                     egui::Id::new("layer_row_interact").with(layer_id.to_string()),
                     Sense::click_and_drag(),
                 );
 
-                if row_sense.drag_started() {
+                if grip_drag || row_sense.drag_started() {
                     ui.ctx()
                         .data_mut(|d| d.insert_temp(dnd_layer_id_key, layer_id));
                 }

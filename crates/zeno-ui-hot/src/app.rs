@@ -1294,7 +1294,7 @@ impl ZenocastApp {
         let src_id = string_to_source_id(source_id_str);
         let current_vis = self
             .project
-            .preview_sources()
+            .editable_sources(self.studio_mode)
             .iter()
             .find(|s| s.id == source_id_str)
             .map(|s| s.visible)
@@ -1337,8 +1337,8 @@ impl ZenocastApp {
                     }
                 }
             }
-            // 4. Update preview working scene (immediately affects Preview output)
-            comp.update_preview_item_visibility(src_id, new_vis);
+            // 4. Update editable working scene (immediately affects active/preview output)
+            comp.update_editable_item_visibility(src_id, new_vis);
         }
     }
 
@@ -1347,7 +1347,7 @@ impl ZenocastApp {
         let src_id = string_to_source_id(source_id_str);
         let current_lock = self
             .project
-            .preview_sources()
+            .editable_sources(self.studio_mode)
             .iter()
             .find(|s| s.id == source_id_str)
             .map(|s| s.locked)
@@ -1390,8 +1390,8 @@ impl ZenocastApp {
                     }
                 }
             }
-            // 4. Update preview working scene
-            comp.update_preview_item_lock(src_id, new_lock);
+            // 4. Update editable working scene
+            comp.update_editable_item_lock(src_id, new_lock);
         }
     }
 

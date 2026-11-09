@@ -229,10 +229,10 @@ impl IconButton {
         let is_hovered = self.enabled && response.hovered();
 
         let (bg_color, border_color) = if self.ghost {
-            if self.selected {
-                (SURFACE_3, ACCENT)
+            if is_down {
+                (SURFACE_3, TRANSPARENT)
             } else if is_hovered {
-                (SURFACE_2, ACCENT)
+                (SURFACE_2, TRANSPARENT)
             } else {
                 (TRANSPARENT, TRANSPARENT)
             }
@@ -252,10 +252,14 @@ impl IconButton {
 
         let stroke_color = if !self.enabled {
             TEXT_MUTED.linear_multiply(0.6)
-        } else if self.selected {
-            ACCENT
         } else if is_down || is_hovered {
             TEXT
+        } else if self.selected {
+            if self.ghost {
+                TEXT
+            } else {
+                ACCENT
+            }
         } else {
             TEXT_MUTED
         };

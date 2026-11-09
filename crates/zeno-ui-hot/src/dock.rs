@@ -1864,18 +1864,22 @@ impl<'a> StudioTabViewer<'a> {
                     .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
                     .inner_margin(egui::Margin::symmetric(4, 2));
 
+                let mut grip_drag = false;
                 let resp = row_frame.show(ui, |ui| {
                     ui.set_width(list_width);
                     ui.set_min_height(ROW_HEIGHT_LIST);
-                    ui.horizontal(|ui| {
+                    ui.horizontal_centered(|ui| {
                         // Drag handle grip
                         let grip_resp = grip_handle(ui, "Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         }
+                        if grip_resp.drag_started() {
+                            grip_drag = true;
+                        }
 
                         // Visibility toggle
-                        if icon_toggle_button(
+                        let eye_resp = icon_toggle_button(
                             ui,
                             src_visible,
                             IconKind::Eye,
@@ -1885,14 +1889,14 @@ impl<'a> StudioTabViewer<'a> {
                             } else {
                                 "Show Source (Ctrl+Shift+H)"
                             },
-                        )
-                        .clicked()
-                        {
+                        );
+                        if eye_resp.clicked() {
                             *self.trigger_toggle_source_visibility = Some(src_id.clone());
+                            *self.selected_source_id = Some(src_id.clone());
                         }
 
                         // Lock toggle
-                        if icon_toggle_button(
+                        let lock_resp = icon_toggle_button(
                             ui,
                             src_locked,
                             IconKind::Lock,
@@ -1902,10 +1906,10 @@ impl<'a> StudioTabViewer<'a> {
                             } else {
                                 "Lock Source (Ctrl+Shift+L)"
                             },
-                        )
-                        .clicked()
-                        {
+                        );
+                        if lock_resp.clicked() {
                             *self.trigger_toggle_source_lock = Some(src_id.clone());
+                            *self.selected_source_id = Some(src_id.clone());
                         }
 
                         // Source name (dimmed when hidden, matching OBS)
@@ -1930,14 +1934,19 @@ impl<'a> StudioTabViewer<'a> {
                 let row_rect = resp.response.rect;
                 row_rects.push(row_rect);
 
-                // Row interaction
+                // Row interaction - starts after grip (16), eye (22), lock (22) + spacing (~76px)
+                // so clicks on buttons are handled cleanly by the buttons themselves
+                let label_interact_rect = egui::Rect::from_min_max(
+                    egui::pos2((row_rect.min.x + 76.0).min(row_rect.max.x), row_rect.min.y),
+                    row_rect.max,
+                );
                 let row_sense = ui.interact(
-                    row_rect,
+                    label_interact_rect,
                     egui::Id::new("source_row_interact").with(&src_id),
                     Sense::click_and_drag(),
                 );
 
-                if row_sense.drag_started() {
+                if grip_drag || row_sense.drag_started() {
                     ui.ctx()
                         .data_mut(|d| d.insert_temp(dnd_source_id_key, src_id.clone()));
                 }
@@ -2049,97 +2058,113 @@ impl<'a> StudioTabViewer<'a> {
             }
         }
 
-        // Section 2.2: Clicking empty space below source rows deselects
-        if scroll_output.inner_rect.is_positive() && ui.input(|i| i.pointer.primary_clicked()) {
-            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
-                if scroll_output.inner_rect.contains(pos)
-                    && !row_rects.iter().any(|r| r.contains(pos))
-                {
-                    *self.selected_source_id = None;
-                }
-            }
-        }
-
+        let mut transform_rect = egui::Rect::NOTHING;
         if let Some(ref sel_id) = *self.selected_source_id {
             if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                 if let Some(src) = srcs.iter_mut().find(|s| &s.id == sel_id) {
                     ui.separator();
-                    ui.collapsing("Transform", |ui| {
-                        let mut changed = false;
-                        egui::Grid::new("src_transform_grid")
-                            .num_columns(4)
-                            .spacing(vec2(GRID_UNIT, GRID_UNIT))
-                            .show(ui, |ui| {
-                                ui.label("X:");
-                                let rx = ui.add(egui::DragValue::new(&mut src.x).speed(1.0));
-                                if rx.drag_started() {
-                                    *self.trigger_snapshot_undo = true;
-                                }
-                                changed |= rx.changed();
+                    let collapsing_res = egui::CollapsingHeader::new("Transform")
+                        .default_open(true)
+                        .id_salt(format!("src_transform_{}", sel_id))
+                        .show(ui, |ui| {
+                            let mut changed = false;
+                            egui::Grid::new("src_transform_grid")
+                                .num_columns(4)
+                                .spacing(vec2(GRID_UNIT, GRID_UNIT))
+                                .show(ui, |ui| {
+                                    ui.label("X:");
+                                    let rx = ui.add(egui::DragValue::new(&mut src.x).speed(1.0));
+                                    if rx.drag_started() {
+                                        *self.trigger_snapshot_undo = true;
+                                    }
+                                    changed |= rx.changed();
 
-                                ui.label("Y:");
-                                let ry = ui.add(egui::DragValue::new(&mut src.y).speed(1.0));
-                                if ry.drag_started() {
-                                    *self.trigger_snapshot_undo = true;
-                                }
-                                changed |= ry.changed();
-                                ui.end_row();
+                                    ui.label("Y:");
+                                    let ry = ui.add(egui::DragValue::new(&mut src.y).speed(1.0));
+                                    if ry.drag_started() {
+                                        *self.trigger_snapshot_undo = true;
+                                    }
+                                    changed |= ry.changed();
+                                    ui.end_row();
 
-                                ui.label("Width:");
-                                let rw = ui.add(
-                                    egui::DragValue::new(&mut src.width)
-                                        .speed(1.0)
-                                        .range(1.0..=7680.0),
+                                    ui.label("Width:");
+                                    let rw = ui.add(
+                                        egui::DragValue::new(&mut src.width)
+                                            .speed(1.0)
+                                            .range(1.0..=7680.0),
+                                    );
+                                    if rw.drag_started() {
+                                        *self.trigger_snapshot_undo = true;
+                                    }
+                                    changed |= rw.changed();
+
+                                    ui.label("Height:");
+                                    let rh = ui.add(
+                                        egui::DragValue::new(&mut src.height)
+                                            .speed(1.0)
+                                            .range(1.0..=4320.0),
+                                    );
+                                    if rh.drag_started() {
+                                        *self.trigger_snapshot_undo = true;
+                                    }
+                                    changed |= rh.changed();
+                                    ui.end_row();
+                                });
+
+                            ui.add_space(GRID_UNIT * 0.5);
+                            ui.horizontal(|ui| {
+                                ui.label("Rotation:");
+                                let rr = ui.add(
+                                    egui::DragValue::new(&mut src.rotation)
+                                        .speed(0.5)
+                                        .suffix("°"),
                                 );
-                                if rw.drag_started() {
+                                if rr.drag_started() {
                                     *self.trigger_snapshot_undo = true;
                                 }
-                                changed |= rw.changed();
-
-                                ui.label("Height:");
-                                let rh = ui.add(
-                                    egui::DragValue::new(&mut src.height)
-                                        .speed(1.0)
-                                        .range(1.0..=4320.0),
-                                );
-                                if rh.drag_started() {
+                                changed |= rr.changed();
+                                if icon_button(ui, IconKind::RotateCcw, "Reset Rotation to 0 deg")
+                                    .clicked()
+                                {
                                     *self.trigger_snapshot_undo = true;
+                                    src.rotation = 0.0;
+                                    changed = true;
                                 }
-                                changed |= rh.changed();
-                                ui.end_row();
                             });
-
-                        ui.add_space(GRID_UNIT * 0.5);
-                        ui.horizontal(|ui| {
-                            ui.label("Rotation:");
-                            let rr = ui.add(
-                                egui::DragValue::new(&mut src.rotation)
-                                    .speed(0.5)
-                                    .suffix("°"),
-                            );
-                            if rr.drag_started() {
-                                *self.trigger_snapshot_undo = true;
-                            }
-                            changed |= rr.changed();
-                            if icon_button(ui, IconKind::RotateCcw, "Reset Rotation to 0 deg")
-                                .clicked()
-                            {
-                                *self.trigger_snapshot_undo = true;
-                                src.rotation = 0.0;
-                                changed = true;
+                            if changed {
+                                *self.trigger_transform_source = Some((
+                                    src.id.clone(),
+                                    src.x,
+                                    src.y,
+                                    src.width,
+                                    src.height,
+                                    src.rotation,
+                                ));
                             }
                         });
-                        if changed {
-                            *self.trigger_transform_source = Some((
-                                src.id.clone(),
-                                src.x,
-                                src.y,
-                                src.width,
-                                src.height,
-                                src.rotation,
-                            ));
-                        }
-                    });
+
+                    transform_rect = collapsing_res.header_response.rect;
+                    if let Some(ref body_resp) = collapsing_res.body_response {
+                        transform_rect = transform_rect.union(body_resp.rect);
+                    }
+                }
+            }
+        }
+
+        // Section 2.2: Clicking empty space below source rows deselects (guarding transform controls)
+        if scroll_output.inner_rect.is_positive() && ui.input(|i| i.pointer.primary_clicked()) {
+            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                let on_row = row_rects.iter().any(|r| r.contains(pos));
+                let on_transform = transform_rect.is_positive() && transform_rect.contains(pos);
+                let inside_empty_space = (scroll_output.inner_rect.contains(pos)
+                    || (transform_rect.is_positive()
+                        && pos.y > transform_rect.max.y
+                        && pos.x >= scroll_output.inner_rect.min.x
+                        && pos.x <= scroll_output.inner_rect.max.x))
+                    && !on_row
+                    && !on_transform;
+                if inside_empty_space {
+                    *self.selected_source_id = None;
                 }
             }
         }
