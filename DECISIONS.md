@@ -1137,6 +1137,24 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - Added `color: Option<Color32>` to `IconButton` with `.color(color)` builder method, defaulting enabled buttons to `TEXT` (crisp white).
   - Introduced `grip_handle_colored` and `icon_toggle_button_colored` synchronized with the row's `text_color`: all icons and text on visible and selected rows are crisp white (`TEXT`), and hidden sources dim all icons and text together to `TEXT_MUTED`.
 
+---
+
+## 2026-11-09: Application Brand Icon & Windows Taskbar Integration
+
+- **Multi-Resolution Brand Icon Generation**:
+  - Processed brand visual asset into centered, squircle-masked assets in `assets/`:
+    - `assets/icon.png`: 512x512 high-resolution icon.
+    - `assets/icon_256.png`: 256x256 icon.
+    - `assets/icon_256.rgba`: Uncompressed RGBA byte sequence for zero-overhead startup loading.
+    - `assets/icon.ico`: Multi-size Windows ICO with 16, 24, 32, 48, 64, 128, and 256 mipmap sizes.
+- **Window & Viewport Decoration**:
+  - Implemented `load_app_icon()` in `crates/zeno-app/src/main.rs` using `include_bytes!` and passed directly to `ViewportBuilder::default().with_icon(load_app_icon())`.
+- **Windows 11 Taskbar Integration & PE Header Resource Embedding**:
+  - On Windows 10/11, the taskbar button does not inherit dynamic `WM_SETICON` from the window handle; it reads the executable's `.rsrc` section (`RT_GROUP_ICON`) directly from disk and groups via `AppUserModelID`.
+  - Added `init_windows_app_id()` in `crates/zeno-app/src/main.rs` calling `SetCurrentProcessExplicitAppUserModelID("Zenocast.Studio.App")` on startup.
+  - Implemented `scripts/embed_icon.py` using Win32 `kernel32.dll` APIs (`BeginUpdateResourceW`, `UpdateResourceW`, `EndUpdateResourceW`) to embed `assets/icon.ico` directly into `target/debug/zenocast.exe` and release builds without requiring MSVC SDK resource compilers.
+
+
 
 
 

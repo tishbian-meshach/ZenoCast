@@ -112,3 +112,4 @@ if __name__ == "__main__":
     icon = sys.argv[2] if len(sys.argv) > 2 else "assets/icon.ico"
     success = embed_icon(target, icon)
     sys.exit(0 if success else 1)
+
