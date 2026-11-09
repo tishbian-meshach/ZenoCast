@@ -1,6 +1,6 @@
 //! Layers panel: hierarchy list, add/remove, reordering, visibility and lock toggling.
 
-use egui::{Button, CornerRadius, Sense, Stroke, Ui};
+use egui::{vec2, Button, CornerRadius, Sense, Stroke, Ui};
 use zeno_core::{Color, LayerId, Vec2};
 
 use crate::editor::state::OverlayEditor;
@@ -161,52 +161,56 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 let row_frame = egui::Frame::NONE
                     .fill(bg_color)
                     .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
-                    .inner_margin(egui::Margin::symmetric(GRID_UNIT as i8, 4));
+                    .inner_margin(egui::Margin::symmetric(GRID_UNIT as i8, 0));
 
                 let mut grip_drag = false;
                 let resp = row_frame.show(ui, |ui| {
-                    ui.set_width(list_width);
-                    ui.set_min_height(ROW_HEIGHT_LIST);
-                    ui.horizontal_centered(|ui| {
-                        // Drag handle grip
-                        let grip_resp = grip_handle(ui, "Drag to reorder");
-                        if grip_resp.hovered() {
-                            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                        }
-                        if grip_resp.drag_started() {
-                            grip_drag = true;
-                        }
+                    ui.allocate_ui_with_layout(
+                        vec2(list_width, ROW_HEIGHT_LIST),
+                        egui::Layout::left_to_right(egui::Align::Center),
+                        |ui| {
+                            // Drag handle grip
+                            let grip_resp = grip_handle(ui, "Drag to reorder");
+                            if grip_resp.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                            }
+                            if grip_resp.drag_started() {
+                                grip_drag = true;
+                            }
 
-                        // Eye visibility toggle
-                        let eye_resp = icon_toggle_button(
-                            ui,
-                            layer_visible,
-                            IconKind::Eye,
-                            IconKind::EyeOff,
-                            if layer_visible {
-                                "Hide Layer"
-                            } else {
-                                "Show Layer"
-                            },
-                        );
-                        if eye_resp.clicked() {
-                            editor.composition.layers[l_idx].visible = !layer_visible;
-                            editor.selected_layer_id = Some(layer_id);
-                        }
+                            // Eye visibility toggle
+                            let eye_resp = icon_toggle_button(
+                                ui,
+                                layer_visible,
+                                IconKind::Eye,
+                                IconKind::EyeOff,
+                                if layer_visible {
+                                    "Hide Layer"
+                                } else {
+                                    "Show Layer"
+                                },
+                            );
+                            if eye_resp.clicked() {
+                                editor.composition.layers[l_idx].visible = !layer_visible;
+                                editor.selected_layer_id = Some(layer_id);
+                            }
 
-                        // 3D toggle
-                        let mode_3d_label = if is_3d { "[3D]" } else { "[2D]" };
-                        if ui.selectable_label(is_3d, mode_3d_label).clicked() {
-                            editor.composition.layers[l_idx].is_3d = !is_3d;
-                        }
+                            // 3D toggle
+                            let mode_3d_label = if is_3d { "[3D]" } else { "[2D]" };
+                            if ui.selectable_label(is_3d, mode_3d_label).clicked() {
+                                editor.composition.layers[l_idx].is_3d = !is_3d;
+                            }
 
-                        // Layer Name
-                        let text_color = if is_selected { ACCENT } else { TEXT };
-                        ui.add(
-                            egui::Label::new(egui::RichText::new(&layer_name).color(text_color))
+                            // Layer Name
+                            let text_color = if is_selected { ACCENT } else { TEXT };
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&layer_name).color(text_color),
+                                )
                                 .truncate(),
-                        );
-                    });
+                            );
+                        },
+                    );
                 });
 
                 let row_rect = resp.response.rect;

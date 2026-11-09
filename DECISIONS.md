@@ -1089,6 +1089,25 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
 | **Spreadsheet Panel**: Remove Binding | Raw text button `small_button("Del")`. | `IconButton::new(IconKind::Trash).ghost(true).tooltip("Delete binding")`. | Consistent 18x18 hit box, ghost styling. |
 | **Unified Architecture** | Fragmented ad-hoc icon rendering scattered across panels. | Single shared `IconButton` widget (`egui::Widget` implementor) with fluent builder (`.tooltip()`, `.enabled()`, `.selected()`, `.ghost()`, `.size()`, `.icon_size()`, `.sense()`). | 100% centralized icon button pipeline with zero text glyph placeholders. |
 
+---
+
+## 2026-11-09: Layer Row Interactivity, Transform Inspector & Exact Row Height Locking
+
+- **Full-Row Click Interception vs. Button Clicks**:
+  - `ui.interact(row_rect, ...)` was previously allocated across `x = min.x..max.x` after buttons were drawn, capturing clicks intended for the eye and lock buttons.
+  - Confined row selection interaction to `label_interact_rect` starting after the button cluster (`x >= min.x + 76.0`), allowing buttons to handle pointer events natively without interference.
+- **Ghost Button Rest State**:
+  - `IconButton::show` mapped `self.ghost && self.selected` to `(SURFACE_3, ACCENT)`, popping a blue outline box at rest around visible layers.
+  - Ghost toggle buttons now strictly render `(TRANSPARENT, TRANSPARENT)` at rest; active state renders `TEXT` stroke without border boxes.
+- **Transform Inspector Interaction & Deselection**:
+  - Empty-space deselection logic `scroll_output.inner_rect.contains(pos) && !row_rects.contains(pos)` matched clicks inside the Transform header and inputs, deselecting the source on the exact frame of the click.
+  - Added `transform_rect` tracking and protected Transform interactions. Enabled `.default_open(true)` on `CollapsingHeader`.
+- **Exact Row Height Locking via `allocate_ui_with_layout`**:
+  - `ui.horizontal_centered` inside `row_frame.show` with unconstrained `max_height` caused egui to expand the cross-axis (Y) to fill the entire remaining `available_height()` in the ScrollArea, making the first row (`Player Cam`) 150px–200px tall.
+  - Replaced with `ui.allocate_ui_with_layout(vec2(list_width, ROW_HEIGHT_LIST), egui::Layout::left_to_right(egui::Align::Center))` and `inner_margin(symmetric(4, 0))`.
+  - Every row is strictly locked to `ROW_HEIGHT_LIST` (28.0 px) with centered 22px buttons (3px symmetric vertical padding) and zero cross-axis expansion.
+
+
 
 
 
