@@ -4,7 +4,9 @@ use egui::{Button, CornerRadius, Sense, Stroke, Ui};
 use zeno_core::{Color, LayerId, Vec2};
 
 use crate::editor::state::OverlayEditor;
-use crate::icon::{icon_button, icon_button_enabled, icon_toggle_button, IconKind};
+use crate::icon::{
+    grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon, IconKind,
+};
 use crate::theme::{ACCENT, GRID_UNIT, SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,9 +164,7 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     ui.set_width(list_width);
                     ui.horizontal(|ui| {
                         // Drag handle grip
-                        let grip_resp = ui
-                            .colored_label(TEXT_MUTED, "::")
-                            .on_hover_text("Drag to reorder");
+                        let grip_resp = grip_handle(ui, "Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         }
@@ -293,7 +293,17 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     ui.layer_id(),
                     egui::Id::new("layer_drag_tooltip"),
                     |ui| {
-                        ui.label(format!(":: {}", dragged_name));
+                        ui.horizontal(|ui| {
+                            let (rect, _) =
+                                ui.allocate_exact_size(egui::vec2(16.0, 16.0), Sense::hover());
+                            paint_lucide_icon(
+                                ui.painter(),
+                                IconKind::GripVertical,
+                                rect,
+                                Stroke::new(1.5_f32, TEXT),
+                            );
+                            ui.label(dragged_name);
+                        });
                     },
                 );
 

@@ -4,7 +4,10 @@ use egui::{vec2, Align2, CornerRadius, FontId, Sense, Stroke, StrokeKind, Ui};
 use egui_dock::{DockState, NodeIndex, TabViewer};
 use serde::{Deserialize, Serialize};
 
-use crate::icon::{icon_button, icon_button_enabled, icon_toggle_button, IconKind};
+use crate::icon::{
+    grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon,
+    IconButton, IconKind,
+};
 use crate::project::Project;
 use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, BUTTON_HEIGHT, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_2,
@@ -1002,7 +1005,14 @@ impl<'a> StudioTabViewer<'a> {
                 ));
                 ui.close_menu();
             }
-            if !mute_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+            if !mute_str.is_empty()
+                && IconButton::new(IconKind::X)
+                    .ghost(true)
+                    .size(vec2(18.0, 18.0))
+                    .tooltip("Clear shortcut")
+                    .show(ui)
+                    .clicked()
+            {
                 self.project
                     .settings
                     .hotkeys
@@ -1029,7 +1039,14 @@ impl<'a> StudioTabViewer<'a> {
                 );
                 ui.close_menu();
             }
-            if !ptm_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+            if !ptm_str.is_empty()
+                && IconButton::new(IconKind::X)
+                    .ghost(true)
+                    .size(vec2(18.0, 18.0))
+                    .tooltip("Clear shortcut")
+                    .show(ui)
+                    .clicked()
+            {
                 self.project
                     .settings
                     .hotkeys
@@ -1056,7 +1073,14 @@ impl<'a> StudioTabViewer<'a> {
                 );
                 ui.close_menu();
             }
-            if !ptt_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+            if !ptt_str.is_empty()
+                && IconButton::new(IconKind::X)
+                    .ghost(true)
+                    .size(vec2(18.0, 18.0))
+                    .tooltip("Clear shortcut")
+                    .show(ui)
+                    .clicked()
+            {
                 self.project
                     .settings
                     .hotkeys
@@ -1083,7 +1107,14 @@ impl<'a> StudioTabViewer<'a> {
                 );
                 ui.close_menu();
             }
-            if !sh_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked() {
+            if !sh_str.is_empty()
+                && IconButton::new(IconKind::X)
+                    .ghost(true)
+                    .size(vec2(18.0, 18.0))
+                    .tooltip("Clear shortcut")
+                    .show(ui)
+                    .clicked()
+            {
                 self.project
                     .settings
                     .hotkeys
@@ -1530,7 +1561,13 @@ impl<'a> StudioTabViewer<'a> {
                                     ));
                                 ui.close_menu();
                             }
-                            if !switch_to_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked()
+                            if !switch_to_str.is_empty()
+                                && IconButton::new(IconKind::X)
+                                    .ghost(true)
+                                    .size(vec2(18.0, 18.0))
+                                    .tooltip("Clear shortcut")
+                                    .show(ui)
+                                    .clicked()
                             {
                                 clear_scene_switch_to = Some(scene_id.clone());
                             }
@@ -1552,7 +1589,13 @@ impl<'a> StudioTabViewer<'a> {
                                     ));
                                 ui.close_menu();
                             }
-                            if !switch_back_str.is_empty() && ui.small_button("Ã¢Å“â€“").clicked()
+                            if !switch_back_str.is_empty()
+                                && IconButton::new(IconKind::X)
+                                    .ghost(true)
+                                    .size(vec2(18.0, 18.0))
+                                    .tooltip("Clear shortcut")
+                                    .show(ui)
+                                    .clicked()
                             {
                                 clear_scene_switch_back = Some(scene_id.clone());
                             }
@@ -1656,10 +1699,13 @@ impl<'a> StudioTabViewer<'a> {
                 }
             }
 
-            if ui
-                .add_enabled(has_sel, egui::Button::new("Filters..."))
-                .on_hover_text("Configure Video/Audio filter chain")
-                .clicked()
+            if icon_button_enabled(
+                ui,
+                has_sel,
+                IconKind::Filter,
+                "Filters... (Configure Video/Audio filter chain)",
+            )
+            .clicked()
             {
                 if let Some(ref sel_id) = *self.selected_source_id {
                     *self.trigger_open_filters = Some(sel_id.clone());
@@ -1808,14 +1854,7 @@ impl<'a> StudioTabViewer<'a> {
                     ui.set_width(list_width);
                     ui.horizontal(|ui| {
                         // Drag handle grip
-                        let grip_color = if src_visible {
-                            TEXT_MUTED
-                        } else {
-                            TEXT_MUTED.linear_multiply(0.6)
-                        };
-                        let grip_resp = ui
-                            .colored_label(grip_color, "::")
-                            .on_hover_text("Drag to reorder");
+                        let grip_resp = grip_handle(ui, "Drag to reorder");
                         if grip_resp.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
                         }
@@ -1918,7 +1957,17 @@ impl<'a> StudioTabViewer<'a> {
                     ui.layer_id(),
                     egui::Id::new("src_drag_tooltip"),
                     |ui| {
-                        ui.label(format!(":: {}", dragged_name));
+                        ui.horizontal(|ui| {
+                            let (rect, _) =
+                                ui.allocate_exact_size(vec2(16.0, 16.0), Sense::hover());
+                            paint_lucide_icon(
+                                ui.painter(),
+                                IconKind::GripVertical,
+                                rect,
+                                Stroke::new(1.5_f32, TEXT),
+                            );
+                            ui.label(dragged_name);
+                        });
                     },
                 );
 

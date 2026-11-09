@@ -9,6 +9,7 @@
 use egui::{vec2, Align2, Key, Window};
 use zeno_core::{FilterChain, FilterDefinition, FilterKind, FilterSettings};
 
+use crate::icon::{icon_toggle_button, IconButton, IconKind};
 use crate::theme::{ACCENT, GRID_UNIT, TEXT, TEXT_MUTED};
 
 /// Operating state for the source filter dialog modal.
@@ -119,7 +120,20 @@ impl FilterDialogState {
                                             let is_selected = self.selected_filter_idx == Some(idx);
                                             ui.horizontal(|ui| {
                                                 // Enable/disable toggle
-                                                if ui.checkbox(&mut filter.enabled, "").changed() {
+                                                if icon_toggle_button(
+                                                    ui,
+                                                    filter.enabled,
+                                                    IconKind::Eye,
+                                                    IconKind::EyeOff,
+                                                    if filter.enabled {
+                                                        "Disable Filter"
+                                                    } else {
+                                                        "Enable Filter"
+                                                    },
+                                                )
+                                                .clicked()
+                                                {
+                                                    filter.enabled = !filter.enabled;
                                                     filters_mutated = true;
                                                 }
 
@@ -144,15 +158,33 @@ impl FilterDialogState {
                                                 }
 
                                                 // Reorder & remove controls
-                                                if idx > 0 && ui.small_button("^").clicked() {
+                                                if idx > 0
+                                                    && IconButton::new(IconKind::ChevronUp)
+                                                        .ghost(true)
+                                                        .size(vec2(18.0, 18.0))
+                                                        .tooltip("Move Filter Up")
+                                                        .show(ui)
+                                                        .clicked()
+                                                {
                                                     move_up_idx = Some(idx);
                                                 }
                                                 if idx + 1 < total_filters
-                                                    && ui.small_button("v").clicked()
+                                                    && IconButton::new(IconKind::ChevronDown)
+                                                        .ghost(true)
+                                                        .size(vec2(18.0, 18.0))
+                                                        .tooltip("Move Filter Down")
+                                                        .show(ui)
+                                                        .clicked()
                                                 {
                                                     move_down_idx = Some(idx);
                                                 }
-                                                if ui.small_button("x").clicked() {
+                                                if IconButton::new(IconKind::Trash)
+                                                    .ghost(true)
+                                                    .size(vec2(18.0, 18.0))
+                                                    .tooltip("Remove Filter")
+                                                    .show(ui)
+                                                    .clicked()
+                                                {
                                                     remove_idx = Some(idx);
                                                 }
                                             });

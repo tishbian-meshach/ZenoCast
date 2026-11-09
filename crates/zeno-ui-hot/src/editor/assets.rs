@@ -9,6 +9,7 @@ use egui::{
 use zeno_engine::AssetKind;
 
 use crate::editor::state::OverlayEditor;
+use crate::icon::grip_handle;
 use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, SURFACE_0, SURFACE_1, SURFACE_2,
     TEXT, TEXT_MUTED,
@@ -116,8 +117,7 @@ pub fn ui_assets_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             // Drag grip
-                            let grip_resp = ui
-                                .colored_label(TEXT_MUTED, "::")
+                            let grip_resp = grip_handle(ui, "Drag onto canvas or timeline")
                                 .interact(Sense::drag());
 
                             if grip_resp.hovered() {

@@ -1068,6 +1068,28 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - `test_window_source_target_window_update` in `zeno-media`: Verified that `update_properties` updates target window title and properties without overwriting user-assigned source label.
   - `test_window_capture_source_target_window_change_updates_live_backend` in `ui_wiring_test`: Verified end-to-end UI mutation flow—creating a window capture source, reconfiguring its target window via properties dialog action, confirming project model update, verifying backend source target window update in `SourceRegistry`, and driving GPU frame presentation.
 
+---
+
+## 2026-11-09: Icon Library Migration & Shared IconButton Component (v1.8 Section 1)
+
+### Visual-QA Audit: Before vs. After Icon Implementations
+
+| Control / UI Location | Before State (Pre-v1.8) | After State (v1.8 Section 1) | Token & DPI Compliance |
+|:---|:---|:---|:---|
+| **Source Rows (Dock)**: Drag Handle | Text characters `"::"` in variable-width proportional font. Inconsistent weight across DPI scales. | `grip_handle(ui)` rendering authentic 6-dot Lucide `GripVertical` vector icon ($2 \times 3$ grid of dots, $r=1.3\text{px}$). | Strict `TEXT_MUTED` token, GPU vector tessellation crisp at 100%, 150%, 200% DPI. |
+| **Source Rows (Dock)**: Eye Visibility | Hardcoded 14x14 icon box; sharp/crude diamond shape with harsh angles. | Standardized 16x16 icon box; authentic Lucide `Eye` (5-point smooth cubic curvature + centered pupil) and `EyeOff` (slash). | Strict `TEXT` / `TEXT_MUTED` tokens, 1.5px stroke width. |
+| **Source Rows (Dock)**: Lock / Unlock | Hardcoded 14x14 icon box; crude rectangle shackle. | Standardized 16x16 icon box; authentic Lucide `Lock` / `Unlock` with $r=2\text{px}$ rounded body, keyhole, and semicircular arch shackle. | Strict `TEXT` / `TEXT_MUTED` tokens, 1.5px stroke width. |
+| **Sources Toolbar (Dock)**: Filters Action | Text button `egui::Button::new("Filters...")` disrupting 26x26 icon button sequence and overflowing toolbar width. | Compact 26x26 `icon_button_enabled(..., IconKind::Filter, "Filters... (Configure Video/Audio filter chain)")` using Lucide funnel vector path. | Consistent 26x26 button hit target, 16x16 icon box, 1.5px stroke width. |
+| **DnD Drag Tooltips**: Sources & Layers | Rendered raw text `":: <Name>"` inside tooltip. | Inline Lucide `IconKind::GripVertical` vector rendering + item name in horizontal layout. | Strict `TEXT` token, vector crispness. |
+| **Overlay Editor Layers**: Drag Handle | Text characters `"::"`. | `grip_handle(ui)` rendering Lucide `GripVertical`. | Strict `TEXT_MUTED` token, Grab cursor on hover. |
+| **Overlay Editor Assets**: Drag Handle | Text characters `"::"`. | `grip_handle(ui)` rendering Lucide `GripVertical`. | Strict `TEXT_MUTED` token, Grab cursor on hover. |
+| **Hotkey Rebind Clear**: Scenes, Sources, Source Dialog | Rendered Unicode glyph `small_button("✖")` with inconsistent OS font fallback glyph heights. | Compact `IconButton::new(IconKind::X).ghost(true).tooltip("Clear shortcut")` rendering standard Lucide diagonal cross. | Consistent 18x18 hit box, 1.5px stroke width, theme tokens. |
+| **Filter Modal Chain**: Reorder & Remove | Raw ASCII text buttons `small_button("^")`, `small_button("v")`, and `small_button("x")`. | `IconButton::new(IconKind::ChevronUp)`, `IconButton::new(IconKind::ChevronDown)`, `IconButton::new(IconKind::Trash)`. | Consistent 18x18 hit box, ghost styling, hover tooltips. |
+| **Filter Modal Chain**: Enable / Disable | Default OS `ui.checkbox`. | `icon_toggle_button(..., IconKind::Eye, IconKind::EyeOff)` matching broadcast source row standards. | Strict `TEXT` / `TEXT_MUTED` tokens. |
+| **Spreadsheet Panel**: Remove Binding | Raw text button `small_button("Del")`. | `IconButton::new(IconKind::Trash).ghost(true).tooltip("Delete binding")`. | Consistent 18x18 hit box, ghost styling. |
+| **Unified Architecture** | Fragmented ad-hoc icon rendering scattered across panels. | Single shared `IconButton` widget (`egui::Widget` implementor) with fluent builder (`.tooltip()`, `.enabled()`, `.selected()`, `.ghost()`, `.size()`, `.icon_size()`, `.sense()`). | 100% centralized icon button pipeline with zero text glyph placeholders. |
+
+
 
 
 

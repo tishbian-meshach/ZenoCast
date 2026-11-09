@@ -1,13 +1,14 @@
 //! Spreadsheet links panel (Data mode): configuration of Excel/CSV/Google Sheets sources,
 //! live cell bindings, warning badges, test sync triggers, and interactive grid cell picker.
 
-use egui::{Button, Grid, RichText, ScrollArea, TextEdit, Ui};
+use egui::{vec2, Button, Grid, RichText, ScrollArea, TextEdit, Ui};
 use zeno_data::sheet::{
     CellBinding, CellTarget, SheetCoordinate, SheetLink, SheetLinkStatus, SheetSource,
     SheetSyncEngine, VariableKind,
 };
 use zeno_data::DataStore;
 
+use crate::icon::{IconButton, IconKind};
 use crate::theme::{
     ACCENT, AMBER_WARN, GRID_UNIT, RED_LIVE, SURFACE_0, SURFACE_2, TEXT, TEXT_MUTED,
 };
@@ -182,7 +183,13 @@ pub fn ui_spreadsheet_links_panel(
                             RichText::new(if is_locked { "[Lock]" } else { "-" }).color(TEXT_MUTED),
                         );
 
-                        if ui.small_button("Del").clicked() {
+                        if IconButton::new(IconKind::Trash)
+                            .ghost(true)
+                            .size(vec2(18.0, 18.0))
+                            .tooltip("Delete binding")
+                            .show(ui)
+                            .clicked()
+                        {
                             to_remove = Some(b_idx);
                         }
                         ui.end_row();

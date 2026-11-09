@@ -5,6 +5,7 @@
 
 use egui::{vec2, Align2, Window};
 
+use crate::icon::{IconButton, IconKind};
 use crate::project::SourceKind;
 use crate::theme::{AMBER_WARN, GRID_UNIT, RED_LIVE, TEXT, TEXT_MUTED};
 use zeno_media::DeviceManager;
@@ -1037,7 +1038,14 @@ impl SourceDialogState {
                                     if ui.button(btn_text).clicked() {
                                         *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourceMute(src_id.clone()));
                                     }
-                                    if !mute_str.is_empty() && ui.small_button("✖").clicked() {
+                                    if !mute_str.is_empty()
+                                        && IconButton::new(IconKind::X)
+                                            .ghost(true)
+                                            .size(vec2(18.0, 18.0))
+                                            .tooltip("Clear shortcut")
+                                            .show(ui)
+                                            .clicked()
+                                    {
                                         registry.source_hotkeys.entry(src_id.clone()).or_default().mute = None;
                                     }
                                 });
@@ -1054,7 +1062,14 @@ impl SourceDialogState {
                                     if ui.button(btn_text).clicked() {
                                         *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourcePushToMute(src_id.clone()));
                                     }
-                                    if !ptm_str.is_empty() && ui.small_button("✖").clicked() {
+                                    if !ptm_str.is_empty()
+                                        && IconButton::new(IconKind::X)
+                                            .ghost(true)
+                                            .size(vec2(18.0, 18.0))
+                                            .tooltip("Clear shortcut")
+                                            .show(ui)
+                                            .clicked()
+                                    {
                                         registry.source_hotkeys.entry(src_id.clone()).or_default().push_to_mute = None;
                                     }
                                 });
@@ -1071,7 +1086,14 @@ impl SourceDialogState {
                                     if ui.button(btn_text).clicked() {
                                         *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourcePushToTalk(src_id.clone()));
                                     }
-                                    if !ptt_str.is_empty() && ui.small_button("✖").clicked() {
+                                    if !ptt_str.is_empty()
+                                        && IconButton::new(IconKind::X)
+                                            .ghost(true)
+                                            .size(vec2(18.0, 18.0))
+                                            .tooltip("Clear shortcut")
+                                            .show(ui)
+                                            .clicked()
+                                    {
                                         registry.source_hotkeys.entry(src_id.clone()).or_default().push_to_talk = None;
                                     }
                                 });
@@ -1088,7 +1110,14 @@ impl SourceDialogState {
                                     if ui.button(btn_text).clicked() {
                                         *rebinding_target = Some(crate::hotkey_registry::RebindTarget::SourceShowHide(src_id.clone()));
                                     }
-                                    if !sh_str.is_empty() && ui.small_button("✖").clicked() {
+                                    if !sh_str.is_empty()
+                                        && IconButton::new(IconKind::X)
+                                            .ghost(true)
+                                            .size(vec2(18.0, 18.0))
+                                            .tooltip("Clear shortcut")
+                                            .show(ui)
+                                            .clicked()
+                                    {
                                         registry.source_hotkeys.entry(src_id.clone()).or_default().show_hide = None;
                                     }
                                 });

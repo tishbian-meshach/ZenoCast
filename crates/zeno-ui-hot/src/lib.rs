@@ -67,7 +67,10 @@ pub fn draw_frame(ctx: &egui::Context, state: &mut AppState) {
 pub use data_panel::{ui_esports_data_panel, DataPanelState};
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
-pub use icon::{icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon, IconKind};
+pub use icon::{
+    grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon,
+    IconButton, IconKind,
+};
 pub use import_dialog::ImportReportDialog;
 pub use log_viewer::{LogEntry, LogRingBuffer, LogSeverity, LogViewerPanel};
 pub use overlay_control::ui_overlay_lifecycle_panel;
