@@ -2227,10 +2227,67 @@ impl<'a> StudioTabViewer<'a> {
         }
     }
 
+    /// Helper to render a single channel column in the audio mixer.
+    fn render_audio_channel(
+        ui: &mut Ui,
+        name: &str,
+        volume: &mut f32,
+        muted: &mut bool,
+        trigger_audio_change: &mut bool,
+        tooltip: &str,
+        channel_width: f32,
+    ) {
+        let mute_btn_width = (channel_width - 16.0).clamp(44.0, 72.0);
+        ui.allocate_ui_with_layout(
+            vec2(channel_width, ui.available_height()),
+            egui::Layout::top_down(egui::Align::Center),
+            |ui| {
+                let name_label = egui::Label::new(egui::RichText::new(name).strong()).truncate();
+                let lbl_resp = ui.add(name_label);
+                crate::icon::show_aligned_tooltip(ui, &lbl_resp, tooltip);
+                ui.add_space(GRID_UNIT * 0.5);
+
+                let mut db = Self::volume_to_db(*volume);
+                let vol_resp = ui.add(
+                    egui::Slider::new(&mut db, -60.0..=6.0)
+                        .vertical()
+                        .show_value(false),
+                );
+                if vol_resp.changed() {
+                    *volume = Self::db_to_volume(db);
+                    *trigger_audio_change = true;
+                }
+
+                let db_text = if *volume <= 0.0001 || *muted {
+                    "-inf dB".to_string()
+                } else {
+                    format!("{:.1} dB", Self::volume_to_db(*volume))
+                };
+                ui.add_space(GRID_UNIT * 0.5);
+                ui.label(
+                    egui::RichText::new(db_text)
+                        .font(egui::FontId::monospace(11.0))
+                        .color(TEXT_MUTED),
+                );
+                ui.add_space(GRID_UNIT * 0.5);
+
+                let mute_btn = Button::new("Mute")
+                    .secondary()
+                    .selected(*muted)
+                    .width(mute_btn_width)
+                    .show(ui);
+                if mute_btn.clicked() {
+                    *muted = !*muted;
+                    *trigger_audio_change = true;
+                }
+            },
+        );
+    }
+
     /// Renders 6-track audio mixer sliders, mute buttons, and live meters.
     fn ui_audio_mixer(&mut self, ui: &mut Ui) {
-        const MIN_CHANNEL_WIDTH: f32 = 72.0;
-        const MAX_CHANNEL_WIDTH: f32 = 130.0;
+        const MIN_CHANNEL_WIDTH: f32 = 56.0;
+        const MAX_CHANNEL_WIDTH: f32 = 220.0;
 
         let active_scene = self
             .project
@@ -2241,134 +2298,83 @@ impl<'a> StudioTabViewer<'a> {
         let num_sources = active_scene.as_ref().map(|s| s.sources.len()).unwrap_or(0);
         let total_channels = 1 + num_sources;
 
-        // Space per separator (ui.separator() takes line width + 2 * item_spacing.x)
+        let avail_w = ui.available_width();
         let sep_width =
             (ui.visuals().window_stroke.width + ui.spacing().item_spacing.x * 2.0).max(12.0);
         let total_sep_width = total_channels.saturating_sub(1) as f32 * sep_width;
-        let avail_w = ui.available_width();
+        let min_required_width = total_channels as f32 * MIN_CHANNEL_WIDTH + total_sep_width;
+
+        // If all channels fit, do NOT invoke ScrollArea at all so no scrollbar can ever appear.
+        let needs_scroll = min_required_width > avail_w;
         let remaining_w = (avail_w - total_sep_width).max(0.0);
-        let channel_width =
-            (remaining_w / total_channels as f32).clamp(MIN_CHANNEL_WIDTH, MAX_CHANNEL_WIDTH);
-        let mute_btn_width = (channel_width - 16.0).clamp(52.0, 68.0);
+        let channel_width = if needs_scroll {
+            MIN_CHANNEL_WIDTH
+        } else {
+            ((remaining_w - 1.0) / total_channels as f32)
+                .clamp(MIN_CHANNEL_WIDTH, MAX_CHANNEL_WIDTH)
+        };
 
-        egui::ScrollArea::horizontal().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                // Master Track
-                ui.allocate_ui_with_layout(
-                    vec2(channel_width, ui.available_height()),
-                    egui::Layout::top_down(egui::Align::Center),
-                    |ui| {
-                        let name_label =
-                            egui::Label::new(egui::RichText::new("Master").strong()).truncate();
-                        let lbl_resp = ui.add(name_label);
-                        crate::icon::show_aligned_tooltip(ui, &lbl_resp, "Master Output");
-                        ui.add_space(GRID_UNIT * 0.5);
+        let master_volume = &mut *self.master_volume;
+        let master_muted = &mut *self.master_muted;
+        let trigger_audio_change = &mut *self.trigger_audio_change;
 
-                        let mut master_db = Self::volume_to_db(*self.master_volume);
-                        let vol_resp = ui.add(
-                            egui::Slider::new(&mut master_db, -60.0..=6.0)
-                                .vertical()
-                                .show_value(false),
-                        );
-                        if vol_resp.changed() {
-                            *self.master_volume = Self::db_to_volume(master_db);
-                            *self.trigger_audio_change = true;
-                        }
+        let render_tracks = |ui: &mut Ui| {
+            // Master Track
+            Self::render_audio_channel(
+                ui,
+                "Master",
+                master_volume,
+                master_muted,
+                trigger_audio_change,
+                "Master Output",
+                channel_width,
+            );
 
-                        let master_db_text = if *self.master_volume <= 0.0001 || *self.master_muted
-                        {
-                            "-inf dB".to_string()
-                        } else {
-                            format!("{:.1} dB", Self::volume_to_db(*self.master_volume))
-                        };
-                        ui.add_space(GRID_UNIT * 0.5);
-                        ui.label(
-                            egui::RichText::new(master_db_text)
-                                .font(egui::FontId::monospace(11.0))
-                                .color(TEXT_MUTED),
-                        );
-                        ui.add_space(GRID_UNIT * 0.5);
-
-                        let mute_btn = Button::new("Mute")
-                            .secondary()
-                            .selected(*self.master_muted)
-                            .width(mute_btn_width)
-                            .show(ui);
-                        if mute_btn.clicked() {
-                            *self.master_muted = !*self.master_muted;
-                            *self.trigger_audio_change = true;
-                        }
-                    },
-                );
-
-                // Source Tracks
-                if let Some(scene) = active_scene {
-                    if scene.sources.is_empty() {
-                        ui.separator();
-                        ui.vertical_centered(|ui| {
-                            ui.add_space(24.0);
-                            ui.colored_label(TEXT_MUTED, "No audio sources in active scene");
-                        });
-                    } else {
-                        for src in &mut scene.sources {
-                            ui.separator();
-                            ui.allocate_ui_with_layout(
-                                vec2(channel_width, ui.available_height()),
-                                egui::Layout::top_down(egui::Align::Center),
-                                |ui| {
-                                    let name_label =
-                                        egui::Label::new(egui::RichText::new(&src.name).strong())
-                                            .truncate();
-                                    let lbl_resp = ui.add(name_label);
-                                    crate::icon::show_aligned_tooltip(ui, &lbl_resp, &src.name);
-                                    ui.add_space(GRID_UNIT * 0.5);
-
-                                    let mut src_db = Self::volume_to_db(src.volume);
-                                    let src_vol_resp = ui.add(
-                                        egui::Slider::new(&mut src_db, -60.0..=6.0)
-                                            .vertical()
-                                            .show_value(false),
-                                    );
-                                    if src_vol_resp.changed() {
-                                        src.volume = Self::db_to_volume(src_db);
-                                        *self.trigger_audio_change = true;
-                                    }
-
-                                    let db_text = if src.volume <= 0.0001 || src.muted {
-                                        "-inf dB".to_string()
-                                    } else {
-                                        format!("{:.1} dB", Self::volume_to_db(src.volume))
-                                    };
-                                    ui.add_space(GRID_UNIT * 0.5);
-                                    ui.label(
-                                        egui::RichText::new(db_text)
-                                            .font(egui::FontId::monospace(11.0))
-                                            .color(TEXT_MUTED),
-                                    );
-                                    ui.add_space(GRID_UNIT * 0.5);
-
-                                    let mute_btn = Button::new("Mute")
-                                        .secondary()
-                                        .selected(src.muted)
-                                        .width(mute_btn_width)
-                                        .show(ui);
-                                    if mute_btn.clicked() {
-                                        src.muted = !src.muted;
-                                        *self.trigger_audio_change = true;
-                                    }
-                                },
-                            );
-                        }
-                    }
-                } else {
+            // Source Tracks
+            if let Some(scene) = active_scene {
+                if scene.sources.is_empty() {
                     ui.separator();
                     ui.vertical_centered(|ui| {
                         ui.add_space(24.0);
-                        ui.colored_label(TEXT_MUTED, "No active scene selected");
+                        ui.colored_label(TEXT_MUTED, "No audio sources in active scene");
                     });
+                } else {
+                    for src in &mut scene.sources {
+                        ui.separator();
+                        Self::render_audio_channel(
+                            ui,
+                            &src.name,
+                            &mut src.volume,
+                            &mut src.muted,
+                            trigger_audio_change,
+                            &src.name,
+                            channel_width,
+                        );
+                    }
                 }
+            } else {
+                ui.separator();
+                ui.vertical_centered(|ui| {
+                    ui.add_space(24.0);
+                    ui.colored_label(TEXT_MUTED, "No active scene selected");
+                });
+            }
+        };
+
+        if needs_scroll {
+            egui::ScrollArea::horizontal()
+                .auto_shrink([false, false])
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        render_tracks(ui);
+                    });
+                });
+        } else {
+            ui.horizontal(|ui| {
+                render_tracks(ui);
             });
-        });
+        }
     }
 
     /// Renders live transition controls (kind, duration, trigger).

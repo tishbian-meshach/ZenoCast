@@ -169,6 +169,15 @@ pub fn apply_theme(ctx: &egui::Context) {
     style.spacing.button_padding = egui::vec2(GRID_UNIT * 1.5, GRID_UNIT * 0.75);
     style.spacing.indent = GRID_UNIT * 2.0;
 
+    // Subtle broadcast scrollbars matching dark surface palette (never glaring white)
+    let mut scroll = egui::style::ScrollStyle::solid();
+    scroll.bar_width = 4.0;
+    scroll.handle_min_length = 16.0;
+    scroll.bar_inner_margin = 2.0;
+    scroll.bar_outer_margin = 0.0;
+    scroll.foreground_color = false;
+    style.spacing.scroll = scroll;
+
     // Strict typography: Sizes 12, 13, 14, 16px only
     style.text_styles = [
         (egui::TextStyle::Small, egui::FontId::proportional(12.0)),
