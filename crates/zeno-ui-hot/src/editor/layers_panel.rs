@@ -1,6 +1,6 @@
 //! Layers panel: hierarchy list, add/remove, reordering, visibility and lock toggling.
 
-use egui::{vec2, Button, CornerRadius, Sense, Stroke, Ui};
+use egui::{Button, CornerRadius, Sense, Stroke, Ui};
 use zeno_core::{Color, LayerId, Vec2};
 
 use crate::editor::state::OverlayEditor;
@@ -8,8 +8,7 @@ use crate::icon::{
     grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon, IconKind,
 };
 use crate::theme::{
-    ACCENT, CORNER_RADIUS, GRID_UNIT, ROW_HEIGHT_LIST, SURFACE_1, SURFACE_2, SURFACE_3, TEXT,
-    TEXT_MUTED,
+    ACCENT, CORNER_RADIUS, ROW_HEIGHT_LIST, SURFACE_2, TEXT, TEXT_MUTED, TRANSPARENT,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,70 +149,82 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 let is_selected = editor.selected_layer_id == Some(layer_id);
                 let is_dragged = dragging_layer_id == Some(layer_id);
 
+                let (row_rect, _) =
+                    ui.allocate_exact_size(egui::vec2(list_width, ROW_HEIGHT_LIST), Sense::hover());
+                let is_hovered = ui.rect_contains_pointer(row_rect);
+
                 let bg_color = if is_dragged {
                     SURFACE_2
                 } else if is_selected {
-                    SURFACE_3
+                    if layer_visible {
+                        ACCENT
+                    } else {
+                        ACCENT.linear_multiply(0.7)
+                    }
+                } else if is_hovered {
+                    SURFACE_2
                 } else {
-                    SURFACE_1
+                    TRANSPARENT
                 };
 
-                let row_frame = egui::Frame::NONE
-                    .fill(bg_color)
-                    .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
-                    .inner_margin(egui::Margin::symmetric(GRID_UNIT as i8, 0));
+                if bg_color != TRANSPARENT {
+                    ui.painter().rect_filled(
+                        row_rect,
+                        CornerRadius::same(CORNER_RADIUS as u8),
+                        bg_color,
+                    );
+                }
 
                 let mut grip_drag = false;
-                let resp = row_frame.show(ui, |ui| {
-                    ui.allocate_ui_with_layout(
-                        vec2(list_width, ROW_HEIGHT_LIST),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            // Drag handle grip
-                            let grip_resp = grip_handle(ui, "Drag to reorder");
-                            if grip_resp.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                            }
-                            if grip_resp.drag_started() {
-                                grip_drag = true;
-                            }
+                let mut child_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(row_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                child_ui.add_space(4.0);
 
-                            // Eye visibility toggle
-                            let eye_resp = icon_toggle_button(
-                                ui,
-                                layer_visible,
-                                IconKind::Eye,
-                                IconKind::EyeOff,
-                                if layer_visible {
-                                    "Hide Layer"
-                                } else {
-                                    "Show Layer"
-                                },
-                            );
-                            if eye_resp.clicked() {
-                                editor.composition.layers[l_idx].visible = !layer_visible;
-                                editor.selected_layer_id = Some(layer_id);
-                            }
+                // Drag handle grip
+                let grip_resp = grip_handle(&mut child_ui, "Drag to reorder");
+                if grip_resp.hovered() {
+                    child_ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                }
+                if grip_resp.drag_started() {
+                    grip_drag = true;
+                }
 
-                            // 3D toggle
-                            let mode_3d_label = if is_3d { "[3D]" } else { "[2D]" };
-                            if ui.selectable_label(is_3d, mode_3d_label).clicked() {
-                                editor.composition.layers[l_idx].is_3d = !is_3d;
-                            }
+                // Eye visibility toggle
+                let eye_resp = icon_toggle_button(
+                    &mut child_ui,
+                    layer_visible,
+                    IconKind::Eye,
+                    IconKind::EyeOff,
+                    if layer_visible {
+                        "Hide Layer"
+                    } else {
+                        "Show Layer"
+                    },
+                );
+                if eye_resp.clicked() {
+                    editor.composition.layers[l_idx].visible = !layer_visible;
+                    editor.selected_layer_id = Some(layer_id);
+                }
 
-                            // Layer Name
-                            let text_color = if is_selected { ACCENT } else { TEXT };
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(&layer_name).color(text_color),
-                                )
-                                .truncate(),
-                            );
-                        },
-                    );
-                });
+                // 3D toggle
+                let mode_3d_label = if is_3d { "[3D]" } else { "[2D]" };
+                if child_ui.selectable_label(is_3d, mode_3d_label).clicked() {
+                    editor.composition.layers[l_idx].is_3d = !is_3d;
+                }
 
-                let row_rect = resp.response.rect;
+                // Layer Name
+                let text_color = if is_selected || layer_visible {
+                    TEXT
+                } else {
+                    TEXT_MUTED
+                };
+                child_ui.add(
+                    egui::Label::new(egui::RichText::new(&layer_name).color(text_color)).truncate(),
+                );
+
                 row_rects.push(row_rect);
 
                 // Row interaction - starts after grip (16) and eye (22) + spacing (~76px)

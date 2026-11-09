@@ -12,7 +12,7 @@ use crate::icon::{
 use crate::project::Project;
 use crate::theme::{
     ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST,
-    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
+    SURFACE_2, TEXT, TEXT_MUTED, TRANSPARENT,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
 
@@ -1519,9 +1519,43 @@ impl<'a> StudioTabViewer<'a> {
                         )
                     };
 
-                    let response = ui.add_sized(
-                        [ui.available_width(), ROW_HEIGHT_LIST],
-                        egui::SelectableLabel::new(is_selected, label_text),
+                    let row_w = ui.available_width();
+                    let (row_rect, response) =
+                        ui.allocate_exact_size(egui::vec2(row_w, ROW_HEIGHT_LIST), Sense::click());
+
+                    let is_hovered = response.hovered();
+                    let bg_color = if is_selected {
+                        ACCENT
+                    } else if is_hovered {
+                        SURFACE_2
+                    } else {
+                        TRANSPARENT
+                    };
+
+                    if bg_color != TRANSPARENT {
+                        ui.painter().rect_filled(
+                            row_rect,
+                            CornerRadius::same(CORNER_RADIUS as u8),
+                            bg_color,
+                        );
+                    }
+
+                    let text_color = if is_selected {
+                        TEXT
+                    } else if is_active {
+                        ACCENT
+                    } else {
+                        TEXT
+                    };
+
+                    let font_id = egui::TextStyle::Body.resolve(ui.style());
+                    let text_pos = egui::pos2(row_rect.min.x + 8.0, row_rect.center().y);
+                    ui.painter().text(
+                        text_pos,
+                        egui::Align2::LEFT_CENTER,
+                        &label_text,
+                        font_id,
+                        text_color,
                     );
                     if response.clicked() {
                         if self.studio_mode {
@@ -1847,93 +1881,93 @@ impl<'a> StudioTabViewer<'a> {
                 let is_sel = self.selected_source_id.as_deref() == Some(&src_id);
                 let is_dragged = dragging_source_id.as_deref() == Some(&src_id);
 
+                let (row_rect, _) =
+                    ui.allocate_exact_size(egui::vec2(list_width, ROW_HEIGHT_LIST), Sense::hover());
+                let is_hovered = ui.rect_contains_pointer(row_rect);
+
                 let bg_color = if is_dragged {
                     SURFACE_2
                 } else if is_sel {
                     if src_visible {
-                        SURFACE_3
+                        ACCENT
                     } else {
-                        SURFACE_3.linear_multiply(0.6)
+                        ACCENT.linear_multiply(0.7)
                     }
+                } else if is_hovered {
+                    SURFACE_2
                 } else {
-                    crate::theme::TRANSPARENT
+                    TRANSPARENT
                 };
 
-                let row_frame = egui::Frame::NONE
-                    .fill(bg_color)
-                    .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
-                    .inner_margin(egui::Margin::symmetric(4, 0));
+                if bg_color != TRANSPARENT {
+                    ui.painter().rect_filled(
+                        row_rect,
+                        CornerRadius::same(CORNER_RADIUS as u8),
+                        bg_color,
+                    );
+                }
 
                 let mut grip_drag = false;
-                let resp = row_frame.show(ui, |ui| {
-                    ui.allocate_ui_with_layout(
-                        vec2(list_width, ROW_HEIGHT_LIST),
-                        egui::Layout::left_to_right(egui::Align::Center),
-                        |ui| {
-                            // Drag handle grip
-                            let grip_resp = grip_handle(ui, "Drag to reorder");
-                            if grip_resp.hovered() {
-                                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
-                            }
-                            if grip_resp.drag_started() {
-                                grip_drag = true;
-                            }
+                let mut child_ui = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(row_rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                child_ui.add_space(4.0);
 
-                            // Visibility toggle
-                            let eye_resp = icon_toggle_button(
-                                ui,
-                                src_visible,
-                                IconKind::Eye,
-                                IconKind::EyeOff,
-                                if src_visible {
-                                    "Hide Source (Ctrl+Shift+H)"
-                                } else {
-                                    "Show Source (Ctrl+Shift+H)"
-                                },
-                            );
-                            if eye_resp.clicked() {
-                                *self.trigger_toggle_source_visibility = Some(src_id.clone());
-                                *self.selected_source_id = Some(src_id.clone());
-                            }
+                // Drag handle grip
+                let grip_resp = grip_handle(&mut child_ui, "Drag to reorder");
+                if grip_resp.hovered() {
+                    child_ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+                }
+                if grip_resp.drag_started() {
+                    grip_drag = true;
+                }
 
-                            // Lock toggle
-                            let lock_resp = icon_toggle_button(
-                                ui,
-                                src_locked,
-                                IconKind::Lock,
-                                IconKind::Unlock,
-                                if src_locked {
-                                    "Unlock Source (Ctrl+Shift+L)"
-                                } else {
-                                    "Lock Source (Ctrl+Shift+L)"
-                                },
-                            );
-                            if lock_resp.clicked() {
-                                *self.trigger_toggle_source_lock = Some(src_id.clone());
-                                *self.selected_source_id = Some(src_id.clone());
-                            }
+                // Visibility toggle
+                let eye_resp = icon_toggle_button(
+                    &mut child_ui,
+                    src_visible,
+                    IconKind::Eye,
+                    IconKind::EyeOff,
+                    if src_visible {
+                        "Hide Source (Ctrl+Shift+H)"
+                    } else {
+                        "Show Source (Ctrl+Shift+H)"
+                    },
+                );
+                if eye_resp.clicked() {
+                    *self.trigger_toggle_source_visibility = Some(src_id.clone());
+                    *self.selected_source_id = Some(src_id.clone());
+                }
 
-                            // Source name (dimmed when hidden, matching OBS)
-                            let text_color = if is_sel {
-                                if src_visible {
-                                    ACCENT
-                                } else {
-                                    ACCENT.linear_multiply(0.7)
-                                }
-                            } else if src_visible {
-                                TEXT
-                            } else {
-                                TEXT_MUTED
-                            };
-                            ui.add(
-                                egui::Label::new(egui::RichText::new(&src_name).color(text_color))
-                                    .truncate(),
-                            );
-                        },
-                    );
-                });
+                // Lock toggle
+                let lock_resp = icon_toggle_button(
+                    &mut child_ui,
+                    src_locked,
+                    IconKind::Lock,
+                    IconKind::Unlock,
+                    if src_locked {
+                        "Unlock Source (Ctrl+Shift+L)"
+                    } else {
+                        "Lock Source (Ctrl+Shift+L)"
+                    },
+                );
+                if lock_resp.clicked() {
+                    *self.trigger_toggle_source_lock = Some(src_id.clone());
+                    *self.selected_source_id = Some(src_id.clone());
+                }
 
-                let row_rect = resp.response.rect;
+                // Source name (dimmed when hidden, matching OBS)
+                let text_color = if is_sel || src_visible {
+                    TEXT
+                } else {
+                    TEXT_MUTED
+                };
+                child_ui.add(
+                    egui::Label::new(egui::RichText::new(&src_name).color(text_color)).truncate(),
+                );
+
                 row_rects.push(row_rect);
 
                 // Row interaction - starts after grip (16), eye (22), lock (22) + spacing (~76px)

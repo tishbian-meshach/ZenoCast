@@ -1107,6 +1107,23 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - Replaced with `ui.allocate_ui_with_layout(vec2(list_width, ROW_HEIGHT_LIST), egui::Layout::left_to_right(egui::Align::Center))` and `inner_margin(symmetric(4, 0))`.
   - Every row is strictly locked to `ROW_HEIGHT_LIST` (28.0 px) with centered 22px buttons (3px symmetric vertical padding) and zero cross-axis expansion.
 
+---
+
+## 2026-11-09: UI Continuity Pass: Full-Width Row Backgrounds, Hover Feedback & Left-Aligned Text
+
+- **Full-Width Row Backgrounds in Sources & Layers Panels**:
+  - `row_frame.show` wrapped child UI elements, measuring `child_ui.min_rect()` which was only the width of the added icons and text label (~140px), causing the selection background to abruptly truncate horizontally.
+  - Switched to `ui.allocate_exact_size(vec2(list_width, ROW_HEIGHT_LIST), Sense::hover())` and painted the background directly over `row_rect` using `ui.painter().rect_filled(row_rect, CornerRadius::same(CORNER_RADIUS), bg_color)`.
+  - Background now spans 100% of the available dock column width (`list_width`).
+- **Unified Hover & Selection Behavior (Continuity with Scenes)**:
+  - Added full-width hover state `SURFACE_2` on unselected rows via `ui.rect_contains_pointer(row_rect)`.
+  - Selected rows fill with full-width `ACCENT` blue background with white `TEXT` (dimmed blue `ACCENT.linear_multiply(0.7)` when hidden), creating identical visual language between Scenes, Sources, and Layers docks.
+  - Child elements are placed via `ui.new_child(UiBuilder::new().max_rect(row_rect).layout(Layout::left_to_right(Align::Center)))` with centered 22px buttons and 4px padding.
+- **Scenes Dock Left-Aligned Text**:
+  - Replaced `SelectableLabel` (which centered text by default) with `ui.allocate_exact_size(vec2(row_w, ROW_HEIGHT_LIST), Sense::click())` and painted left-aligned text at `pos2(row_rect.min.x + 8.0, row_rect.center().y)` using `Align2::LEFT_CENTER`.
+  - Preserved full-width `ACCENT` on selection, `SURFACE_2` on hover, and all click/double-click/context-menu interactions.
+
+
 
 
 
