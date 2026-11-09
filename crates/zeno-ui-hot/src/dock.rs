@@ -55,21 +55,21 @@ pub fn create_default_live_layout() -> DockState<StudioTab> {
     let [_scenes, sources] =
         dock_state
             .main_surface_mut()
-            .split_right(bottom_node, 0.20, vec![StudioTab::Sources]);
+            .split_right(bottom_node, 0.18, vec![StudioTab::Sources]);
 
     let [_sources, mixer] =
         dock_state
             .main_surface_mut()
-            .split_right(sources, 0.25, vec![StudioTab::AudioMixer]);
+            .split_right(sources, 0.26, vec![StudioTab::AudioMixer]);
 
     let [_mixer, transitions] =
         dock_state
             .main_surface_mut()
-            .split_right(mixer, 0.33, vec![StudioTab::Transitions]);
+            .split_right(mixer, 0.45, vec![StudioTab::Transitions]);
 
     let [_transitions, _controls] = dock_state.main_surface_mut().split_right(
         transitions,
-        0.50,
+        0.42,
         vec![StudioTab::StreamControls],
     );
 
@@ -2229,13 +2229,33 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders 6-track audio mixer sliders, mute buttons, and live meters.
     fn ui_audio_mixer(&mut self, ui: &mut Ui) {
-        const CHANNEL_WIDTH: f32 = 80.0; // 8px grid aligned (10 * GRID_UNIT)
+        const MIN_CHANNEL_WIDTH: f32 = 72.0;
+        const MAX_CHANNEL_WIDTH: f32 = 130.0;
+
+        let active_scene = self
+            .project
+            .active_scene_id
+            .as_ref()
+            .and_then(|id| self.project.scenes.iter_mut().find(|s| &s.id == id));
+
+        let num_sources = active_scene.as_ref().map(|s| s.sources.len()).unwrap_or(0);
+        let total_channels = 1 + num_sources;
+
+        // Space per separator (ui.separator() takes line width + 2 * item_spacing.x)
+        let sep_width =
+            (ui.visuals().window_stroke.width + ui.spacing().item_spacing.x * 2.0).max(12.0);
+        let total_sep_width = total_channels.saturating_sub(1) as f32 * sep_width;
+        let avail_w = ui.available_width();
+        let remaining_w = (avail_w - total_sep_width).max(0.0);
+        let channel_width =
+            (remaining_w / total_channels as f32).clamp(MIN_CHANNEL_WIDTH, MAX_CHANNEL_WIDTH);
+        let mute_btn_width = (channel_width - 16.0).clamp(52.0, 68.0);
 
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal(|ui| {
                 // Master Track
                 ui.allocate_ui_with_layout(
-                    vec2(CHANNEL_WIDTH, ui.available_height()),
+                    vec2(channel_width, ui.available_height()),
                     egui::Layout::top_down(egui::Align::Center),
                     |ui| {
                         let name_label =
@@ -2272,7 +2292,7 @@ impl<'a> StudioTabViewer<'a> {
                         let mute_btn = Button::new("Mute")
                             .secondary()
                             .selected(*self.master_muted)
-                            .width(64.0)
+                            .width(mute_btn_width)
                             .show(ui);
                         if mute_btn.clicked() {
                             *self.master_muted = !*self.master_muted;
@@ -2281,25 +2301,19 @@ impl<'a> StudioTabViewer<'a> {
                     },
                 );
 
-                ui.separator();
-
                 // Source Tracks
-                let active_scene = self
-                    .project
-                    .active_scene_id
-                    .as_ref()
-                    .and_then(|id| self.project.scenes.iter_mut().find(|s| &s.id == id));
-
                 if let Some(scene) = active_scene {
                     if scene.sources.is_empty() {
+                        ui.separator();
                         ui.vertical_centered(|ui| {
                             ui.add_space(24.0);
                             ui.colored_label(TEXT_MUTED, "No audio sources in active scene");
                         });
                     } else {
                         for src in &mut scene.sources {
+                            ui.separator();
                             ui.allocate_ui_with_layout(
-                                vec2(CHANNEL_WIDTH, ui.available_height()),
+                                vec2(channel_width, ui.available_height()),
                                 egui::Layout::top_down(egui::Align::Center),
                                 |ui| {
                                     let name_label =
@@ -2336,7 +2350,7 @@ impl<'a> StudioTabViewer<'a> {
                                     let mute_btn = Button::new("Mute")
                                         .secondary()
                                         .selected(src.muted)
-                                        .width(64.0)
+                                        .width(mute_btn_width)
                                         .show(ui);
                                     if mute_btn.clicked() {
                                         src.muted = !src.muted;
@@ -2344,10 +2358,10 @@ impl<'a> StudioTabViewer<'a> {
                                     }
                                 },
                             );
-                            ui.separator();
                         }
                     }
                 } else {
+                    ui.separator();
                     ui.vertical_centered(|ui| {
                         ui.add_space(24.0);
                         ui.colored_label(TEXT_MUTED, "No active scene selected");
