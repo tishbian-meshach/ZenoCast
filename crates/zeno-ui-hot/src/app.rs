@@ -955,6 +955,7 @@ impl ZenocastApp {
                         } else {
                             WindowCaptureSource::from_title(&target)
                         };
+                        win.set_name(name.clone());
                         win.set_capture_cursor(capture_cursor);
                         Some(Box::new(win.with_id(source_id)))
                     }
@@ -1150,15 +1151,18 @@ impl ZenocastApp {
                             height,
                         },
                         zeno_media::SourceKind::DisplayCapture => SourceProperties::Display {
-                            monitor_index: 0,
+                            monitor_index: target
+                                .strip_prefix("Display ")
+                                .and_then(|s| s.parse().ok())
+                                .unwrap_or(0),
                             cursor_visible: capture_cursor,
                         },
                         zeno_media::SourceKind::WindowCapture => SourceProperties::Window {
-                            window_title: name.clone(),
+                            window_title: target.clone(),
                             cursor_visible: capture_cursor,
                         },
                         zeno_media::SourceKind::CameraCapture => SourceProperties::Camera {
-                            device_name: name.clone(),
+                            device_name: target.clone(),
                             format_index: 0,
                             resolution: (width, height),
                         },
@@ -1183,12 +1187,12 @@ impl ZenocastApp {
                             looping,
                         },
                         zeno_media::SourceKind::AudioInput => SourceProperties::AudioInput {
-                            device_name: name.clone(),
+                            device_name: target.clone(),
                             volume,
                             muted,
                         },
                         zeno_media::SourceKind::AudioOutput => SourceProperties::AudioOutput {
-                            device_name: name.clone(),
+                            device_name: target.clone(),
                             volume,
                             muted,
                         },
@@ -1199,17 +1203,9 @@ impl ZenocastApp {
                     }
                 }
 
-                // Update Compositor Preview SceneItem
+                // Update Compositor SceneItems across working preview and program scenes
                 if let Some(ref mut comp) = *self.compositor.write() {
-                    if let Some(scene) = comp.preview_working_scene_mut() {
-                        for item in &mut scene.items {
-                            if let SceneItemSource::Source(sid) = item.source {
-                                if sid == src_id {
-                                    item.name = name.clone();
-                                }
-                            }
-                        }
-                    }
+                    comp.update_item_name(src_id, name.clone());
                 }
             }
             SourceDialogAction::OpenFilters { id } => {
@@ -2584,7 +2580,7 @@ impl ZenocastApp {
                 if let Some(ref sel_id) = self.selected_source_id.clone() {
                     if let Some(src) = self
                         .project
-                        .preview_sources()
+                        .editable_sources(self.studio_mode)
                         .into_iter()
                         .find(|s| &s.id == sel_id)
                     {
@@ -3601,7 +3597,7 @@ impl ZenocastApp {
         if let Some(ref edit_id) = trigger_open_edit_source {
             if let Some(src) = self
                 .project
-                .preview_sources()
+                .editable_sources(self.studio_mode)
                 .into_iter()
                 .find(|s| &s.id == edit_id)
             {

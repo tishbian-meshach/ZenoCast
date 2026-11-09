@@ -11,6 +11,7 @@ use zeno_platform::{capture_window_raw, WgcCaptureSession};
 pub struct WindowCaptureSource {
     id: SourceId,
     name: String,
+    window_title: String,
     hwnd: isize,
     capture_cursor: bool,
     borderless: bool,
@@ -28,9 +29,11 @@ pub struct WindowCaptureSource {
 impl WindowCaptureSource {
     /// Create a new window capture source.
     pub fn new(hwnd: isize, name: impl Into<String>) -> Self {
+        let name_str = name.into();
         Self {
             id: SourceId::new(),
-            name: name.into(),
+            name: name_str.clone(),
+            window_title: name_str,
             hwnd,
             capture_cursor: true,
             borderless: false,
@@ -52,16 +55,36 @@ impl WindowCaptureSource {
         self
     }
 
+    /// Set explicit target window title.
+    pub fn with_window_title(mut self, title: impl Into<String>) -> Self {
+        self.window_title = title.into();
+        self
+    }
+
     /// Automatically find window by title from active top-level windows.
     pub fn from_title(title: &str) -> Self {
         let windows = zeno_platform::enumerate_windows();
-        if let Some(win) = windows.into_iter().find(|w| w.title == title) {
-            Self::new(win.hwnd, win.title)
+        let matched = windows
+            .iter()
+            .find(|w| w.title == title)
+            .or_else(|| windows.iter().find(|w| w.title.contains(title)))
+            .cloned();
+
+        if let Some(win) = matched {
+            let mut src = Self::new(win.hwnd, "Window Capture");
+            src.window_title = win.title;
+            src
         } else {
-            let mut src = Self::new(0, title);
+            let mut src = Self::new(0, "Window Capture");
+            src.window_title = title.to_string();
             src.target_found = false;
             src
         }
+    }
+
+    /// Returns the target window title being captured.
+    pub fn window_title(&self) -> &str {
+        &self.window_title
     }
 
     /// Sets whether the mouse cursor is composited into the captured frame.
@@ -88,9 +111,13 @@ impl WindowCaptureSource {
     pub fn default_or_fallback() -> Self {
         let windows = zeno_platform::enumerate_windows();
         if let Some(win) = windows.into_iter().find(|w| !w.is_minimized) {
-            Self::new(win.hwnd, win.title)
+            let mut src = Self::new(win.hwnd, "Window Capture");
+            src.window_title = win.title;
+            src
         } else {
-            Self::new(0, "Broadcast Window Capture (Simulation)")
+            let mut src = Self::new(0, "Window Capture");
+            src.window_title = "Broadcast Window Capture (Simulation)".to_string();
+            src
         }
     }
 }
@@ -126,7 +153,7 @@ impl Source for WindowCaptureSource {
 
     fn properties(&self) -> crate::source::SourceProperties {
         crate::source::SourceProperties::Window {
-            window_title: self.name.clone(),
+            window_title: self.window_title.clone(),
             cursor_visible: self.capture_cursor,
         }
     }
@@ -142,23 +169,40 @@ impl Source for WindowCaptureSource {
             cursor_visible,
         } = properties
         {
+            let cursor_changed = self.capture_cursor != *cursor_visible;
             self.capture_cursor = *cursor_visible;
-            if &self.name != window_title {
-                self.name = window_title.clone();
+
+            let title_changed = &self.window_title != window_title;
+            if title_changed || self.hwnd == 0 || self.wgc_session.is_none() {
+                self.window_title = window_title.clone();
                 let windows = zeno_platform::enumerate_windows();
-                if let Some(win) = windows.into_iter().find(|w| &w.title == window_title) {
+                let matched_win = windows
+                    .iter()
+                    .find(|w| &w.title == window_title)
+                    .or_else(|| windows.iter().find(|w| w.title.contains(window_title)))
+                    .cloned();
+
+                if let Some(win) = matched_win {
                     let old_hwnd = self.hwnd;
                     self.hwnd = win.hwnd;
                     self.target_found = true;
-                    if self.active && old_hwnd != self.hwnd {
+                    if self.active
+                        && (old_hwnd != self.hwnd || cursor_changed || self.wgc_session.is_none())
+                    {
                         self.wgc_session =
                             WgcCaptureSession::new(self.hwnd, self.capture_cursor).ok();
+                        self.last_frame_seq = 0;
+                        self.last_capture_time = -1.0;
                     }
                 } else {
                     self.hwnd = 0;
                     self.target_found = false;
                     self.wgc_session = None;
                 }
+            } else if cursor_changed && self.active && self.hwnd != 0 {
+                self.wgc_session = WgcCaptureSession::new(self.hwnd, self.capture_cursor).ok();
+                self.last_frame_seq = 0;
+                self.last_capture_time = -1.0;
             }
             Ok(())
         } else {
@@ -390,5 +434,60 @@ mod tests {
         let mut buffer = Vec::new();
         let res = zeno_platform::capture_window_raw(0, true, &mut width, &mut height, &mut buffer);
         assert!(res.is_err(), "capture_window_raw must fail on HWND 0");
+    }
+
+    #[test]
+    fn test_window_source_target_window_update() {
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: true,
+        }))
+        .expect("adapter");
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("TestDev"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                memory_hints: wgpu::MemoryHints::Performance,
+            },
+            None,
+        ))
+        .expect("device");
+
+        let mut src = WindowCaptureSource::new(0, "Window Capture Layer");
+        src.window_title = "Initial Window Title".to_string();
+        assert_eq!(src.name(), "Window Capture Layer");
+        assert_eq!(src.window_title(), "Initial Window Title");
+
+        let updated_props = crate::source::SourceProperties::Window {
+            window_title: "New Target Window".to_string(),
+            cursor_visible: false,
+        };
+
+        src.update_properties(&updated_props, &device, &queue)
+            .unwrap();
+
+        assert_eq!(
+            src.name(),
+            "Window Capture Layer",
+            "Source label must not be overwritten by target window title"
+        );
+        assert_eq!(
+            src.window_title(),
+            "New Target Window",
+            "Target window title must update"
+        );
+        if let crate::source::SourceProperties::Window {
+            window_title,
+            cursor_visible,
+        } = src.properties()
+        {
+            assert_eq!(window_title, "New Target Window");
+            assert!(!cursor_visible);
+        } else {
+            panic!("Expected Window properties");
+        }
     }
 }

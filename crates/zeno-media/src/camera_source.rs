@@ -158,7 +158,11 @@ impl Source for CameraCaptureSource {
 
     fn properties(&self) -> crate::source::SourceProperties {
         crate::source::SourceProperties::Camera {
-            device_name: self.name.clone(),
+            device_name: if self.device_id.is_empty() {
+                self.name.clone()
+            } else {
+                self.device_id.clone()
+            },
             format_index: 0,
             resolution: (self.format.width, self.format.height),
         }
@@ -176,18 +180,20 @@ impl Source for CameraCaptureSource {
             ..
         } = properties
         {
-            let name_changed = &self.name != device_name;
-            self.name = device_name.clone();
+            let id_changed = &self.device_id != device_name && &self.name != device_name;
             self.format.width = resolution.0;
             self.format.height = resolution.1;
 
-            if name_changed {
+            if id_changed || self.mf_session.is_none() {
                 let cameras = enumerate_camera_devices();
                 if let Some(cam) = cameras
                     .into_iter()
                     .find(|c| &c.name == device_name || &c.id == device_name)
                 {
                     self.device_id = cam.id;
+                    self.name = cam.name;
+                } else {
+                    self.device_id = device_name.clone();
                 }
                 if self.active {
                     let _ = self.start(device, queue);

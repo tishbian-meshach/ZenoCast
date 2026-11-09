@@ -272,3 +272,134 @@ pub fn test_add_each_source_type_and_verify_real_frame_output() {
         "Project scene sources must be empty after teardown"
     );
 }
+
+#[test]
+pub fn test_window_capture_source_target_window_change_updates_live_backend() {
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::LowPower,
+        compatible_surface: None,
+        force_fallback_adapter: true,
+    }))
+    .expect("WGPU test adapter");
+
+    let (device, queue) = pollster::block_on(adapter.request_device(
+        &wgpu::DeviceDescriptor {
+            label: Some("TestDev"),
+            required_features: wgpu::Features::empty(),
+            required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+            memory_hints: wgpu::MemoryHints::Performance,
+        },
+        None,
+    ))
+    .expect("WGPU test device");
+
+    let device = Arc::new(device);
+    let queue = Arc::new(queue);
+    let comp = SceneCompositor::new(device.clone(), queue.clone(), 1920, 1080, 60.0);
+    let mut app = setup_test_app(device.clone(), queue.clone(), comp);
+
+    // 1. Add WindowCapture source targeting "Initial Window Title"
+    let add_action = zeno_ui::SourceDialogAction::Create {
+        name: "My Window Capture".to_string(),
+        kind: zeno_ui::project::SourceKind::WindowCapture,
+        target: "Initial Window Title".to_string(),
+        width: 1280,
+        height: 720,
+        color_rgba: [0.0, 0.0, 0.0, 1.0],
+        capture_cursor: true,
+        file_path: String::new(),
+        text_content: String::new(),
+        font_size: 24.0,
+        url: String::new(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    };
+    app.create_and_add_source(add_action);
+
+    let src_def = app.project.scenes[0].sources[0].clone();
+    assert_eq!(src_def.name, "My Window Capture");
+    assert_eq!(src_def.target, "Initial Window Title");
+    let src_id = zeno_ui::app::string_to_source_id(&src_def.id);
+
+    {
+        let reg = app.source_registry.read();
+        let backend_src = reg.get(src_id).expect("Backend source exists in registry");
+        assert_eq!(backend_src.name(), "My Window Capture");
+        if let zeno_media::SourceProperties::Window {
+            window_title,
+            cursor_visible,
+        } = backend_src.properties()
+        {
+            assert_eq!(window_title, "Initial Window Title");
+            assert!(cursor_visible);
+        } else {
+            panic!("Expected Window properties");
+        }
+    }
+
+    // 2. Change the source of that window capture layer to "Changed Target Window"
+    let update_action = zeno_ui::SourceDialogAction::Update {
+        id: src_def.id.clone(),
+        name: "My Window Capture".to_string(),
+        target: "Changed Target Window".to_string(),
+        width: 1920,
+        height: 1080,
+        color_rgba: [0.0, 0.0, 0.0, 1.0],
+        capture_cursor: false,
+        file_path: String::new(),
+        text_content: String::new(),
+        font_size: 24.0,
+        url: String::new(),
+        looping: false,
+        volume: 1.0,
+        muted: false,
+    };
+    app.create_and_add_source(update_action);
+
+    // 3. Verify project model updated
+    assert_eq!(
+        app.project.scenes[0].sources[0].target, "Changed Target Window",
+        "Project target must reflect the newly selected window"
+    );
+    assert_eq!(app.project.scenes[0].sources[0].width, 1920.0);
+    assert_eq!(app.project.scenes[0].sources[0].height, 1080.0);
+
+    // 4. Verify backend source in SourceRegistry updated live
+    {
+        let reg = app.source_registry.read();
+        let backend_src = reg.get(src_id).expect("Backend source exists in registry");
+        assert_eq!(
+            backend_src.name(),
+            "My Window Capture",
+            "User-assigned source label must remain intact"
+        );
+        if let zeno_media::SourceProperties::Window {
+            window_title,
+            cursor_visible,
+        } = backend_src.properties()
+        {
+            assert_eq!(
+                window_title, "Changed Target Window",
+                "Backend source target window title must update live to the newly chosen window"
+            );
+            assert!(
+                !cursor_visible,
+                "Cursor visibility toggle must propagate to backend source"
+            );
+        } else {
+            panic!("Expected Window properties");
+        }
+    }
+
+    // 5. Update tick executes smoothly with the new target
+    app.source_registry
+        .write()
+        .update_all(&device, &queue, 1.0 / 60.0);
+    let frame_views = app.source_registry.write().get_all_frame_views();
+    assert!(
+        frame_views.contains_key(&src_id),
+        "Backend source continues delivering GPU frames for new target window"
+    );
+}

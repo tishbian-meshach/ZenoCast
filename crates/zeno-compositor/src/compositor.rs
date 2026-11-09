@@ -256,6 +256,28 @@ impl SceneCompositor {
         }
     }
 
+    /// Updates item name for any scene item referencing `source_id` in working preview or canonical scenes.
+    pub fn update_item_name(&mut self, source_id: SourceId, name: String) {
+        if let Some(ref mut working) = self.preview_working_scene {
+            for item in &mut working.items {
+                if let SceneItemSource::Source(sid) = item.source {
+                    if sid == source_id || item.id == source_id.0 {
+                        item.name = name.clone();
+                    }
+                }
+            }
+        }
+        for scene in self.scenes.values_mut() {
+            for item in &mut scene.items {
+                if let SceneItemSource::Source(sid) = item.source {
+                    if sid == source_id || item.id == source_id.0 {
+                        item.name = name.clone();
+                    }
+                }
+            }
+        }
+    }
+
     /// Returns a mutable reference to the Preview working scene (initializing it if needed).
     pub fn preview_working_scene_mut(&mut self) -> Option<&mut Scene> {
         if self.preview_working_scene.is_none() {

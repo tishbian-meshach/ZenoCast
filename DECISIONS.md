@@ -1046,6 +1046,29 @@ The v1.0 specification omitted a formal filter pipeline. Based on REA analysis o
   - Normal Mode right-click immediately updates live on-air Program rendering; Studio Mode updates Preview and transfers cleanly upon CUT.
   - GPU hardware pixel readback verifies that media sources with black background screen out completely over a green canvas, rendering foreground content at 100% opacity without artifacts.
 
+## 2026-11-09: Window Capture Target Window Dynamic Updating
+
+- **Root Cause Diagnosis**:
+  1. *Source Label vs Target Conflation*: In `crates/zeno-ui-hot/src/app.rs`, `SourceDialogAction::Update` matched on source kind and instantiated `SourceProperties::Window` using `window_title: name.clone()` instead of `target.clone()`. Because `name` was the friendly user label (e.g. `"Window Capture"` or `"Window Capture 2"`), Windows enumeration searched for a non-existent window titled `"Window Capture"`.
+  2. *Internal State Overwrite in Backend Source*: In `crates/zeno-media/src/window_source.rs`, `WindowCaptureSource` only stored `self.name: String`, with no separate `window_title` field. When `app.rs` called `src.set_name(name.clone())` prior to `src.update_properties()`, `self.name` was set to the source label. The subsequent check `if &self.name != window_title` evaluated as false, bypassing window handle resolution entirely.
+  3. *Normal Mode Properties Resolution*: `ActionId::OpenSourceProperties` and `trigger_open_edit_source` resolved source definitions exclusively from `preview_sources()` rather than `editable_sources(self.studio_mode)`, leading to inconsistent lookups when modifying scenes in Normal Mode.
+
+- **Architectural Solution & Implementation**:
+  1. *Decoupled Window Title in WindowCaptureSource*:
+     - Added `window_title: String` field to `WindowCaptureSource`, retaining `name: String` strictly for the user-assigned label.
+     - Updated `properties()` to serialize `window_title: self.window_title.clone()`.
+     - In `update_properties()`, evaluated `title_changed = &self.window_title != window_title`. If the target changed or previous capture handle was invalid, enumerated desktop windows with exact title match and substring fallback, closed the existing `WgcCaptureSession`, bound the new `HWND`, and reset frame sequence and capture timer counters for instant re-ingest.
+  2. *Properties Dispatch Fix across all Capture Sources*:
+     - In `SourceDialogAction::Update`, mapped `target.clone()` to `SourceProperties::Window { window_title: target.clone(), .. }`, `SourceProperties::Camera { device_name: target.clone(), .. }`, `SourceProperties::AudioInput { device_name: target.clone(), .. }`, and `SourceProperties::AudioOutput { device_name: target.clone(), .. }`.
+     - Added `SceneCompositor::update_item_name()` to update item display names across working preview and program scenes.
+  3. *Normal Mode UI Binding*:
+     - Wired `trigger_open_edit_source` and `ActionId::OpenSourceProperties` to `self.project.editable_sources(self.studio_mode)`, ensuring properties edits in Normal Mode target the canonical active scene.
+
+- **Acceptance Validation**:
+  - `test_window_source_target_window_update` in `zeno-media`: Verified that `update_properties` updates target window title and properties without overwriting user-assigned source label.
+  - `test_window_capture_source_target_window_change_updates_live_backend` in `ui_wiring_test`: Verified end-to-end UI mutation flow—creating a window capture source, reconfiguring its target window via properties dialog action, confirming project model update, verifying backend source target window update in `SourceRegistry`, and driving GPU frame presentation.
+
+
 
 
 

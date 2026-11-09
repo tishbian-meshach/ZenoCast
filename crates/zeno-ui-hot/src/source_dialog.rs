@@ -633,6 +633,10 @@ impl SourceDialogState {
                                                     .clicked()
                                                 {
                                                     self.window_title = win.title.clone();
+                                                    if win.bounds.2 > 0 && win.bounds.3 > 0 {
+                                                        self.width = win.bounds.2;
+                                                        self.height = win.bounds.3;
+                                                    }
                                                 }
                                             }
                                         });
