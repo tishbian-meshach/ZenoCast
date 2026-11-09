@@ -151,30 +151,23 @@ pub fn ui_esports_data_panel(
                         );
                         ui.add_space(GRID_UNIT);
 
-                        if ui
-                            .add_sized(
-                                [40.0, 36.0],
-                                Button::new(RichText::new("-").size(20.0).color(TEXT))
-                                    .fill(SURFACE_3),
-                            )
-                            .on_hover_text("Decrement Score")
-                            .clicked()
-                        {
+                        let dec_btn = ui.add_sized(
+                            [40.0, 36.0],
+                            Button::new(RichText::new("-").size(20.0).color(TEXT)).fill(SURFACE_3),
+                        );
+                        crate::icon::show_aligned_tooltip(ui, &dec_btn, "Decrement Score");
+                        if dec_btn.clicked() {
                             let new_score = (cur_score_1 - 1).max(0);
                             store.set("scoreboard.team1.score", new_score);
                         }
 
-                        if ui
-                            .add_sized(
-                                [50.0, 36.0],
-                                Button::new(
-                                    RichText::new("+").size(24.0).color(SURFACE_0).strong(),
-                                )
+                        let inc_btn = ui.add_sized(
+                            [50.0, 36.0],
+                            Button::new(RichText::new("+").size(24.0).color(SURFACE_0).strong())
                                 .fill(ACCENT),
-                            )
-                            .on_hover_text("Increment Score")
-                            .clicked()
-                        {
+                        );
+                        crate::icon::show_aligned_tooltip(ui, &inc_btn, "Increment Score");
+                        if inc_btn.clicked() {
                             let new_score = cur_score_1 + 1;
                             store.set("scoreboard.team1.score", new_score);
                         }
@@ -218,30 +211,23 @@ pub fn ui_esports_data_panel(
                         );
                         ui.add_space(GRID_UNIT);
 
-                        if ui
-                            .add_sized(
-                                [40.0, 36.0],
-                                Button::new(RichText::new("-").size(20.0).color(TEXT))
-                                    .fill(SURFACE_3),
-                            )
-                            .on_hover_text("Decrement Score")
-                            .clicked()
-                        {
+                        let dec_btn = ui.add_sized(
+                            [40.0, 36.0],
+                            Button::new(RichText::new("-").size(20.0).color(TEXT)).fill(SURFACE_3),
+                        );
+                        crate::icon::show_aligned_tooltip(ui, &dec_btn, "Decrement Score");
+                        if dec_btn.clicked() {
                             let new_score = (cur_score_2 - 1).max(0);
                             store.set("scoreboard.team2.score", new_score);
                         }
 
-                        if ui
-                            .add_sized(
-                                [50.0, 36.0],
-                                Button::new(
-                                    RichText::new("+").size(24.0).color(SURFACE_0).strong(),
-                                )
+                        let inc_btn = ui.add_sized(
+                            [50.0, 36.0],
+                            Button::new(RichText::new("+").size(24.0).color(SURFACE_0).strong())
                                 .fill(ACCENT),
-                            )
-                            .on_hover_text("Increment Score")
-                            .clicked()
-                        {
+                        );
+                        crate::icon::show_aligned_tooltip(ui, &inc_btn, "Increment Score");
+                        if inc_btn.clicked() {
                             let new_score = cur_score_2 + 1;
                             store.set("scoreboard.team2.score", new_score);
                         }

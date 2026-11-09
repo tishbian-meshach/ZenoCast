@@ -11,8 +11,8 @@ use crate::icon::{
 };
 use crate::project::Project;
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, RED_LIVE, SURFACE_2, SURFACE_3,
-    TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, RED_LIVE, ROW_HEIGHT_LIST,
+    SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED,
 };
 use crate::transform_gizmo::{TransformGizmoEvent, TransformGizmoItem, TransformGizmoState};
 
@@ -1519,7 +1519,10 @@ impl<'a> StudioTabViewer<'a> {
                         )
                     };
 
-                    let response = ui.selectable_label(is_selected, label_text);
+                    let response = ui.add_sized(
+                        [ui.available_width(), ROW_HEIGHT_LIST],
+                        egui::SelectableLabel::new(is_selected, label_text),
+                    );
                     if response.clicked() {
                         if self.studio_mode {
                             scene_clicked = Some((scene.id.clone(), scene.sources.clone()));
@@ -1858,11 +1861,12 @@ impl<'a> StudioTabViewer<'a> {
 
                 let row_frame = egui::Frame::NONE
                     .fill(bg_color)
-                    .corner_radius(CornerRadius::same(3))
-                    .inner_margin(egui::Margin::symmetric(4, 3));
+                    .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
+                    .inner_margin(egui::Margin::symmetric(4, 2));
 
                 let resp = row_frame.show(ui, |ui| {
                     ui.set_width(list_width);
+                    ui.set_min_height(ROW_HEIGHT_LIST);
                     ui.horizontal(|ui| {
                         // Drag handle grip
                         let grip_resp = grip_handle(ui, "Drag to reorder");
@@ -2062,45 +2066,57 @@ impl<'a> StudioTabViewer<'a> {
                     ui.separator();
                     ui.collapsing("Transform", |ui| {
                         let mut changed = false;
+                        egui::Grid::new("src_transform_grid")
+                            .num_columns(4)
+                            .spacing(vec2(GRID_UNIT, GRID_UNIT))
+                            .show(ui, |ui| {
+                                ui.label("X:");
+                                let rx = ui.add(egui::DragValue::new(&mut src.x).speed(1.0));
+                                if rx.drag_started() {
+                                    *self.trigger_snapshot_undo = true;
+                                }
+                                changed |= rx.changed();
+
+                                ui.label("Y:");
+                                let ry = ui.add(egui::DragValue::new(&mut src.y).speed(1.0));
+                                if ry.drag_started() {
+                                    *self.trigger_snapshot_undo = true;
+                                }
+                                changed |= ry.changed();
+                                ui.end_row();
+
+                                ui.label("Width:");
+                                let rw = ui.add(
+                                    egui::DragValue::new(&mut src.width)
+                                        .speed(1.0)
+                                        .range(1.0..=7680.0),
+                                );
+                                if rw.drag_started() {
+                                    *self.trigger_snapshot_undo = true;
+                                }
+                                changed |= rw.changed();
+
+                                ui.label("Height:");
+                                let rh = ui.add(
+                                    egui::DragValue::new(&mut src.height)
+                                        .speed(1.0)
+                                        .range(1.0..=4320.0),
+                                );
+                                if rh.drag_started() {
+                                    *self.trigger_snapshot_undo = true;
+                                }
+                                changed |= rh.changed();
+                                ui.end_row();
+                            });
+
+                        ui.add_space(GRID_UNIT * 0.5);
                         ui.horizontal(|ui| {
-                            ui.label("X:");
-                            let rx = ui.add(egui::DragValue::new(&mut src.x).speed(1.0));
-                            if rx.drag_started() {
-                                *self.trigger_snapshot_undo = true;
-                            }
-                            changed |= rx.changed();
-                            ui.label("Y:");
-                            let ry = ui.add(egui::DragValue::new(&mut src.y).speed(1.0));
-                            if ry.drag_started() {
-                                *self.trigger_snapshot_undo = true;
-                            }
-                            changed |= ry.changed();
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Width:");
-                            let rw = ui.add(
-                                egui::DragValue::new(&mut src.width)
-                                    .speed(1.0)
-                                    .range(1.0..=7680.0),
+                            ui.label("Rotation:");
+                            let rr = ui.add(
+                                egui::DragValue::new(&mut src.rotation)
+                                    .speed(0.5)
+                                    .suffix("°"),
                             );
-                            if rw.drag_started() {
-                                *self.trigger_snapshot_undo = true;
-                            }
-                            changed |= rw.changed();
-                            ui.label("Height:");
-                            let rh = ui.add(
-                                egui::DragValue::new(&mut src.height)
-                                    .speed(1.0)
-                                    .range(1.0..=4320.0),
-                            );
-                            if rh.drag_started() {
-                                *self.trigger_snapshot_undo = true;
-                            }
-                            changed |= rh.changed();
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label("Rotation (deg):");
-                            let rr = ui.add(egui::DragValue::new(&mut src.rotation).speed(0.5));
                             if rr.drag_started() {
                                 *self.trigger_snapshot_undo = true;
                             }
@@ -2149,7 +2165,7 @@ impl<'a> StudioTabViewer<'a> {
 
     /// Renders 6-track audio mixer sliders, mute buttons, and live meters.
     fn ui_audio_mixer(&mut self, ui: &mut Ui) {
-        const CHANNEL_WIDTH: f32 = 75.0;
+        const CHANNEL_WIDTH: f32 = 80.0; // 8px grid aligned (10 * GRID_UNIT)
 
         egui::ScrollArea::horizontal().show(ui, |ui| {
             ui.horizontal(|ui| {
@@ -2160,8 +2176,9 @@ impl<'a> StudioTabViewer<'a> {
                     |ui| {
                         let name_label =
                             egui::Label::new(egui::RichText::new("Master").strong()).truncate();
-                        ui.add(name_label).on_hover_text("Master Output");
-                        ui.add_space(4.0);
+                        let lbl_resp = ui.add(name_label);
+                        crate::icon::show_aligned_tooltip(ui, &lbl_resp, "Master Output");
+                        ui.add_space(GRID_UNIT * 0.5);
 
                         let mut master_db = Self::volume_to_db(*self.master_volume);
                         let vol_resp = ui.add(
@@ -2180,12 +2197,18 @@ impl<'a> StudioTabViewer<'a> {
                         } else {
                             format!("{:.1} dB", Self::volume_to_db(*self.master_volume))
                         };
-                        ui.label(master_db_text);
+                        ui.add_space(GRID_UNIT * 0.5);
+                        ui.label(
+                            egui::RichText::new(master_db_text)
+                                .font(egui::FontId::monospace(11.0))
+                                .color(TEXT_MUTED),
+                        );
+                        ui.add_space(GRID_UNIT * 0.5);
 
                         let mute_btn = Button::new("Mute")
                             .secondary()
                             .selected(*self.master_muted)
-                            .width(58.0)
+                            .width(64.0)
                             .show(ui);
                         if mute_btn.clicked() {
                             *self.master_muted = !*self.master_muted;
@@ -2218,8 +2241,9 @@ impl<'a> StudioTabViewer<'a> {
                                     let name_label =
                                         egui::Label::new(egui::RichText::new(&src.name).strong())
                                             .truncate();
-                                    ui.add(name_label).on_hover_text(&src.name);
-                                    ui.add_space(4.0);
+                                    let lbl_resp = ui.add(name_label);
+                                    crate::icon::show_aligned_tooltip(ui, &lbl_resp, &src.name);
+                                    ui.add_space(GRID_UNIT * 0.5);
 
                                     let mut src_db = Self::volume_to_db(src.volume);
                                     let src_vol_resp = ui.add(
@@ -2237,12 +2261,18 @@ impl<'a> StudioTabViewer<'a> {
                                     } else {
                                         format!("{:.1} dB", Self::volume_to_db(src.volume))
                                     };
-                                    ui.label(db_text);
+                                    ui.add_space(GRID_UNIT * 0.5);
+                                    ui.label(
+                                        egui::RichText::new(db_text)
+                                            .font(egui::FontId::monospace(11.0))
+                                            .color(TEXT_MUTED),
+                                    );
+                                    ui.add_space(GRID_UNIT * 0.5);
 
                                     let mute_btn = Button::new("Mute")
                                         .secondary()
                                         .selected(src.muted)
-                                        .width(58.0)
+                                        .width(64.0)
                                         .show(ui);
                                     if mute_btn.clicked() {
                                         src.muted = !src.muted;

@@ -11,3 +11,4 @@ pub mod recording_flow;
 pub mod scene_switching;
 pub mod source_flows;
 pub mod streaming_flow;
+pub mod visual_regression;

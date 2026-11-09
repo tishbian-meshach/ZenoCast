@@ -70,8 +70,8 @@ pub use data_panel::{ui_esports_data_panel, DataPanelState};
 pub use dock::{create_default_live_layout, StudioTab, StudioTabViewer};
 pub use editor::OverlayEditor;
 pub use icon::{
-    grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon,
-    IconButton, IconKind,
+    compute_tooltip_position, grip_handle, icon_button, icon_button_enabled, icon_toggle_button,
+    paint_lucide_icon, show_aligned_tooltip, IconButton, IconKind,
 };
 pub use import_dialog::ImportReportDialog;
 pub use log_viewer::{LogEntry, LogRingBuffer, LogSeverity, LogViewerPanel};

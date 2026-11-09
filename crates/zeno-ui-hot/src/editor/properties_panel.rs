@@ -80,11 +80,9 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 } else {
                     "Stopwatch (o)"
                 };
-                if ui
-                    .button(stop_label)
-                    .on_hover_text("Add position keyframe at playhead")
-                    .clicked()
-                {
+                let btn = ui.button(stop_label);
+                crate::icon::show_aligned_tooltip(ui, &btn, "Add position keyframe at playhead");
+                if btn.clicked() {
                     add_pos_keyframe = Some(*layer.transform.position.fallback_value());
                 }
 
@@ -110,11 +108,9 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 } else {
                     "Stopwatch (o)"
                 };
-                if ui
-                    .button(stop_label)
-                    .on_hover_text("Add scale keyframe at playhead")
-                    .clicked()
-                {
+                let btn = ui.button(stop_label);
+                crate::icon::show_aligned_tooltip(ui, &btn, "Add scale keyframe at playhead");
+                if btn.clicked() {
                     add_scale_keyframe = Some(*layer.transform.scale_percent.fallback_value());
                 }
 
@@ -146,11 +142,9 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 } else {
                     "Stopwatch (o)"
                 };
-                if ui
-                    .button(stop_label)
-                    .on_hover_text("Add rotation keyframe at playhead")
-                    .clicked()
-                {
+                let btn = ui.button(stop_label);
+                crate::icon::show_aligned_tooltip(ui, &btn, "Add rotation keyframe at playhead");
+                if btn.clicked() {
                     add_rot_keyframe = Some(*layer.transform.rotation_degrees.fallback_value());
                 }
 
@@ -180,11 +174,9 @@ pub fn ui_properties_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                 } else {
                     "Stopwatch (o)"
                 };
-                if ui
-                    .button(stop_label)
-                    .on_hover_text("Add opacity keyframe at playhead")
-                    .clicked()
-                {
+                let btn = ui.button(stop_label);
+                crate::icon::show_aligned_tooltip(ui, &btn, "Add opacity keyframe at playhead");
+                if btn.clicked() {
                     add_op_keyframe = Some(*layer.transform.opacity_percent.fallback_value());
                 }
 

@@ -7,7 +7,10 @@ use crate::editor::state::OverlayEditor;
 use crate::icon::{
     grip_handle, icon_button, icon_button_enabled, icon_toggle_button, paint_lucide_icon, IconKind,
 };
-use crate::theme::{ACCENT, GRID_UNIT, SURFACE_1, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED};
+use crate::theme::{
+    ACCENT, CORNER_RADIUS, GRID_UNIT, ROW_HEIGHT_LIST, SURFACE_1, SURFACE_2, SURFACE_3, TEXT,
+    TEXT_MUTED,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LayerOrderAction {
@@ -157,11 +160,12 @@ pub fn ui_layers_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
 
                 let row_frame = egui::Frame::NONE
                     .fill(bg_color)
-                    .corner_radius(CornerRadius::same(3))
+                    .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
                     .inner_margin(egui::Margin::symmetric(GRID_UNIT as i8, 4));
 
                 let resp = row_frame.show(ui, |ui| {
                     ui.set_width(list_width);
+                    ui.set_min_height(ROW_HEIGHT_LIST);
                     ui.horizontal(|ui| {
                         // Drag handle grip
                         let grip_resp = grip_handle(ui, "Drag to reorder");

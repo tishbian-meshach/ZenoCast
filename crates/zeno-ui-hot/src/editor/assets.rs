@@ -11,8 +11,8 @@ use zeno_engine::AssetKind;
 use crate::editor::state::OverlayEditor;
 use crate::icon::grip_handle;
 use crate::theme::{
-    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, SURFACE_0, SURFACE_1, SURFACE_2,
-    TEXT, TEXT_MUTED,
+    ACCENT, AMBER_WARN, BORDER_WIDTH, CORNER_RADIUS, GRID_UNIT, ROW_HEIGHT_LIST, SURFACE_0,
+    SURFACE_1, SURFACE_2, TEXT, TEXT_MUTED,
 };
 
 /// Renders the asset browser panel.
@@ -115,6 +115,7 @@ pub fn ui_assets_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                     .corner_radius(CornerRadius::same(CORNER_RADIUS as u8))
                     .stroke(Stroke::new(BORDER_WIDTH, SURFACE_2))
                     .show(ui, |ui| {
+                        ui.set_min_height(ROW_HEIGHT_LIST);
                         ui.horizontal(|ui| {
                             // Drag grip
                             let grip_resp = grip_handle(ui, "Drag onto canvas or timeline")
@@ -174,11 +175,13 @@ pub fn ui_assets_panel(editor: &mut OverlayEditor, ui: &mut Ui) {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    if ui
-                                        .add(Button::new("+ Add").small())
-                                        .on_hover_text("Add as new layer centered on canvas")
-                                        .clicked()
-                                    {
+                                    let btn = ui.add(Button::new("+ Add").small());
+                                    crate::icon::show_aligned_tooltip(
+                                        ui,
+                                        &btn,
+                                        "Add as new layer centered on canvas",
+                                    );
+                                    if btn.clicked() {
                                         to_add_layer = Some((asset.id, clean_name.clone()));
                                     }
                                 },

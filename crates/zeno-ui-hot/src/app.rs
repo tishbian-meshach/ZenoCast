@@ -17,6 +17,7 @@ use crate::editor::{
     OverlayEditor, TimelineMode,
 };
 use crate::hotkey_registry::{ActionCategory, ActionId, KeyCombo, RebindTarget};
+use crate::icon::{IconButton, IconKind};
 use crate::project::{Autosaver, Project, SceneDefinition, SourceDefinition, SourceKind};
 use crate::source_dialog::{SourceDialogAction, SourceDialogState};
 use crate::theme::{apply_theme, ACCENT, AMBER_WARN, RED_LIVE, TEXT, TEXT_MUTED};
@@ -4116,13 +4117,13 @@ impl ZenocastApp {
                 self.hotkey_search_filter.clear();
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui
-                    .button("Reset to Defaults")
-                    .on_hover_text(
-                        "Reset all keyboard shortcuts and global flags to original defaults",
-                    )
-                    .clicked()
-                {
+                let btn = ui.button("Reset to Defaults");
+                crate::icon::show_aligned_tooltip(
+                    ui,
+                    &btn,
+                    "Reset all keyboard shortcuts and global flags to original defaults",
+                );
+                if btn.clicked() {
                     self.project.settings.hotkeys.registry.reset_to_defaults();
                     self.sync_global_hotkeys();
                 }
@@ -4243,7 +4244,12 @@ impl ZenocastApp {
 
                                 for meta in actions {
                                     // Action name + tooltip
-                                    ui.label(meta.name).on_hover_text(meta.description);
+                                    let name_lbl = ui.label(meta.name);
+                                    crate::icon::show_aligned_tooltip(
+                                        ui,
+                                        &name_lbl,
+                                        meta.description,
+                                    );
 
                                     // Key binding button
                                     let cur_text = self
@@ -4270,7 +4276,12 @@ impl ZenocastApp {
                                     }
 
                                     // Clear button
-                                    if ui.button("X").on_hover_text("Clear shortcut").clicked() {
+                                    if IconButton::new(IconKind::X)
+                                        .ghost(true)
+                                        .tooltip("Clear shortcut")
+                                        .show(ui)
+                                        .clicked()
+                                    {
                                         action_to_clear = Some(RebindTarget::Action(meta.id));
                                     }
 
@@ -4282,13 +4293,13 @@ impl ZenocastApp {
                                             .hotkeys
                                             .registry
                                             .is_global(meta.id);
-                                        if ui
-                                            .checkbox(&mut is_glob, "")
-                                            .on_hover_text(
-                                                "Make shortcut active globally across the OS",
-                                            )
-                                            .changed()
-                                        {
+                                        let chk_resp = ui.checkbox(&mut is_glob, "");
+                                        crate::icon::show_aligned_tooltip(
+                                            ui,
+                                            &chk_resp,
+                                            "Make shortcut active globally across the OS",
+                                        );
+                                        if chk_resp.changed() {
                                             toggle_global_action = Some((meta.id, is_glob));
                                         }
                                     } else {

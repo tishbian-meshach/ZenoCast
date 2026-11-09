@@ -6,7 +6,9 @@
 //! - Hover tooltips for all routine actions. Text retained on high-stakes actions.
 //! - DPI-aware: direct vector rendering preserves razor-sharp edges at 100%, 150%, and 200% scaling.
 
-use egui::{pos2, vec2, CornerRadius, Painter, Rect, Response, Sense, Stroke, StrokeKind, Ui};
+use egui::{
+    pos2, vec2, CornerRadius, Painter, Pos2, Rect, Response, Sense, Stroke, StrokeKind, Ui, Vec2,
+};
 
 use crate::theme::{ACCENT, BORDER_WIDTH, CORNER_RADIUS, SURFACE_2, SURFACE_3, TEXT, TEXT_MUTED};
 
@@ -468,12 +470,73 @@ impl IconButton {
             Stroke::new(1.5_f32, stroke_color),
         );
 
-        if let Some(tip) = self.tooltip {
-            response.on_hover_text(tip)
-        } else {
-            response
+        if let Some(ref tip) = self.tooltip {
+            show_aligned_tooltip(ui, &response, tip);
         }
+        response
     }
+}
+
+/// Pure geometric calculation for tooltip placement relative to a trigger control (Build Spec v1.8 Section 3).
+///
+/// Features:
+/// - Places tooltip directly below trigger with a 4px gap, avoiding trigger occlusion.
+/// - Flips directly above trigger if bottom screen boundary would overflow.
+/// - Clamps horizontally within screen viewport bounds.
+pub fn compute_tooltip_position(
+    trigger_rect: Rect,
+    screen_rect: Rect,
+    tooltip_size: Vec2,
+    gap: f32,
+) -> Pos2 {
+    let y = if trigger_rect.bottom() + gap + tooltip_size.y <= screen_rect.bottom() - 4.0 {
+        trigger_rect.bottom() + gap
+    } else {
+        (trigger_rect.top() - gap - tooltip_size.y).max(screen_rect.top() + 4.0)
+    };
+
+    let x = (trigger_rect.left()).clamp(
+        screen_rect.left() + 4.0,
+        (screen_rect.right() - tooltip_size.x - 4.0).max(screen_rect.left() + 4.0),
+    );
+
+    pos2(x, y)
+}
+
+/// Positions and renders a tooltip cleanly relative to the trigger control (Build Spec v1.8 Section 3).
+///
+/// Features:
+/// - Places tooltip directly below trigger with a 4px gap, avoiding trigger occlusion.
+/// - Flips directly above trigger if bottom screen boundary would overflow.
+/// - Clamps horizontally within screen viewport bounds.
+pub fn show_aligned_tooltip(ui: &Ui, response: &Response, tooltip: &str) {
+    if !response.hovered() {
+        return;
+    }
+    let rect = response.rect;
+    let screen = ui.ctx().screen_rect();
+    let gap = 4.0_f32;
+
+    let font_id = egui::TextStyle::Body.resolve(ui.style());
+    let galley = ui
+        .painter()
+        .layout_no_wrap(tooltip.to_string(), font_id, TEXT);
+    let padding_x = 16.0_f32;
+    let padding_y = 10.0_f32;
+    let tip_w = galley.size().x + padding_x;
+    let tip_h = galley.size().y + padding_y;
+
+    let tip_pos = compute_tooltip_position(rect, screen, vec2(tip_w, tip_h), gap);
+    let layer_id = egui::LayerId::new(egui::Order::Tooltip, response.id.with("tooltip_layer"));
+    egui::show_tooltip_at(
+        ui.ctx(),
+        layer_id,
+        response.id.with("positioned_tip"),
+        tip_pos,
+        |ui| {
+            ui.label(tooltip);
+        },
+    );
 }
 
 impl egui::Widget for IconButton {
@@ -517,7 +580,6 @@ pub fn icon_toggle_button(
         .show(ui)
 }
 
-/// Convenience helper: renders a 6-dot Lucide drag handle grip.
 pub fn grip_handle(ui: &mut Ui, tooltip: &str) -> Response {
     IconButton::new(IconKind::GripVertical)
         .ghost(true)
@@ -526,4 +588,52 @@ pub fn grip_handle(ui: &mut Ui, tooltip: &str) -> Response {
         .sense(Sense::click_and_drag())
         .tooltip(tooltip)
         .show(ui)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_tooltip_position_below_trigger() {
+        let trigger = Rect::from_min_size(pos2(100.0, 100.0), vec2(32.0, 32.0));
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        let tip_size = vec2(120.0, 24.0);
+        let gap = 4.0;
+
+        let pos = compute_tooltip_position(trigger, screen, tip_size, gap);
+        assert_eq!(pos.y, 136.0);
+        assert_eq!(pos.x, 100.0);
+        let tip_rect = Rect::from_min_size(pos, tip_size);
+        assert!(!tip_rect.intersects(trigger));
+    }
+
+    #[test]
+    fn test_compute_tooltip_position_flips_above_at_screen_bottom() {
+        let trigger = Rect::from_min_size(pos2(100.0, 1050.0), vec2(32.0, 32.0));
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        let tip_size = vec2(120.0, 30.0);
+        let gap = 4.0;
+
+        let pos = compute_tooltip_position(trigger, screen, tip_size, gap);
+        assert_eq!(pos.y, 1016.0);
+        assert_eq!(pos.x, 100.0);
+        let tip_rect = Rect::from_min_size(pos, tip_size);
+        assert!(!tip_rect.intersects(trigger));
+    }
+
+    #[test]
+    fn test_compute_tooltip_position_horizontal_clamping() {
+        let trigger_right = Rect::from_min_size(pos2(1900.0, 100.0), vec2(32.0, 32.0));
+        let screen = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+        let tip_size = vec2(120.0, 24.0);
+        let gap = 4.0;
+
+        let pos_right = compute_tooltip_position(trigger_right, screen, tip_size, gap);
+        assert!(pos_right.x + tip_size.x <= screen.right() - 4.0);
+
+        let trigger_left = Rect::from_min_size(pos2(1.0, 100.0), vec2(32.0, 32.0));
+        let pos_left = compute_tooltip_position(trigger_left, screen, tip_size, gap);
+        assert_eq!(pos_left.x, 4.0);
+    }
 }

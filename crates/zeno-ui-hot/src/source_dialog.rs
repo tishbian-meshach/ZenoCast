@@ -775,13 +775,25 @@ impl SourceDialogState {
                                         }
                                     }
 
-                                    if ui.button("Browse Multiple...").on_hover_text("Select multiple images for slideshow").clicked() {
+                                    let btn_mult = ui.button("Browse Multiple...");
+                                    crate::icon::show_aligned_tooltip(
+                                        ui,
+                                        &btn_mult,
+                                        "Select multiple images for slideshow",
+                                    );
+                                    if btn_mult.clicked() {
                                         let dialog = rfd::FileDialog::new()
-                                            .add_filter("Image Files", &["png", "jpg", "jpeg", "gif", "webp"])
+                                            .add_filter(
+                                                "Image Files",
+                                                &["png", "jpg", "jpeg", "gif", "webp"],
+                                            )
                                             .add_filter("All Files", &["*"]);
                                         if let Some(paths) = dialog.pick_files() {
                                             if !paths.is_empty() {
-                                                self.media_files = paths.iter().map(|p| p.to_string_lossy().to_string()).collect();
+                                                self.media_files = paths
+                                                    .iter()
+                                                    .map(|p| p.to_string_lossy().to_string())
+                                                    .collect();
                                                 self.file_path = self.media_files[0].clone();
                                                 self.thumbnail_tex = None;
                                                 self.thumbnail_rgba = None;
@@ -790,13 +802,19 @@ impl SourceDialogState {
                                         }
                                     }
 
-                                    if !self.file_path.is_empty()
-                                        && ui.button("Clear").on_hover_text("Clear selected file").clicked()
-                                    {
-                                        self.file_path.clear();
-                                        self.media_files.clear();
-                                        self.thumbnail_tex = None;
-                                        self.thumbnail_rgba = None;
+                                    if !self.file_path.is_empty() {
+                                        let clear_btn = ui.button("Clear");
+                                        crate::icon::show_aligned_tooltip(
+                                            ui,
+                                            &clear_btn,
+                                            "Clear selected file",
+                                        );
+                                        if clear_btn.clicked() {
+                                            self.file_path.clear();
+                                            self.media_files.clear();
+                                            self.thumbnail_tex = None;
+                                            self.thumbnail_rgba = None;
+                                        }
                                     }
                                 });
 

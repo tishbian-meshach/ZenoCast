@@ -55,6 +55,22 @@ impl Button {
         }
     }
 
+    pub fn get_variant(&self) -> ButtonVariant {
+        self.variant
+    }
+
+    pub fn get_height(&self) -> f32 {
+        self.height
+    }
+
+    pub fn is_selected(&self) -> bool {
+        self.selected
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        self.enabled
+    }
+
     /// Sets the button variant.
     pub fn variant(mut self, variant: ButtonVariant) -> Self {
         self.variant = variant;
@@ -270,11 +286,10 @@ impl Button {
         let text_pos = pos2(curr_x, rect.center().y - text_size.y * 0.5);
         ui.painter().galley(text_pos, text_layout, text_color);
 
-        if let Some(tooltip) = self.tooltip {
-            response.on_hover_text(tooltip)
-        } else {
-            response
+        if let Some(ref tooltip) = self.tooltip {
+            crate::icon::show_aligned_tooltip(ui, &response, tooltip);
         }
+        response
     }
 }
 
