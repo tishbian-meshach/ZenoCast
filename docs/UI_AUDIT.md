@@ -142,14 +142,16 @@ Every interactive control in the Zenocast esports broadcast suite is audited bel
 
 | Control | Action / Engine Target | Verification Note | Status |
 | :--- | :--- | :--- | :--- |
-| **Selection Bounding Box** | Highlight bounding box drawn with `ACCENT` stroke on selected items | Verified: hit testing and selection rendering in `test_hit_test_unrotated`. | [x] Verified |
-| **8 Resize Handles** | 4 corner and 4 edge midpoint 8x8px square handles for 2D scaling | Verified: drag handles resize width/height in `test_gizmo_item_creation`. | [x] Verified |
-| **Shift Aspect Lock** | Holding Shift while dragging corner handles locks original aspect ratio | Verified: aspect ratio preservation formula verified in `test_aspect_ratio_preservation_calc`. | [x] Verified |
+| **Normal Mode Direct Transform** | Directly updates active scene items and syncs to compositor in Normal Mode (`StudioMode::Direct`) | Verified: dragging gizmo in Normal Mode modifies `project.scenes` active scene and updates program compositor item in `test_v1_6_normal_mode_transform_and_deselect`. | [x] Verified |
+| **Selection Bounding Box** | Highlight bounding box drawn with `ACCENT` stroke on selected items, unclipped by canvas viewport | Verified: painter uses unclipped viewport painter; selection rendering verified in `test_hit_test_unrotated`. | [x] Verified |
+| **8 Resize Handles** | 4 corner and 4 edge midpoint 8x8px square handles for 2D scaling with unclipped geometry | Verified: drag handles resize width/height and extend past monitor boundaries into letterbox/pillarbox areas in `test_gizmo_item_creation`. | [x] Verified |
+| **Shift Aspect Lock & Layer Isolation** | Holding Shift while dragging corner/edge handles locks aspect ratio without deselecting or transforming layers below | Verified: hit testing evaluates `press_origin` (12px hit radius) to lock strictly to primary selected item in `test_shift_drag_handle_constrains_aspect_without_affecting_layers_below`. | [x] Verified |
 | **Alt Center Scale** | Holding Alt scales symmetrically from object center | Verified: updates center and dimensions symmetrically. | [x] Verified |
 | **Rotation Handle on Stem** | Circular rotate handle located 24px above top-center handle | Verified: computes angle around item center and updates `rotation_degrees`. | [x] Verified |
 | **15° Angle Snap** | Holding Shift while rotating snaps to 15-degree increments | Verified: snapping logic verified in `test_rotation_15_degree_snapping`. | [x] Verified |
-| **Canvas Hit-Testing** | Clicking directly on visible layer selects it; topmost layer wins; clicking empty canvas deselects | Verified: z-order hit-testing verified in `test_hit_test_unrotated`. | [x] Verified |
+| **Canvas Hit-Testing & Deselection** | Clicking directly on visible layer selects it; topmost layer wins; clicking empty canvas space or pressing Escape deselects | Verified: `test_clicking_empty_space_deselects` and `Escape` key handling in `test_v1_6_normal_mode_transform_and_deselect`. | [x] Verified |
 | **Keyboard Nudge** | Arrow keys nudge 1px; Shift+Arrow nudges 10px | Verified: updates position in discrete increments when canvas is focused. | [x] Verified |
+| **On-Canvas Modifier Hint Badge** | Dark pill badge at bottom-center of canvas showing active modifier instructions | Verified: renders active Shift (Aspect ratio / 15° snap) or Alt (Center scale) status badge during drag operations. | [x] Verified |
 | **Two-Way Property Sync** | Dragging gizmo updates Properties fields live; typing in fields updates canvas live | Verified: two-way synchronization in Live Studio preview and overlay editor. | [x] Verified |
 
 ---

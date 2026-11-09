@@ -170,6 +170,9 @@ impl<'a> StudioTabViewer<'a> {
     /// Renders Preview and Program monitors with T-Bar and Quick Action bus in Studio Mode,
     /// or single Program monitor in Normal Mode.
     fn ui_preview_program(&mut self, ui: &mut Ui) {
+        if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            *self.selected_source_id = None;
+        }
         if self.studio_mode {
             self.ui_studio_mode_monitors(ui);
         } else {
@@ -231,7 +234,7 @@ impl<'a> StudioTabViewer<'a> {
 
                 // Interactive on-canvas Transform Gizmo for Preview Monitor
                 let mut gizmo_items = Vec::new();
-                for src in self.project.preview_sources() {
+                for src in self.project.editable_sources(self.studio_mode) {
                     gizmo_items.push(TransformGizmoItem {
                         id: src.id.clone(),
                         name: src.name.clone(),
@@ -298,7 +301,9 @@ impl<'a> StudioTabViewer<'a> {
                             height,
                             rotation_degrees,
                         } => {
-                            if let Some(sources) = self.project.preview_working_sources_mut() {
+                            if let Some(sources) =
+                                self.project.editable_sources_mut(self.studio_mode)
+                            {
                                 if let Some(src) = sources.iter_mut().find(|s| s.id == id) {
                                     src.x = center_x - width * 0.5;
                                     src.y = center_y - height * 0.5;
@@ -429,7 +434,7 @@ impl<'a> StudioTabViewer<'a> {
         canvas_w: f32,
         canvas_h: f32,
     ) {
-        let sources = self.project.preview_sources();
+        let sources = self.project.editable_sources(self.studio_mode);
         let src_idx_opt = sources.iter().position(|s| s.id == sel_id);
         let src_def_opt = src_idx_opt.and_then(|i| sources.get(i).cloned());
         let src_name = src_def_opt
@@ -437,7 +442,7 @@ impl<'a> StudioTabViewer<'a> {
             .map(|s| s.name.clone())
             .unwrap_or_else(|| sel_id.to_string());
         let is_locked = src_def_opt.as_ref().map(|s| s.locked).unwrap_or(false);
-        let sc_id_opt = self.project.preview_scene_id.clone();
+        let sc_id_opt = self.project.editable_scene_id(self.studio_mode);
         let num_sources = sources.len();
 
         ui.label(egui::RichText::new(&src_name).strong());
@@ -524,7 +529,7 @@ impl<'a> StudioTabViewer<'a> {
                 let is_cur = cur_filter == filter;
                 if ui.selectable_label(is_cur, label).clicked() {
                     *self.trigger_snapshot_undo = true;
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
                             s.scale_filter = filter;
                         }
@@ -555,7 +560,7 @@ impl<'a> StudioTabViewer<'a> {
                 let is_cur = cur_mode == mode;
                 if ui.selectable_label(is_cur, label).clicked() {
                     *self.trigger_snapshot_undo = true;
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
                             s.blend_mode = mode;
                         }
@@ -578,7 +583,7 @@ impl<'a> StudioTabViewer<'a> {
                 let is_cur = cur_method == method;
                 if ui.selectable_label(is_cur, label).clicked() {
                     *self.trigger_snapshot_undo = true;
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
                             s.blend_method = method;
                         }
@@ -600,7 +605,7 @@ impl<'a> StudioTabViewer<'a> {
                 let is_cur = cur_tr.as_deref() == val;
                 if ui.selectable_label(is_cur, label).clicked() {
                     *self.trigger_snapshot_undo = true;
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
                             s.show_transition = val.map(String::from);
                         }
@@ -620,7 +625,7 @@ impl<'a> StudioTabViewer<'a> {
                 let is_cur = cur_tr.as_deref() == val;
                 if ui.selectable_label(is_cur, label).clicked() {
                     *self.trigger_snapshot_undo = true;
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if let Some(s) = srcs.iter_mut().find(|s| s.id == sel_id) {
                             s.hide_transition = val.map(String::from);
                         }
@@ -649,7 +654,7 @@ impl<'a> StudioTabViewer<'a> {
                 .clicked()
             {
                 if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         *self.trigger_snapshot_undo = true;
                         if idx < srcs.len() {
                             let s = srcs.remove(idx);
@@ -665,7 +670,7 @@ impl<'a> StudioTabViewer<'a> {
                 .clicked()
             {
                 if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         *self.trigger_snapshot_undo = true;
                         if idx + 1 < srcs.len() {
                             srcs.swap(idx, idx + 1);
@@ -680,7 +685,7 @@ impl<'a> StudioTabViewer<'a> {
                 .clicked()
             {
                 if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         *self.trigger_snapshot_undo = true;
                         if idx > 0 && idx < srcs.len() {
                             srcs.swap(idx, idx - 1);
@@ -695,7 +700,7 @@ impl<'a> StudioTabViewer<'a> {
                 .clicked()
             {
                 if let (Some(idx), Some(sc_id)) = (src_idx_opt, sc_id_opt.clone()) {
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         *self.trigger_snapshot_undo = true;
                         if idx < srcs.len() {
                             let s = srcs.remove(idx);
@@ -712,7 +717,7 @@ impl<'a> StudioTabViewer<'a> {
         ui.menu_button("Transform", |ui| {
             if ui.button("Reset Transform\tCtrl+R").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.x = 0.0;
                         s.y = 0.0;
@@ -725,7 +730,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Rotate 90Ã‚Â° CW").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.rotation = (s.rotation + 90.0) % 360.0;
                         *self.trigger_transform_source =
@@ -736,7 +741,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Rotate 90Ã‚Â° CCW").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.rotation = (s.rotation - 90.0 + 360.0) % 360.0;
                         *self.trigger_transform_source =
@@ -747,7 +752,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Rotate 180Ã‚Â°").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.rotation = (s.rotation + 180.0) % 360.0;
                         *self.trigger_transform_source =
@@ -758,7 +763,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Flip Horizontal").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.rotation = (360.0 - s.rotation) % 360.0;
                         *self.trigger_transform_source =
@@ -769,7 +774,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Flip Vertical").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.rotation = (180.0 - s.rotation + 360.0) % 360.0;
                         *self.trigger_transform_source =
@@ -780,7 +785,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Fit to Screen\tCtrl+F").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         let aspect = if s.height > 0.0 {
                             s.width / s.height
@@ -805,7 +810,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Stretch to Screen").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.x = 0.0;
                         s.y = 0.0;
@@ -820,7 +825,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Center to Screen\tCtrl+D").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.x = (canvas_w - s.width) * 0.5;
                         s.y = (canvas_h - s.height) * 0.5;
@@ -832,7 +837,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Center Horizontally").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.x = (canvas_w - s.width) * 0.5;
                         *self.trigger_transform_source =
@@ -843,7 +848,7 @@ impl<'a> StudioTabViewer<'a> {
             }
             if ui.button("Center Vertically").clicked() {
                 *self.trigger_snapshot_undo = true;
-                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                     if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                         s.y = (canvas_h - s.height) * 0.5;
                         *self.trigger_transform_source =
@@ -857,7 +862,7 @@ impl<'a> StudioTabViewer<'a> {
         // 13. Group Selected Items
         if ui.button("Group Selected Items\tCtrl+G").clicked() {
             *self.trigger_snapshot_undo = true;
-            if let Some(srcs) = self.project.preview_working_sources_mut() {
+            if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                 if let Some(s) = srcs.iter_mut().find(|s| s.id == *sel_id) {
                     s.name = format!("[Group] {}", s.name);
                 }
@@ -1251,7 +1256,7 @@ impl<'a> StudioTabViewer<'a> {
 
                     // Interactive on-canvas Transform Gizmo for Program Monitor
                     let mut gizmo_items = Vec::new();
-                    for src in self.project.preview_sources() {
+                    for src in self.project.editable_sources(self.studio_mode) {
                         gizmo_items.push(TransformGizmoItem {
                             id: src.id.clone(),
                             name: src.name.clone(),
@@ -1318,7 +1323,9 @@ impl<'a> StudioTabViewer<'a> {
                                 height,
                                 rotation_degrees,
                             } => {
-                                if let Some(sources) = self.project.preview_working_sources_mut() {
+                                if let Some(sources) =
+                                    self.project.editable_sources_mut(self.studio_mode)
+                                {
                                     if let Some(src) = sources.iter_mut().find(|s| s.id == id) {
                                         src.x = center_x - width * 0.5;
                                         src.y = center_y - height * 0.5;
@@ -1589,12 +1596,13 @@ impl<'a> StudioTabViewer<'a> {
                 .clone()
                 .or_else(|| self.project.scenes.first().map(|s| s.id.clone()));
         }
-        let Some(sc_id) = self.project.preview_scene_id.clone() else {
+        let sc_id_opt = self.project.editable_scene_id(self.studio_mode);
+        let Some(sc_id) = sc_id_opt else {
             ui.colored_label(TEXT_MUTED, "Select a scene to manage sources");
             return;
         };
 
-        let sources = self.project.preview_sources();
+        let sources = self.project.editable_sources(self.studio_mode);
         let num_sources = sources.len();
         let sel_idx = self
             .selected_source_id
@@ -1667,7 +1675,7 @@ impl<'a> StudioTabViewer<'a> {
             .clicked()
             {
                 if let Some(i) = sel_idx {
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if i + 1 < srcs.len() {
                             srcs.swap(i, i + 1);
                             *self.trigger_sync_source_order = Some(sc_id.clone());
@@ -1685,7 +1693,7 @@ impl<'a> StudioTabViewer<'a> {
             .clicked()
             {
                 if let Some(i) = sel_idx {
-                    if let Some(srcs) = self.project.preview_working_sources_mut() {
+                    if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                         if i > 0 && i < srcs.len() {
                             srcs.swap(i, i - 1);
                             *self.trigger_sync_source_order = Some(sc_id.clone());
@@ -1729,7 +1737,7 @@ impl<'a> StudioTabViewer<'a> {
         });
 
         if let Some(i) = sel_idx {
-            if let Some(srcs) = self.project.preview_working_sources_mut() {
+            if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                 if key_front && i + 1 < srcs.len() {
                     let s = srcs.remove(i);
                     srcs.push(s);
@@ -1951,7 +1959,9 @@ impl<'a> StudioTabViewer<'a> {
                                 };
                                 let from_idx = num_sources - 1 - from_r;
                                 let to_idx = num_sources - 1 - new_row;
-                                if let Some(srcs) = self.project.preview_working_sources_mut() {
+                                if let Some(srcs) =
+                                    self.project.editable_sources_mut(self.studio_mode)
+                                {
                                     if from_idx < srcs.len() && to_idx < srcs.len() {
                                         let item = srcs.remove(from_idx);
                                         srcs.insert(to_idx, item);
@@ -1970,8 +1980,19 @@ impl<'a> StudioTabViewer<'a> {
             }
         }
 
+        // Section 2.2: Clicking empty space below source rows deselects
+        if scroll_output.inner_rect.is_positive() && ui.input(|i| i.pointer.primary_clicked()) {
+            if let Some(pos) = ui.input(|i| i.pointer.interact_pos()) {
+                if scroll_output.inner_rect.contains(pos)
+                    && !row_rects.iter().any(|r| r.contains(pos))
+                {
+                    *self.selected_source_id = None;
+                }
+            }
+        }
+
         if let Some(ref sel_id) = *self.selected_source_id {
-            if let Some(srcs) = self.project.preview_working_sources_mut() {
+            if let Some(srcs) = self.project.editable_sources_mut(self.studio_mode) {
                 if let Some(src) = srcs.iter_mut().find(|s| &s.id == sel_id) {
                     ui.separator();
                     ui.collapsing("Transform", |ui| {

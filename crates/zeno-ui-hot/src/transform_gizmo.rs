@@ -12,10 +12,11 @@
 //! - Multi-selection (Ctrl+click, marquee drag)
 
 use egui::{
-    pos2, vec2, CornerRadius, CursorIcon, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2,
+    pos2, vec2, CornerRadius, CursorIcon, FontId, Key, Pos2, Rect, Sense, Stroke, StrokeKind, Ui,
+    Vec2,
 };
 
-use crate::theme::{ACCENT, AMBER_WARN, TEXT, TEXT_MUTED};
+use crate::theme::{ACCENT, AMBER_WARN, BORDER_WIDTH, SURFACE_0, SURFACE_3, TEXT, TEXT_MUTED};
 
 /// Represents an item on the canvas that can be transformed.
 #[derive(Debug, Clone, PartialEq)]
@@ -126,8 +127,13 @@ impl TransformGizmoState {
     ) -> (egui::Response, Vec<TransformGizmoEvent>) {
         let mut events = Vec::new();
 
+        let interact_rect = if ui.max_rect().is_positive() {
+            ui.max_rect().union(viewport_rect)
+        } else {
+            viewport_rect
+        };
         let response = ui.interact(
-            viewport_rect,
+            interact_rect,
             ui.id().with("transform_canvas_interact"),
             Sense::click_and_drag(),
         );
@@ -146,7 +152,8 @@ impl TransformGizmoState {
             vec2(lx, ly)
         };
 
-        let painter = ui.painter_at(viewport_rect);
+        // Use unclipped layer painter so handles/bounding-box can extend outside canvas rect (Image 2)
+        let painter = ui.painter();
         let pointer_pos = response
             .interact_pointer_pos()
             .or_else(|| ui.input(|i| i.pointer.latest_pos()));
@@ -195,64 +202,81 @@ impl TransformGizmoState {
         }
 
         // 2. Determine hovered handle if an item is selected
-        let mut hovered_handle: Option<(String, GizmoHandle)> = None;
         let handle_radius_screen = 6.0;
+        let hit_dist = handle_radius_screen + 6.0; // 12.0px comfortable hit radius
 
-        if let Some(primary_id) = selected_ids.first() {
-            if let Some(primary_item) = items.iter().find(|it| &it.id == primary_id && !it.locked) {
-                let center_screen = logical_to_screen(primary_item.center_x, primary_item.center_y);
-                let half_w = (primary_item.width * 0.5 * zoom).max(4.0);
-                let half_h = (primary_item.height * 0.5 * zoom).max(4.0);
-                let rad = primary_item.rotation_degrees.to_radians();
-                let (cos_a, sin_a) = (rad.cos(), rad.sin());
+        let primary_item_opt = selected_ids
+            .first()
+            .and_then(|id| items.iter().find(|it| &it.id == id && !it.locked).cloned());
 
-                let rotate_local = |lx: f32, ly: f32| -> Pos2 {
-                    let rx = lx * cos_a - ly * sin_a;
-                    let ry = lx * sin_a + ly * cos_a;
-                    pos2(center_screen.x + rx, center_screen.y + ry)
-                };
+        let test_primary_handle = |pos: Pos2| -> Option<GizmoHandle> {
+            let item = primary_item_opt.as_ref()?;
+            let center_screen = logical_to_screen(item.center_x, item.center_y);
+            let half_w = (item.width * 0.5 * zoom).max(4.0);
+            let half_h = (item.height * 0.5 * zoom).max(4.0);
+            let rad = item.rotation_degrees.to_radians();
+            let (cos_a, sin_a) = (rad.cos(), rad.sin());
 
-                // Handle locations in screen space
-                let h_tl = rotate_local(-half_w, -half_h);
-                let h_tm = rotate_local(0.0, -half_h);
-                let h_tr = rotate_local(half_w, -half_h);
-                let h_rm = rotate_local(half_w, 0.0);
-                let h_br = rotate_local(half_w, half_h);
-                let h_bm = rotate_local(0.0, half_h);
-                let h_bl = rotate_local(-half_w, half_h);
-                let h_lm = rotate_local(-half_w, 0.0);
-                let h_rot = rotate_local(0.0, -half_h - 24.0);
+            let rotate_local = |lx: f32, ly: f32| -> Pos2 {
+                let rx = lx * cos_a - ly * sin_a;
+                let ry = lx * sin_a + ly * cos_a;
+                pos2(center_screen.x + rx, center_screen.y + ry)
+            };
 
-                if let Some(ptr) = pointer_pos {
-                    let hit_dist = handle_radius_screen + 4.0;
-                    if (ptr - h_rot).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::Rotate));
-                    } else if (ptr - h_tl).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::TopLeft));
-                    } else if (ptr - h_tr).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::TopRight));
-                    } else if (ptr - h_br).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::BottomRight));
-                    } else if (ptr - h_bl).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::BottomLeft));
-                    } else if (ptr - h_tm).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::TopMid));
-                    } else if (ptr - h_bm).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::BottomMid));
-                    } else if (ptr - h_lm).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::LeftMid));
-                    } else if (ptr - h_rm).length() <= hit_dist {
-                        hovered_handle = Some((primary_item.id.clone(), GizmoHandle::RightMid));
-                    } else {
-                        // Check body hit
-                        let diff = ptr - center_screen;
-                        let unrot_x = diff.x * cos_a + diff.y * sin_a;
-                        let unrot_y = -diff.x * sin_a + diff.y * cos_a;
-                        if unrot_x.abs() <= half_w && unrot_y.abs() <= half_h {
-                            hovered_handle = Some((primary_item.id.clone(), GizmoHandle::Body));
-                        }
-                    }
-                }
+            let h_rot = rotate_local(0.0, -half_h - 24.0);
+            let h_tl = rotate_local(-half_w, -half_h);
+            let h_tr = rotate_local(half_w, -half_h);
+            let h_br = rotate_local(half_w, half_h);
+            let h_bl = rotate_local(-half_w, half_h);
+            let h_tm = rotate_local(0.0, -half_h);
+            let h_bm = rotate_local(0.0, half_h);
+            let h_lm = rotate_local(-half_w, 0.0);
+            let h_rm = rotate_local(half_w, 0.0);
+
+            if (pos - h_rot).length() <= hit_dist {
+                Some(GizmoHandle::Rotate)
+            } else if (pos - h_tl).length() <= hit_dist {
+                Some(GizmoHandle::TopLeft)
+            } else if (pos - h_tr).length() <= hit_dist {
+                Some(GizmoHandle::TopRight)
+            } else if (pos - h_br).length() <= hit_dist {
+                Some(GizmoHandle::BottomRight)
+            } else if (pos - h_bl).length() <= hit_dist {
+                Some(GizmoHandle::BottomLeft)
+            } else if (pos - h_tm).length() <= hit_dist {
+                Some(GizmoHandle::TopMid)
+            } else if (pos - h_bm).length() <= hit_dist {
+                Some(GizmoHandle::BottomMid)
+            } else if (pos - h_lm).length() <= hit_dist {
+                Some(GizmoHandle::LeftMid)
+            } else if (pos - h_rm).length() <= hit_dist {
+                Some(GizmoHandle::RightMid)
+            } else {
+                None
+            }
+        };
+
+        let is_inside_primary_body = |pos: Pos2| -> bool {
+            let Some(item) = primary_item_opt.as_ref() else {
+                return false;
+            };
+            let center_screen = logical_to_screen(item.center_x, item.center_y);
+            let half_w = (item.width * 0.5 * zoom).max(4.0);
+            let half_h = (item.height * 0.5 * zoom).max(4.0);
+            let rad = item.rotation_degrees.to_radians();
+            let (cos_a, sin_a) = (rad.cos(), rad.sin());
+            let diff = pos - center_screen;
+            let unrot_x = diff.x * cos_a + diff.y * sin_a;
+            let unrot_y = -diff.x * sin_a + diff.y * cos_a;
+            unrot_x.abs() <= half_w && unrot_y.abs() <= half_h
+        };
+
+        let mut hovered_handle: Option<(String, GizmoHandle)> = None;
+        if let (Some(ref item), Some(ptr)) = (&primary_item_opt, pointer_pos) {
+            if let Some(h) = test_primary_handle(ptr) {
+                hovered_handle = Some((item.id.clone(), h));
+            } else if is_inside_primary_body(ptr) {
+                hovered_handle = Some((item.id.clone(), GizmoHandle::Body));
             }
         }
 
@@ -289,23 +313,30 @@ impl TransformGizmoState {
 
         // 3. Handle Direct Mouse Left-Click (Select without requiring a drag)
         if response.clicked() {
-            if let Some(ptr_log) = pointer_logical {
-                if let Some(hit_item) = find_topmost_hit(ptr_log) {
-                    if ctrl_held {
-                        events.push(TransformGizmoEvent::ToggleSelect(hit_item.id));
-                    } else {
-                        events.push(TransformGizmoEvent::SelectOnly(hit_item.id));
+            let click_pos = ui.input(|i| i.pointer.interact_pos()).or(pointer_pos);
+            if let Some(pos) = click_pos {
+                let ptr_log = screen_to_logical(pos);
+                let hit_handle = test_primary_handle(pos).is_some();
+                if !hit_handle {
+                    if let Some(hit_item) = find_topmost_hit(ptr_log) {
+                        if shift_held || ctrl_held {
+                            events.push(TransformGizmoEvent::ToggleSelect(hit_item.id));
+                        } else {
+                            events.push(TransformGizmoEvent::SelectOnly(hit_item.id));
+                        }
+                    } else if !shift_held && !ctrl_held {
+                        // Clicking empty canvas or empty space outside canvas deselects
+                        events.push(TransformGizmoEvent::DeselectAll);
                     }
-                } else if !ctrl_held {
-                    // Clicking empty canvas deselects
-                    events.push(TransformGizmoEvent::DeselectAll);
                 }
             }
         }
 
         // 4. Handle Secondary Click (Right-click selects the target layer before context menu)
         if response.secondary_clicked() {
-            if let Some(ptr_log) = pointer_logical {
+            let click_pos = ui.input(|i| i.pointer.interact_pos()).or(pointer_pos);
+            if let Some(pos) = click_pos {
+                let ptr_log = screen_to_logical(pos);
                 if let Some(hit_item) = find_topmost_hit(ptr_log) {
                     if !selected_ids.contains(&hit_item.id) {
                         events.push(TransformGizmoEvent::SelectOnly(hit_item.id));
@@ -316,9 +347,24 @@ impl TransformGizmoState {
 
         // 5. Handle Mouse Drag Initiation
         if response.drag_started() {
-            if let Some(ptr_log) = pointer_logical {
-                if let Some((_, handle)) = hovered_handle {
-                    // Start dragging active gizmo handle
+            let drag_origin = ui.input(|i| i.pointer.press_origin()).or(pointer_pos);
+            if let Some(orig_pos) = drag_origin {
+                let orig_log = screen_to_logical(orig_pos);
+
+                // Section 2.4: Disambiguate handle drag from body/multi-select
+                if let (Some(ref item), Some(handle)) =
+                    (&primary_item_opt, test_primary_handle(orig_pos))
+                {
+                    // Shift held while starting a drag on an already-selected layer's handle
+                    // -> constrain-proportions on that one layer's transform only. No change to selection!
+                    self.active_drag = Some(ActiveGizmoDrag {
+                        handle,
+                        initial_pointer_logical: orig_log,
+                        initial_items: vec![(item.id.clone(), item.clone())],
+                    });
+                    events.push(TransformGizmoEvent::DragStarted);
+                } else if is_inside_primary_body(orig_pos) {
+                    // Dragging body of selected primary item
                     let snapshot: Vec<(String, TransformGizmoItem)> = items
                         .iter()
                         .filter(|it| selected_ids.contains(&it.id) && !it.locked)
@@ -326,34 +372,34 @@ impl TransformGizmoState {
                         .collect();
 
                     self.active_drag = Some(ActiveGizmoDrag {
-                        handle,
-                        initial_pointer_logical: ptr_log,
+                        handle: GizmoHandle::Body,
+                        initial_pointer_logical: orig_log,
                         initial_items: snapshot,
                     });
                     events.push(TransformGizmoEvent::DragStarted);
                 } else {
-                    // Test if clicked directly on another layer (topmost wins)
-                    if let Some(hit_item) = find_topmost_hit(ptr_log) {
-                        if ctrl_held {
+                    // Clicked directly on another layer (topmost wins)
+                    if let Some(hit_item) = find_topmost_hit(orig_log) {
+                        // Shift held while clicking a layer's body (not a handle) -> add to selection
+                        if shift_held || ctrl_held {
                             events.push(TransformGizmoEvent::ToggleSelect(hit_item.id.clone()));
                         } else {
                             events.push(TransformGizmoEvent::SelectOnly(hit_item.id.clone()));
                         }
-                        // Start dragging body immediately only if unlocked
                         if !hit_item.locked {
                             self.active_drag = Some(ActiveGizmoDrag {
                                 handle: GizmoHandle::Body,
-                                initial_pointer_logical: ptr_log,
+                                initial_pointer_logical: orig_log,
                                 initial_items: vec![(hit_item.id.clone(), hit_item)],
                             });
                             events.push(TransformGizmoEvent::DragStarted);
                         }
                     } else {
-                        // Clicked empty canvas: start marquee drag
-                        if !ctrl_held {
+                        // Clicked empty canvas or empty monitor space: start marquee drag
+                        if !shift_held && !ctrl_held {
                             events.push(TransformGizmoEvent::DeselectAll);
                         }
-                        self.marquee_start_logical = Some(ptr_log);
+                        self.marquee_start_logical = Some(orig_log);
                     }
                 }
             }
@@ -640,6 +686,62 @@ impl TransformGizmoState {
             }
         }
 
+        // 8. Modifier hint badge while dragging (Section 2.5)
+        if let Some(ref drag) = self.active_drag {
+            let hint_text = match drag.handle {
+                GizmoHandle::Rotate => {
+                    if shift_held {
+                        "Shift: 15° snap (Active)"
+                    } else {
+                        "Shift: Snap to 15°"
+                    }
+                }
+                GizmoHandle::BottomRight
+                | GizmoHandle::BottomLeft
+                | GizmoHandle::TopRight
+                | GizmoHandle::TopLeft => {
+                    if shift_held && alt_held {
+                        "Shift: Constrain aspect (Active) | Alt: Center scale (Active)"
+                    } else if shift_held {
+                        "Shift: Constrain aspect (Active) | Alt: Scale from center"
+                    } else if alt_held {
+                        "Shift: Constrain aspect | Alt: Center scale (Active)"
+                    } else {
+                        "Shift: Constrain aspect | Alt: Scale from center"
+                    }
+                }
+                GizmoHandle::RightMid
+                | GizmoHandle::LeftMid
+                | GizmoHandle::TopMid
+                | GizmoHandle::BottomMid => {
+                    if alt_held {
+                        "Alt: Scale from center (Active)"
+                    } else {
+                        "Alt: Scale from center"
+                    }
+                }
+                GizmoHandle::Body => "Shift / Arrow keys: Nudge (10px)",
+            };
+
+            let galley =
+                painter.layout_no_wrap(hint_text.to_string(), FontId::proportional(12.0), TEXT);
+            let pad = vec2(8.0, 4.0);
+            let badge_size = galley.size() + pad * 2.0;
+            let badge_pos = pos2(
+                viewport_rect.center().x - badge_size.x * 0.5,
+                (viewport_rect.bottom() - 32.0).max(viewport_rect.top() + 8.0),
+            );
+            let badge_rect = Rect::from_min_size(badge_pos, badge_size);
+            painter.rect(
+                badge_rect,
+                CornerRadius::same(4),
+                SURFACE_0,
+                Stroke::new(BORDER_WIDTH, SURFACE_3),
+                StrokeKind::Inside,
+            );
+            painter.galley(badge_pos + pad, galley, TEXT);
+        }
+
         (response, events)
     }
 }
@@ -908,6 +1010,232 @@ mod tests {
                     assert!(events.iter().any(
                         |e| matches!(e, TransformGizmoEvent::SelectOnly(id) if id == "item_bg")
                     ));
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn test_shift_drag_handle_constrains_aspect_without_affecting_layers_below() {
+        let ctx = egui::Context::default();
+        let items = vec![
+            TransformGizmoItem {
+                id: "layer_bottom".into(),
+                name: "Background".into(),
+                center_x: 960.0,
+                center_y: 540.0,
+                width: 1920.0,
+                height: 1080.0,
+                rotation_degrees: 0.0,
+                locked: false,
+                visible: true,
+            },
+            TransformGizmoItem {
+                id: "layer_top".into(),
+                name: "Foreground".into(),
+                center_x: 1000.0,
+                center_y: 500.0,
+                width: 400.0,
+                height: 200.0,
+                rotation_degrees: 0.0,
+                locked: false,
+                visible: true,
+            },
+        ];
+
+        let mut gizmo = TransformGizmoState::default();
+        let screen_r = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+
+        // BottomRight handle of layer_top is at (1000 + 200, 500 + 100) = (1200.0, 600.0)
+        let br_handle_pos = pos2(1200.0, 600.0);
+
+        // Frame 0: Warmup with layer_top selected
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.05),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![egui::Event::PointerMoved(br_handle_pos)],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["layer_top".into()],
+                    );
+                });
+            },
+        );
+
+        // Frame 1: Shift-click on handle
+        let shift_mod = egui::Modifiers {
+            shift: true,
+            ..Default::default()
+        };
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.1),
+                predicted_dt: 1.0 / 60.0,
+                modifiers: shift_mod,
+                events: vec![egui::Event::PointerButton {
+                    pos: br_handle_pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: shift_mod,
+                }],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let (_, events) = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["layer_top".into()],
+                    );
+                    // Must not trigger select or multi-select of layer_bottom
+                    assert!(!events.iter().any(|e| matches!(e,
+                        TransformGizmoEvent::SelectOnly(id) | TransformGizmoEvent::ToggleSelect(id)
+                        if id == "layer_bottom"
+                    )));
+                });
+            },
+        );
+
+        // Frame 2: Drag handle outward to (1250.0, 650.0)
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.15),
+                predicted_dt: 1.0 / 60.0,
+                modifiers: shift_mod,
+                events: vec![egui::Event::PointerMoved(pos2(1250.0, 650.0))],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let (_, events) = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["layer_top".into()],
+                    );
+
+                    // Transform must be emitted ONLY for layer_top, NEVER layer_bottom
+                    for ev in &events {
+                        if let TransformGizmoEvent::Transformed {
+                            id, width, height, ..
+                        } = ev
+                        {
+                            assert_eq!(
+                                id, "layer_top",
+                                "Only the handle's owning layer may be transformed"
+                            );
+                            // Aspect ratio 400:200 = 2.0 must be preserved!
+                            let aspect = width / height;
+                            assert!(
+                                (aspect - 2.0).abs() < 0.01,
+                                "Aspect ratio must be preserved on Shift-drag: got {}",
+                                aspect
+                            );
+                        }
+                    }
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn test_clicking_empty_space_deselects() {
+        let ctx = egui::Context::default();
+        let items = vec![TransformGizmoItem {
+            id: "layer_small".into(),
+            name: "Small Box".into(),
+            center_x: 960.0,
+            center_y: 540.0,
+            width: 100.0,
+            height: 100.0,
+            rotation_degrees: 0.0,
+            locked: false,
+            visible: true,
+        }];
+
+        let mut gizmo = TransformGizmoState::default();
+        let screen_r = Rect::from_min_size(pos2(0.0, 0.0), vec2(1920.0, 1080.0));
+
+        // Click at top-left corner (50.0, 50.0) far away from the 100x100 center box
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.05),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![egui::Event::PointerMoved(pos2(50.0, 50.0))],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let _ = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["layer_small".into()],
+                    );
+                });
+            },
+        );
+
+        let _ = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(screen_r),
+                time: Some(0.1),
+                predicted_dt: 1.0 / 60.0,
+                events: vec![
+                    egui::Event::PointerButton {
+                        pos: pos2(50.0, 50.0),
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                    egui::Event::PointerButton {
+                        pos: pos2(50.0, 50.0),
+                        button: egui::PointerButton::Primary,
+                        pressed: false,
+                        modifiers: Default::default(),
+                    },
+                ],
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let (resp, events) = gizmo.draw_and_interact_with_response(
+                        ui,
+                        screen_r,
+                        vec2(1920.0, 1080.0),
+                        egui::Vec2::ZERO,
+                        1.0,
+                        &items,
+                        &["layer_small".into()],
+                    );
+                    assert!(resp.clicked());
+                    assert!(events
+                        .iter()
+                        .any(|e| matches!(e, TransformGizmoEvent::DeselectAll)));
                 });
             },
         );

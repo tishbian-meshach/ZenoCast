@@ -1974,3 +1974,134 @@ fn test_section_2_split_pane_layout_and_panel_resizing() {
         app.update_ui(ctx);
     });
 }
+
+#[test]
+fn test_v1_6_normal_mode_transform_and_deselect() {
+    let project = Project::default();
+    let output_manager = Arc::new(OutputManager::new_dry_run(
+        zeno_output::encoder::VideoEncoderSettings {
+            encoder_kind: zeno_output::encoder::EncoderKind::X264,
+            width: 1920,
+            height: 1080,
+            fps: 60.0,
+            rate_control: zeno_output::encoder::RateControl::Cbr,
+            bitrate_kbps: 6000,
+            max_bitrate_kbps: Some(6000),
+            keyframe_interval_seconds: 2.0,
+            preset: zeno_output::encoder::EncoderPreset::VeryFast,
+            profile: zeno_output::encoder::EncoderProfile::Main,
+            b_frames: 0,
+            handoff_mode: Default::default(),
+        },
+        zeno_output::encoder::AudioEncoderSettings {
+            sample_rate: 48000,
+            channels: 2,
+            bitrate_kbps: 160,
+        },
+    ));
+
+    let mut app = ZenocastApp {
+        project,
+        project_path: None,
+        dock_state: create_default_live_layout(),
+        selected_scene_id: Some("scene_gameplay".into()),
+        selected_source_id: Some("src_cam".into()),
+        show_settings: false,
+        is_streaming: false,
+        is_recording: false,
+        stream_start_time: None,
+        active_transition_kind: "Fade".into(),
+        transition_duration_ms: 300,
+        t_bar_progress: 0.0,
+        autosaver: Autosaver::new(Path::new(".")),
+        output_manager,
+        wizard: zeno_ui::FirstRunWizard::new(),
+        license_client: Arc::new(zeno_license::LicenseClient::new_mock_valid()),
+        license_key_input: String::new(),
+        source_registry: Arc::new(parking_lot::RwLock::new(zeno_media::SourceRegistry::new())),
+        compositor: Arc::new(parking_lot::RwLock::new(None)),
+        source_dialog: zeno_ui::SourceDialogState::default(),
+        preview_texture_id: None,
+        program_texture_id: None,
+        wgpu_device: None,
+        wgpu_queue: None,
+        source_warning_message: None,
+        app_mode: zeno_ui::app::AppMode::LiveStudio,
+        overlay_editor: zeno_ui::OverlayEditor::default(),
+        timeline_mode: zeno_ui::editor::TimelineMode::DopeSheet,
+        data_panel_state: zeno_ui::DataPanelState::default(),
+        data_store: Arc::new(zeno_data::DataStore::new()),
+        control_state: Arc::new(zeno_control::ControlState::new(Arc::new(
+            zeno_data::DataStore::new(),
+        ))),
+        master_volume: 1.0,
+        master_muted: false,
+        show_open_dialog: false,
+        show_save_as_dialog: false,
+        file_dialog_path: "project.arxproj".to_string(),
+        rename_scene_id: None,
+        rename_scene_buffer: String::new(),
+        live_gizmo_state: zeno_ui::TransformGizmoState::default(),
+        settings_tab: Default::default(),
+        hotkey_search_filter: String::new(),
+        rebinding_target: None,
+        global_hotkey_manager: None,
+        global_hotkey_map: std::collections::HashMap::new(),
+        previous_scene_id: None,
+        studio_undo_stack: Vec::new(),
+        studio_redo_stack: Vec::new(),
+        push_to_mute_active: std::collections::HashMap::new(),
+        push_to_talk_active: std::collections::HashMap::new(),
+        studio_mode: false,
+        clipboard_source: None,
+        clipboard_filters: None,
+        filter_dialog: Default::default(),
+        preview_locked: false,
+        preview_scaling_mode: zeno_ui::project::PreviewScalingMode::ScaleToWindow,
+    };
+
+    // 1. Verify Normal Mode by default
+    assert!(!app.studio_mode);
+
+    // 2. Perform transform in Normal Mode on src_cam
+    app.sync_source_transform_to_compositor("src_cam", 120.0, 240.0, 640.0, 360.0, 10.0);
+
+    // 3. Verify active scene definition in project is updated immediately
+    let act_scene = app
+        .project
+        .scenes
+        .iter()
+        .find(|s| s.id == "scene_gameplay")
+        .unwrap();
+    let src = act_scene
+        .sources
+        .iter()
+        .find(|s| s.id == "src_cam")
+        .unwrap();
+    assert_eq!(src.x, 120.0);
+    assert_eq!(src.y, 240.0);
+    assert_eq!(src.width, 640.0);
+    assert_eq!(src.height, 360.0);
+    assert_eq!(src.rotation, 10.0);
+
+    // 4. Verify Escape key deselects active source
+    assert_eq!(app.selected_source_id.as_deref(), Some("src_cam"));
+    let ctx = egui::Context::default();
+    let raw_esc = egui::RawInput {
+        events: vec![egui::Event::Key {
+            key: egui::Key::Escape,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: Default::default(),
+        }],
+        ..Default::default()
+    };
+    let _ = ctx.run(raw_esc, |ctx| {
+        app.update_ui(ctx);
+    });
+    assert!(
+        app.selected_source_id.is_none(),
+        "Escape key must deselect the active source"
+    );
+}

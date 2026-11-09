@@ -230,6 +230,51 @@ impl Default for Project {
 }
 
 impl Project {
+    /// Resolves which scene ID is currently editable:
+    /// In Studio Mode: Preview scene (`preview_scene_id`).
+    /// In Normal Mode: Program / Live scene (`active_scene_id`).
+    pub fn editable_scene_id(&self, studio_mode: bool) -> Option<String> {
+        if studio_mode {
+            self.preview_scene_id.clone()
+        } else {
+            self.active_scene_id.clone()
+        }
+    }
+
+    /// Resolves the sources for the currently editable scene:
+    /// In Studio Mode: Preview working sources.
+    /// In Normal Mode: Program scene sources from `self.scenes`.
+    pub fn editable_sources(&self, studio_mode: bool) -> Vec<SourceDefinition> {
+        if studio_mode {
+            self.preview_sources()
+        } else {
+            if let Some(ref act_id) = self.active_scene_id {
+                if let Some(sc) = self.scenes.iter().find(|s| &s.id == act_id) {
+                    return sc.sources.clone();
+                }
+            }
+            self.preview_sources()
+        }
+    }
+
+    /// Gets a mutable reference to the sources of the currently editable scene:
+    /// In Studio Mode: Preview working copy (`preview_working_sources`).
+    /// In Normal Mode: Directly modifies the active scene's sources in `self.scenes`.
+    pub fn editable_sources_mut(
+        &mut self,
+        studio_mode: bool,
+    ) -> Option<&mut Vec<SourceDefinition>> {
+        if studio_mode {
+            self.preview_working_sources_mut()
+        } else {
+            let act_id = self.active_scene_id.clone()?;
+            self.scenes
+                .iter_mut()
+                .find(|s| s.id == act_id)
+                .map(|s| &mut s.sources)
+        }
+    }
+
     /// Returns the active sources for Preview (working copy if present, else cloned from scene).
     pub fn preview_sources(&self) -> Vec<SourceDefinition> {
         if let Some(ref prev_id) = self.preview_scene_id {

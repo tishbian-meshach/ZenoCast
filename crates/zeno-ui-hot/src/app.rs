@@ -1356,11 +1356,26 @@ impl ZenocastApp {
         height: f32,
         rotation: f32,
     ) {
+        // In Normal Mode, immediately persist to active scene
+        if !self.studio_mode {
+            if let Some(ref act_id) = self.project.active_scene_id {
+                if let Some(sc) = self.project.scenes.iter_mut().find(|s| &s.id == act_id) {
+                    if let Some(src) = sc.sources.iter_mut().find(|s| s.id == source_id_str) {
+                        src.x = x;
+                        src.y = y;
+                        src.width = width;
+                        src.height = height;
+                        src.rotation = rotation;
+                    }
+                }
+            }
+        }
+
         if let Some(ref mut comp) = *self.compositor.write() {
             let s_id = string_to_source_id(source_id_str);
             let canvas_w = comp.width() as f32;
             let canvas_h = comp.height() as f32;
-            comp.update_preview_item_transform(
+            comp.update_editable_item_transform(
                 s_id,
                 x + width / 2.0,
                 y + height / 2.0,
